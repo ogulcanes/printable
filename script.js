@@ -11,10 +11,10 @@ function renderProducts(products) {
   if (!storeProducts || !products.length) return;
   storeProducts.innerHTML = products.filter((product) => product.is_active).map((product) => `
     <article class="product-card">
-      <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.name}">
+      <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}">
       <h3>${product.name}</h3>
       <p>${money(product.sale_price || product.price)}${product.sale_price ? ` <s>${money(product.price)}</s>` : ""}</p>
-      <div class="swatches"><span></span><span></span><span></span></div>
+      <div class="swatches">${(product.colors || []).map((color) => `<span style="background:${color.hex}" title="${color.name}"></span>`).join("")}</div>
       <button data-add-product="${product.id}">Sepete ekle</button>
     </article>
   `).join("");
@@ -32,6 +32,24 @@ function renderCart() {
       <button type="button" data-remove-product="${item.id}">Kaldır</button>
     </article>
   `).join("") || "<p>Sepetiniz boş.</p>";
+}
+
+const categoryGrid = document.querySelector("#category-grid");
+
+// Admin-managed. The markup already in index.html is the fallback if this fails.
+async function loadCategories() {
+  if (!categoryGrid) return;
+  try {
+    const categories = await fetch("/api/categories").then((response) => response.json());
+    if (!Array.isArray(categories) || !categories.length) return;
+    categoryGrid.innerHTML = categories.map((category) => `
+      <a href="${category.href || "#store-products"}">
+        <img src="${category.image_path || "/assets/printable-logo.svg"}" alt="${category.image_alt || ""}">${category.name}
+      </a>
+    `).join("");
+  } catch {
+    /* keep the fallback markup */
+  }
 }
 
 async function loadProducts() {
@@ -162,6 +180,127 @@ function observeCards() {
   cards.forEach((card) => observer.observe(card));
 }
 
+const heroSlider = document.querySelector(".hero__slider");
+const heroSlidesBox = document.querySelector(".hero__slides");
+const heroCopy = document.querySelector(".hero__copy");
+const heroDots = document.querySelector(".hero__dots");
+const HERO_INTERVAL = 6000;
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+// Rebuilds the slide images from the admin-managed banner. The markup already in
+// index.html stays as the fallback when the API is unreachable.
+function applyHeroSlides(slides) {
+  document.querySelectorAll(".hero__slide").forEach((slide) => slide.remove());
+  const images = slides.map((slide, i) => {
+    const img = document.createElement("img");
+    img.className = i === 0 ? "hero__slide is-active" : "hero__slide";
+    img.src = slide.image_path;
+    img.alt = slide.image_alt || slide.title || "Printable banner görseli";
+    if (i === 0) img.fetchPriority = "high";
+    else img.loading = "lazy";
+    return img;
+  });
+  heroSlidesBox.prepend(...images);
+}
+
+function renderHeroCopy(slide) {
+  if (!slide) return;
+  const setButton = (selector, label, href) => {
+    const button = heroCopy.querySelector(selector);
+    if (!button) return;
+    button.hidden = !label;
+    button.querySelector("span").textContent = label || "";
+    button.href = href || "#";
+  };
+  heroCopy.querySelector("h1").textContent = slide.title || "";
+  heroCopy.querySelector(":scope > span").textContent = slide.subtitle || "";
+  setButton(".btn--light", slide.primary_label, slide.primary_href);
+  setButton(".btn--ghost", slide.secondary_label, slide.secondary_href);
+}
+
+function setupHeroSlider(slides) {
+  const images = [...document.querySelectorAll(".hero__slide")];
+  if (!heroSlider || images.length < 2) return;
+
+  let index = 0;
+  let timer = null;
+  let swapTimer = null;
+
+  const dots = images.map((image, i) => {
+    const dot = document.createElement("button");
+    dot.type = "button";
+    dot.setAttribute("aria-label", `${i + 1}. görsel`);
+    dot.addEventListener("click", () => {
+      show(i);
+      restart();
+    });
+    heroDots.append(dot);
+    return dot;
+  });
+
+  function show(next) {
+    index = (next + images.length) % images.length;
+    images.forEach((image, i) => image.classList.toggle("is-active", i === index));
+    dots.forEach((dot, i) => dot.setAttribute("aria-current", String(i === index)));
+    if (!slides?.length) return;
+
+    // Fade the copy out, swap the text mid-fade, fade it back in with the image.
+    clearTimeout(swapTimer);
+    if (reducedMotion.matches) return renderHeroCopy(slides[index]);
+    heroCopy.classList.add("is-swapping");
+    swapTimer = setTimeout(() => {
+      renderHeroCopy(slides[index]);
+      heroCopy.classList.remove("is-swapping");
+    }, 250);
+  }
+
+  function stop() {
+    clearInterval(timer);
+    timer = null;
+  }
+
+  function restart() {
+    stop();
+    if (reducedMotion.matches) return;
+    timer = setInterval(() => show(index + 1), HERO_INTERVAL);
+  }
+
+  document.querySelector(".hero__arrow--prev")?.addEventListener("click", () => {
+    show(index - 1);
+    restart();
+  });
+  document.querySelector(".hero__arrow--next")?.addEventListener("click", () => {
+    show(index + 1);
+    restart();
+  });
+
+  heroSlider.addEventListener("mouseenter", stop);
+  heroSlider.addEventListener("mouseleave", restart);
+  heroSlider.addEventListener("focusin", stop);
+  heroSlider.addEventListener("focusout", restart);
+  document.addEventListener("visibilitychange", () => (document.hidden ? stop() : restart()));
+
+  restart();
+}
+
+async function loadHeroSlides() {
+  if (!heroSlider) return;
+  let slides = null;
+  try {
+    const data = await fetch("/api/hero-slides").then((response) => response.json());
+    if (Array.isArray(data) && data.length) slides = data;
+  } catch {
+    slides = null;
+  }
+  if (slides) {
+    applyHeroSlides(slides);
+    renderHeroCopy(slides[0]);
+  }
+  setupHeroSlider(slides);
+}
+
 loadProducts();
+loadCategories();
+loadHeroSlides();
 renderCart();
 observeCards();

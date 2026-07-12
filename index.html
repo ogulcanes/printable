@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Printable Mağaza</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!--seo-->
+    <link rel="preload" href="/assets/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/assets/fonts/manrope-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preconnect" href="https://images.unsplash.com">
     <link rel="preconnect" href="https://new-ella-demo-07.myshopify.com">
     <link rel="stylesheet" href="styles.css">
   </head>
@@ -49,14 +49,25 @@
       <section class="hero">
         <div class="container hero__grid">
           <div class="hero__slider">
-            <img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/home-4-slideshow-1.jpg?v=1759823172&width=1280" alt="Printable özel baskı ürünleri">
+            <div class="hero__slides" role="group" aria-label="Banner görselleri">
+              <img class="hero__slide is-active" src="https://images.unsplash.com/photo-1572044162444-ad60f128bdea?auto=format&fit=crop&w=1800&q=75" alt="Renk kartelası ve tasarım masası" fetchpriority="high">
+              <img class="hero__slide" src="https://images.unsplash.com/photo-1503694978374-8a2fa686963a?auto=format&fit=crop&w=1800&q=75" alt="Ofset baskı makinesinden çıkan baskılar" loading="lazy">
+              <img class="hero__slide" src="https://images.unsplash.com/photo-1622547748225-3fc4abd2cca0?auto=format&fit=crop&w=1800&q=75" alt="3D baskı için hazırlanmış model görseli" loading="lazy">
+
+              <button class="hero__arrow hero__arrow--prev" type="button" aria-label="Önceki görsel">&#8249;</button>
+              <button class="hero__arrow hero__arrow--next" type="button" aria-label="Sonraki görsel">&#8250;</button>
+              <div class="hero__dots"></div>
+            </div>
             <div class="hero__copy">
-              <p>Özel teklif</p>
               <h1>Markanız İçin Özel Baskı Ürünleri</h1>
               <span>Sticker, poster, kartvizit ve ambalaj çözümleri</span>
               <div class="hero-actions">
-                <a class="btn btn--light" href="/stl-teklif">STL yükle, fiyat al</a>
-                <a class="btn btn--ghost" href="#store-products">Ürünleri incele</a>
+                <a class="btn btn--light" href="/stl-teklif">
+                  <span>STL yükle, fiyat al</span>
+                </a>
+                <a class="btn btn--ghost" href="#store-products">
+                  <span>Ürünleri incele</span>
+                </a>
               </div>
             </div>
           </div>
@@ -78,7 +89,7 @@
             <h2>STL dosyanızı yükleyin, modelinizi kontrol edin.</h2>
             <p>Gerçek yükleme ekranında modelinizi 3D olarak görüntüleyebilir, ölçülerini görebilir ve hızlı fiyat tahmini alabilirsiniz.</p>
             <a class="stl-upload stl-demo-link" href="/stl-teklif">
-              <span>Gerçek yükleme sayfasına git</span>
+              <span>Ücretsiz teklif alın</span>
             </a>
             <small>Bu alan örnek önizlemedir; dosya yükleme ayrı sayfada yapılır.</small>
           </div>
@@ -172,7 +183,7 @@
 
       <section class="container categories">
         <h2>Kategorilere Göre Alışveriş</h2>
-        <div class="category-grid">
+        <div class="category-grid" id="category-grid">
           <a href="#"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/super_market_1_1.png?v=1754039110&width=300" alt="">Sticker</a>
           <a href="#"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/super_market_1_2.png?v=1754039110&width=300" alt="">Kartvizit</a>
           <a href="#"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/super_market_1_3.png?v=1754039110&width=300" alt="">Poster</a>

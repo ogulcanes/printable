@@ -4,9 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Printable Admin Paneli</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="preload" href="/assets/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/assets/fonts/manrope-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="admin.css">
   </head>
   <body class="admin-page">
@@ -17,9 +16,13 @@
       </a>
       <nav>
         <button class="tab active" data-tab="dashboard"><span>01</span>Özet</button>
-        <button class="tab" data-tab="products"><span>02</span>Ürünler</button>
-        <button class="tab" data-tab="orders"><span>03</span>Siparişler</button>
-        <button class="tab" data-tab="customers"><span>04</span>Müşteriler</button>
+        <button class="tab" data-tab="banner"><span>02</span>Banner</button>
+        <button class="tab" data-tab="categories"><span>03</span>Kategoriler</button>
+        <button class="tab" data-tab="colors"><span>04</span>Renkler</button>
+        <button class="tab" data-tab="seo"><span>05</span>SEO</button>
+        <button class="tab" data-tab="products"><span>06</span>Ürünler</button>
+        <button class="tab" data-tab="orders"><span>07</span>Siparişler</button>
+        <button class="tab" data-tab="customers"><span>08</span>Müşteriler</button>
       </nav>
       <div class="sidebar-note">
         <strong>Vercel notu</strong>
@@ -60,11 +63,141 @@
               <h2>Hızlı işlemler</h2>
             </div>
             <div class="quick-actions">
+              <button data-open-tab="banner">Banner düzenle</button>
+              <button data-open-tab="categories">Kategori ekle</button>
               <button data-open-tab="products">Ürün ekle</button>
               <button data-open-tab="customers">Müşteri ekle</button>
               <button data-open-tab="orders">Sipariş oluştur</button>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section id="banner" class="panel">
+        <div class="grid-two">
+          <form id="slide-form" class="admin-card form-card" enctype="multipart/form-data">
+            <input type="hidden" name="id">
+            <div class="card-title"><h2>Banner Görseli Ekle / Düzenle</h2></div>
+            <label>Görsel yükle<input name="image" type="file" accept="image/*"></label>
+            <label>veya görsel URL'si<input name="image_url" placeholder="https://..."></label>
+            <label>Görsel alt metni (SEO)<input name="image_alt" placeholder="Renk kartelası ve tasarım masası"></label>
+            <label>Başlık<input name="title" placeholder="Markanız İçin Özel Baskı Ürünleri"></label>
+            <label>Alt başlık<textarea name="subtitle" rows="2" placeholder="Sticker, poster, kartvizit ve ambalaj çözümleri"></textarea></label>
+            <div class="form-grid">
+              <label>1. buton metni<input name="primary_label" placeholder="STL yükle, fiyat al"></label>
+              <label>1. buton linki<input name="primary_href" placeholder="/stl-teklif"></label>
+              <label>2. buton metni<input name="secondary_label" placeholder="Ürünleri incele"></label>
+              <label>2. buton linki<input name="secondary_href" placeholder="#store-products"></label>
+              <label>Sıra<input name="sort_order" type="number" min="0" value="0"></label>
+            </div>
+            <label class="check"><input name="is_active" type="checkbox" checked value="1"> Banner'da göster</label>
+            <div class="actions">
+              <button type="submit">Banner'ı kaydet</button>
+              <button type="button" class="ghost" id="reset-slide">Temizle</button>
+            </div>
+          </form>
+
+          <div class="admin-card">
+            <div class="card-title">
+              <h2>Banner görselleri</h2>
+              <span id="slide-count" class="count-pill">0 görsel</span>
+            </div>
+            <div id="slide-list" class="list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="categories" class="panel">
+        <div class="grid-two">
+          <form id="category-form" class="admin-card form-card" enctype="multipart/form-data">
+            <input type="hidden" name="id">
+            <div class="card-title"><h2>Kategori Ekle / Düzenle</h2></div>
+            <label>Kategori adı<input name="name" required placeholder="Sticker"></label>
+            <label>Görsel yükle<input name="image" type="file" accept="image/*"></label>
+            <label>veya görsel URL'si<input name="image_url" placeholder="https://..."></label>
+            <label>Görsel alt metni (SEO)<input name="image_alt" placeholder="Sticker baskı kategorisi"></label>
+            <div class="form-grid">
+              <label>Bağlantı<input name="href" placeholder="#store-products"></label>
+              <label>Sıra<input name="sort_order" type="number" min="0" value="0"></label>
+            </div>
+            <label class="check"><input name="is_active" type="checkbox" checked value="1"> Mağazada göster</label>
+            <div class="actions">
+              <button type="submit">Kategoriyi kaydet</button>
+              <button type="button" class="ghost" id="reset-category">Temizle</button>
+            </div>
+          </form>
+
+          <div class="admin-card">
+            <div class="card-title">
+              <h2>Kategoriler</h2>
+              <span id="category-count" class="count-pill">0 kategori</span>
+            </div>
+            <div id="category-list" class="list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="colors" class="panel">
+        <div class="grid-two">
+          <form id="color-form" class="admin-card form-card">
+            <input type="hidden" name="id">
+            <div class="card-title"><h2>Renk Ekle / Düzenle</h2></div>
+            <label>Renk adı<input name="name" required placeholder="Turuncu"></label>
+            <div class="form-grid">
+              <label>Renk seç<input name="hex" id="color-picker" type="color" value="#ff6542"></label>
+              <label>Renk kodu<input name="hex_text" id="color-hex" placeholder="#ff6542"></label>
+              <label>Sıra<input name="sort_order" type="number" min="0" value="0"></label>
+            </div>
+            <label class="check"><input name="is_active" type="checkbox" checked value="1"> Kullanımda</label>
+            <div class="actions">
+              <button type="submit">Rengi kaydet</button>
+              <button type="button" class="ghost" id="reset-color">Temizle</button>
+            </div>
+            <p class="form-note">Buradaki renkler ürün formunda seçenek olarak çıkar ve mağazadaki ürün kartlarında renk noktası olarak görünür.</p>
+          </form>
+
+          <div class="admin-card">
+            <div class="card-title">
+              <h2>Renk listesi</h2>
+              <span id="color-count" class="count-pill">0 renk</span>
+            </div>
+            <div id="color-list" class="list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="seo" class="panel">
+        <div class="grid-two">
+          <form id="seo-page-form" class="admin-card form-card">
+            <div class="card-title"><h2>Sayfa SEO Ayarları</h2></div>
+            <label>Sayfa<select name="slug" id="seo-page-select"></select></label>
+            <label>Sayfa başlığı (title)<input name="title" maxlength="70" placeholder="Printable | Markanız İçin Özel Baskı"></label>
+            <label>Meta açıklama<textarea name="description" rows="3" maxlength="170" placeholder="Arama sonuçlarında görünen açıklama"></textarea></label>
+            <label>Canonical URL<input name="canonical" placeholder="Boş bırakırsan sayfanın kendi adresi kullanılır"></label>
+            <label>Paylaşım başlığı (OG)<input name="og_title" placeholder="Boşsa sayfa başlığı kullanılır"></label>
+            <label>Paylaşım açıklaması (OG)<textarea name="og_description" rows="2" placeholder="Boşsa meta açıklama kullanılır"></textarea></label>
+            <label>Paylaşım görseli (OG image)<input name="og_image" placeholder="/uploads/... veya https://..."></label>
+            <label>Arama motoru izni<select name="robots">
+              <option value="index,follow">Dizine eklensin (index, follow)</option>
+              <option value="noindex,nofollow">Dizine eklenmesin (noindex, nofollow)</option>
+            </select></label>
+            <div class="actions">
+              <button type="submit">Sayfa SEO'sunu kaydet</button>
+            </div>
+          </form>
+
+          <form id="seo-site-form" class="admin-card form-card">
+            <div class="card-title"><h2>Site Geneli / Yapısal Veri</h2></div>
+            <label>Site adı<input name="site_name" placeholder="Printable"></label>
+            <label>Site adresi<input name="site_url" placeholder="https://printable.com.tr"></label>
+            <label>Site açıklaması<textarea name="description" rows="3"></textarea></label>
+            <label>Logo yolu<input name="logo_path" placeholder="/assets/printable-logo.svg"></label>
+            <label>Sosyal hesap adresleri (her satıra bir tane)<textarea name="social_links" rows="4" placeholder="https://instagram.com/..."></textarea></label>
+            <div class="actions">
+              <button type="submit">Site ayarlarını kaydet</button>
+            </div>
+            <p class="form-note" id="seo-note">Bu alanlar sayfaya JSON-LD (Organization + WebSite) olarak gömülür. Site adresini doldurmak önemli: paylaşım görselleri ve canonical adresler mutlak URL olmak zorundadır.</p>
+          </form>
         </div>
       </section>
 
@@ -78,7 +211,7 @@
             <label>Kategori<input name="category"></label>
             <label>Açıklama<textarea name="description" rows="4"></textarea></label>
             <div class="form-grid">
-              <label>Renk<input name="color"></label>
+              <label>Renk açıklaması<input name="color" placeholder="Örn. CMYK, Tam renk"></label>
               <label>Stok<input name="stock" type="number" min="0" value="0"></label>
               <label>Fiyat<input name="price" type="number" min="0" step="0.01" required></label>
               <label>İndirimli fiyat<input name="sale_price" type="number" min="0" step="0.01"></label>
@@ -87,7 +220,14 @@
               <label>Derinlik<input name="depth" type="number" min="0" step="0.01"></label>
               <label>Ağırlık<input name="weight" type="number" min="0" step="0.01"></label>
             </div>
+            <fieldset class="color-picker-field">
+              <legend>Renk seçenekleri</legend>
+              <div id="product-colors" class="color-options"></div>
+            </fieldset>
             <label>Ürün fotoğrafı<input name="image" type="file" accept="image/*"></label>
+            <label>Fotoğraf alt metni (SEO)<input name="image_alt" placeholder="Boşsa ürün adı kullanılır"></label>
+            <label>Meta başlık (SEO)<input name="meta_title" maxlength="70"></label>
+            <label>Meta açıklama (SEO)<textarea name="meta_description" rows="2" maxlength="170"></textarea></label>
             <label class="check"><input name="is_active" type="checkbox" checked value="1"> Mağazada aktif</label>
             <div class="actions">
               <button type="submit">Ürünü kaydet</button>
