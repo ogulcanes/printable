@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" role="img" aria-label="Printable">
+  <rect width="640" height="360" fill="#f5f2ec"/>
+  <rect x="82" y="88" width="112" height="112" rx="34" fill="#ff6542"/>
+  <path d="M118 124h38c28 0 46 17 46 42s-18 42-46 42h-18v40h-20V124zm38 66c17 0 26-9 26-24s-9-24-26-24h-18v48h18z" fill="#1b1d27"/>
+  <text x="220" y="184" fill="#1b1d27" font-family="Arial, sans-serif" font-size="58" font-weight="800">Printable</text>
+  <text x="224" y="226" fill="#74706a" font-family="Arial, sans-serif" font-size="24">custom print store</text>
+</svg>

@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Printable Admin Paneli</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="admin.css">
+  </head>
+  <body class="admin-page">
+    <aside class="sidebar">
+      <a class="brand" href="/">
+        <span class="brand-mark">P</span>
+        <span><strong>Printable</strong><small>Yönetim paneli</small></span>
+      </a>
+      <nav>
+        <button class="tab active" data-tab="dashboard"><span>01</span>Özet</button>
+        <button class="tab" data-tab="products"><span>02</span>Ürünler</button>
+        <button class="tab" data-tab="orders"><span>03</span>Siparişler</button>
+        <button class="tab" data-tab="customers"><span>04</span>Müşteriler</button>
+      </nav>
+      <div class="sidebar-note">
+        <strong>Vercel notu</strong>
+        <p>Canlı kullanımda harici veritabanı ve dosya depolama kullanın.</p>
+      </div>
+    </aside>
+
+    <main class="admin-shell">
+      <header class="admin-header">
+        <div>
+          <p>Printable kontrol merkezi</p>
+          <h1>Printable Yönetimi</h1>
+        </div>
+        <div class="header-actions">
+          <span id="session-user">admin</span>
+          <a class="store-link secondary" href="/">Mağazayı aç</a>
+          <button class="store-link" id="logout-button" type="button">Çıkış yap</button>
+        </div>
+      </header>
+
+      <section id="dashboard" class="panel active">
+        <div class="stats">
+          <article><span>Ürünler</span><strong id="stat-products">0</strong><small>Aktif katalog ürünleri</small></article>
+          <article><span>Müşteriler</span><strong id="stat-customers">0</strong><small>Kayıtlı müşteri profilleri</small></article>
+          <article><span>Siparişler</span><strong id="stat-orders">0</strong><small>Sistemde takip edilenler</small></article>
+          <article><span>Ciro</span><strong id="stat-revenue">0.00 TL</strong><small>Toplam sipariş tutarı</small></article>
+        </div>
+        <div class="dashboard-grid">
+          <div class="admin-card">
+            <div class="card-title">
+              <h2>Son siparişler</h2>
+              <button class="small-button" data-open-tab="orders">Yönet</button>
+            </div>
+            <div id="recent-orders" class="list list--compact"></div>
+          </div>
+          <div class="admin-card">
+            <div class="card-title">
+              <h2>Hızlı işlemler</h2>
+            </div>
+            <div class="quick-actions">
+              <button data-open-tab="products">Ürün ekle</button>
+              <button data-open-tab="customers">Müşteri ekle</button>
+              <button data-open-tab="orders">Sipariş oluştur</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="products" class="panel">
+        <div class="grid-two">
+          <form id="product-form" class="admin-card form-card" enctype="multipart/form-data">
+            <input type="hidden" name="id">
+            <div class="card-title"><h2>Ürün Ekle / Düzenle</h2></div>
+            <label>Ürün adı<input name="name" required></label>
+            <label>SKU<input name="sku"></label>
+            <label>Kategori<input name="category"></label>
+            <label>Açıklama<textarea name="description" rows="4"></textarea></label>
+            <div class="form-grid">
+              <label>Renk<input name="color"></label>
+              <label>Stok<input name="stock" type="number" min="0" value="0"></label>
+              <label>Fiyat<input name="price" type="number" min="0" step="0.01" required></label>
+              <label>İndirimli fiyat<input name="sale_price" type="number" min="0" step="0.01"></label>
+              <label>En<input name="width" type="number" min="0" step="0.01"></label>
+              <label>Boy<input name="height" type="number" min="0" step="0.01"></label>
+              <label>Derinlik<input name="depth" type="number" min="0" step="0.01"></label>
+              <label>Ağırlık<input name="weight" type="number" min="0" step="0.01"></label>
+            </div>
+            <label>Ürün fotoğrafı<input name="image" type="file" accept="image/*"></label>
+            <label class="check"><input name="is_active" type="checkbox" checked value="1"> Mağazada aktif</label>
+            <div class="actions">
+              <button type="submit">Ürünü kaydet</button>
+              <button type="button" class="ghost" id="reset-product">Temizle</button>
+            </div>
+          </form>
+
+          <div class="admin-card">
+            <div class="card-title">
+              <h2>Ürünler</h2>
+              <span id="product-count" class="count-pill">0 ürün</span>
+            </div>
+            <div id="product-list" class="list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="orders" class="panel">
+        <div class="grid-two">
+          <form id="order-form" class="admin-card form-card">
+            <div class="card-title"><h2>Sipariş Oluştur</h2></div>
+            <label>Müşteri<select name="customer_id" required></select></label>
+            <label>Ürün<select name="product_id" required></select></label>
+            <div class="form-grid">
+              <label>Adet<input name="quantity" type="number" min="1" value="1"></label>
+              <label>İndirim<input name="discount" type="number" min="0" step="0.01" value="0"></label>
+            </div>
+            <label>Teslimat adresi<textarea name="shipping_address" rows="3"></textarea></label>
+            <label>Notlar<textarea name="notes" rows="3"></textarea></label>
+            <button type="submit">Sipariş oluştur</button>
+          </form>
+          <div class="admin-card">
+            <div class="card-title">
+              <h2>Siparişler</h2>
+              <span id="order-count" class="count-pill">0 sipariş</span>
+            </div>
+            <div id="order-list" class="list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="customers" class="panel">
+        <div class="grid-two">
+          <form id="customer-form" class="admin-card form-card">
+            <div class="card-title"><h2>Müşteri Ekle</h2></div>
+            <label>Ad soyad<input name="name" required></label>
+            <label>E-posta<input name="email" type="email"></label>
+            <label>Telefon<input name="phone"></label>
+            <label>Şehir<input name="city"></label>
+            <label>Adres<textarea name="address" rows="3"></textarea></label>
+            <label>Notlar<textarea name="notes" rows="3"></textarea></label>
+            <button type="submit">Müşteriyi kaydet</button>
+          </form>
+          <div class="admin-card">
+            <div class="card-title">
+              <h2>Müşteriler</h2>
+              <span id="customer-count" class="count-pill">0 kişi</span>
+            </div>
+            <div id="customer-list" class="list"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="admin.js"></script>
+  </body>
+</html>

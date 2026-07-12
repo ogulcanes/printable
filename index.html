@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Printable Mağaza</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://new-ella-demo-07.myshopify.com">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-main">
+        <a class="logo printable-logo" href="#" aria-label="Printable home">
+          <span>Printable</span>
+        </a>
+        <nav class="main-links" aria-label="Ana menü">
+          <a class="active" href="#">Ana Sayfa</a>
+          <a href="/stl-teklif">3D Baskı</a>
+          <a href="#store-products">Ürünler</a>
+          <a href="#checkout-form">Teklif Al</a>
+        </nav>
+        <nav class="header-actions" aria-label="Mağaza işlemleri">
+          <button class="search-toggle icon-button" type="button" aria-label="Arama aç" aria-expanded="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.3-4.3m1.3-5.2a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"/></svg>
+          </button>
+          <a class="cart icon-button" href="#cart-panel" aria-label="Sepet">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 8h14l-1.4 7.2a2 2 0 0 1-2 1.6H9a2 2 0 0 1-2-1.7L5.8 4H3"/><path d="M9.5 20.5h.01M17.5 20.5h.01"/></svg>
+            <strong id="cart-count">0</strong>
+          </a>
+          <a class="admin-link icon-button" href="/admin" aria-label="Yönetim paneli">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+          </a>
+          <a class="header-quote" href="/stl-teklif">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 7.2v9.6L12 21l7.5-4.2V7.2L12 3Z"/><path d="M12 12 4.8 7.4M12 12l7.2-4.6M12 12v8.5"/></svg>
+            <span>3D Baskı Teklifi</span>
+          </a>
+        </nav>
+      </div>
+      <form class="search search-popover" role="search">
+        <input type="search" placeholder="Ürün, baskı veya STL hizmeti ara">
+        <button type="submit">Ara</button>
+      </form>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="container hero__grid">
+          <div class="hero__slider">
+            <img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/home-4-slideshow-1.jpg?v=1759823172&width=1280" alt="Printable özel baskı ürünleri">
+            <div class="hero__copy">
+              <p>Özel teklif</p>
+              <h1>Markanız İçin Özel Baskı Ürünleri</h1>
+              <span>Sticker, poster, kartvizit ve ambalaj çözümleri</span>
+              <div class="hero-actions">
+                <a class="btn btn--light" href="/stl-teklif">STL yükle, fiyat al</a>
+                <a class="btn btn--ghost" href="#store-products">Ürünleri incele</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="promise-bar">
+        <div class="container promise-bar__grid">
+          <div>Hızlı üretim ve teslimat</div>
+          <div>Net fiyat garantisi</div>
+          <div>Sipariş takip desteği</div>
+        </div>
+      </section>
+
+      <section class="stl-quote" id="stl-quote">
+        <div class="container stl-quote__grid">
+          <div class="stl-quote__copy">
+            <p class="section-kicker">3D baskı teklifi</p>
+            <h2>STL dosyanızı yükleyin, modelinizi kontrol edin.</h2>
+            <p>Gerçek yükleme ekranında modelinizi 3D olarak görüntüleyebilir, ölçülerini görebilir ve hızlı fiyat tahmini alabilirsiniz.</p>
+            <a class="stl-upload stl-demo-link" href="/stl-teklif">
+              <span>Gerçek yükleme sayfasına git</span>
+            </a>
+            <small>Bu alan örnek önizlemedir; dosya yükleme ayrı sayfada yapılır.</small>
+          </div>
+          <div class="stl-viewer-card">
+            <div id="stl-viewer" class="stl-viewer">
+              <div class="stl-demo-model" aria-hidden="true">
+                <div class="demo-cube">
+                  <span class="face face-front"></span>
+                  <span class="face face-back"></span>
+                  <span class="face face-right"></span>
+                  <span class="face face-left"></span>
+                  <span class="face face-top"></span>
+                  <span class="face face-bottom"></span>
+                </div>
+              </div>
+              <div class="stl-empty stl-empty--demo">
+                <strong>Örnek model önizleme</strong>
+                <span>Gerçek STL önizlemesi ayrı teklif sayfasında açılır.</span>
+              </div>
+            </div>
+            <div class="stl-results">
+              <div><span>Ölçüler</span><strong id="stl-dimensions">-</strong></div>
+              <div><span>Hacim</span><strong id="stl-volume">-</strong></div>
+              <div><span>Tahmini fiyat</span><strong id="stl-price">-</strong></div>
+            </div>
+            <a class="stl-cta" href="/stl-teklif">STL yükle ve fiyat al</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="container product-section">
+        <div class="section-title">
+          <div>
+            <p class="section-kicker">Yeni eklenenler</p>
+            <h2>Yeni Ürünler</h2>
+          </div>
+          <a href="#">Tümünü gör</a>
+        </div>
+        <div class="carousel-shell">
+          <button class="carousel-button" type="button" data-carousel="prev" aria-label="Önceki ürün">‹</button>
+          <div class="products products--carousel" id="store-products">
+          <article class="product-card">
+            <img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-1.jpg?v=1750319850&width=500" alt="Sticker paketi">
+            <h3>Özel Kesim Sticker Paketi</h3>
+            <p>89.00 TL</p>
+            <div class="swatches"><span></span><span></span><span></span></div>
+            <button>Seçenekleri gör</button>
+          </article>
+          <article class="product-card">
+            <img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-1-2.jpg?v=1750319850&width=500" alt="Kartvizit seti">
+            <h3>Premium Kartvizit Seti</h3>
+            <p>79.00 TL</p>
+            <div class="swatches"><span></span><span></span></div>
+            <button>Seçenekleri gör</button>
+          </article>
+          <article class="product-card">
+            <img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-laptop-1_8ba38545-e982-4cc5-a601-9f7adb782d6f.jpg?v=1750319712&width=500" alt="Poster baskı">
+            <h3>A4 Poster Baskı</h3>
+            <p>69.00 TL</p>
+            <div class="swatches"><span></span></div>
+            <button>Seçenekleri gör</button>
+          </article>
+          <article class="product-card">
+            <img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-loa-1.jpg?v=1750319790&width=500" alt="Etiket baskı">
+            <h3>Ambalaj Etiketi</h3>
+            <p>89.00 TL'den başlayan</p>
+            <div class="swatches"><span></span><span></span></div>
+            <button>Seçenekleri gör</button>
+          </article>
+          <article class="product-card">
+            <img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/headphone-1.jpg?v=1750319814&width=500" alt="Promosyon baskı">
+            <h3>Promosyon Baskı Paketi</h3>
+            <p>199.00 TL</p>
+            <div class="swatches"><span></span><span></span><span></span></div>
+            <button>Seçenekleri gör</button>
+          </article>
+          </div>
+          <button class="carousel-button" type="button" data-carousel="next" aria-label="Sonraki ürün">›</button>
+        </div>
+      </section>
+
+      <section class="cyber">
+        <div class="container">
+          <h2>Haftanın En İyi Baskı Fırsatları</h2>
+          <div class="cyber__offers">
+            <p><strong>Ek %10 indirim</strong><br>seçili baskı ürünlerinde</p>
+            <p><strong>Numune fırsatı</strong><br>bugünün öne çıkan teklifleri</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="container categories">
+        <h2>Kategorilere Göre Alışveriş</h2>
+        <div class="category-grid">
+          <a href="#"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/super_market_1_1.png?v=1754039110&width=300" alt="">Sticker</a>
+          <a href="#"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/super_market_1_2.png?v=1754039110&width=300" alt="">Kartvizit</a>
+          <a href="#"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/super_market_1_3.png?v=1754039110&width=300" alt="">Poster</a>
+          <a href="#"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/super_market_1_4.png?v=1754039110&width=300" alt="">Etiket</a>
+          <a href="#"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/super_market_1_5.png?v=1754039110&width=300" alt="">Ambalaj</a>
+          <a href="#"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/super_market_1_6.png?v=1754039110&width=300" alt="">Promosyon</a>
+        </div>
+      </section>
+
+      <section class="container split-products">
+        <div class="product-section compact">
+          <div class="section-title">
+            <h2>Yeni Ürünler</h2>
+            <a href="#">Popüler</a>
+          </div>
+          <div class="products products--four">
+            <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-1.jpg?v=1750319850&width=500" alt=""><h3>Premium Sticker Seti</h3><p>$89.00</p><button>Seçenekleri gör</button></article>
+            <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-app-4_23546feb-c1d6-4645-819e-10afcda659f6.jpg?v=1750319766&width=500" alt=""><h3>Özel Baskı Kart</h3><p>$79.00</p><button>Sepete ekle</button></article>
+            <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-app-3_275905fd-215f-4522-9570-bae7c4f3ac3c.jpg?v=1750319766&width=500" alt=""><h3>Mat Poster Baskı</h3><p>$89.00</p><button>Tükendi</button></article>
+          </div>
+        </div>
+        <aside class="vr-banner">
+          <img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/market-large-banner-1.jpg?v=1754039056&width=600" alt="VR headset">
+          <div><h2>Ev ve ofis için özel baskı</h2><a class="btn btn--aqua" href="#">İncele</a></div>
+        </aside>
+      </section>
+
+      <section class="service-row">
+        <div class="container service-grid">
+          <div><strong>Kalite Kontrol</strong><span>Baskı öncesi detaylı kontrol</span></div>
+          <div><strong>Esnek Üretim</strong><span>Küçük ve büyük adet seçenekleri</span></div>
+          <div><strong>Hızlı Teslimat</strong><span>Pratik üretim ve gönderim</span></div>
+          <div><strong>Güvenli Ödeme</strong><span>Kolay ve güvenli ödeme akışı</span></div>
+          <div><strong>Sorunuz mu var?</strong><span>Her zaman bize ulaşabilirsiniz</span></div>
+        </div>
+      </section>
+
+      <section class="container product-section">
+        <div class="section-title"><h2>Çok Satan Baskılar</h2><a href="#">Tümünü gör</a></div>
+        <div class="products">
+          <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-11-5_ecbb6350-5f7d-4b8f-b286-f44193317da1.jpg?v=1750319883&width=500" alt=""><h3>Premium Kartvizit Seti</h3><p>$899.00</p><button>Seçenekleri gör</button></article>
+          <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-11-2_a1b33940-f66d-40b7-ae4b-d2ff12806c0a.jpg?v=1750319883&width=500" alt=""><h3>Renkli Sticker Paketi</h3><p>$799.00</p><button>Seçenekleri gör</button></article>
+          <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-11-4_7af0d8d8-0539-4d2d-83eb-bb60a6468cc4.jpg?v=1750319883&width=500" alt=""><h3>Afiş Baskı Seti</h3><p>$599.00</p><button>Seçenekleri gör</button></article>
+          <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-9-2_259cb4ec-6636-471a-9796-1989965e10b6.jpg?v=1750319838&width=500" alt=""><h3>Ambalaj Etiketi</h3><p>$699.00</p><button>Seçenekleri gör</button></article>
+          <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-9-6.jpg?v=1750319838&width=500" alt=""><h3>Özel Kesim Sticker</h3><p>$899.00</p><button>Seçenekleri gör</button></article>
+        </div>
+      </section>
+
+      <section class="container twin-banners">
+        <img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/market-large-banner-1.jpg?v=1754039056&width=768" alt="Premium phone">
+        <img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/market-large-banner-2.jpg?v=1754039056&width=768" alt="Ligular smartphone">
+      </section>
+
+      <section class="container product-section">
+        <div class="section-title"><h2>Öne Çıkan Ürünler</h2><a href="#">Tümünü gör</a></div>
+        <div class="products">
+          <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-tivi-1.jpg?v=1750319729&width=500" alt=""><h3>Duvar Poster Baskı</h3><p>$299.00</p><button>Seçenekleri gör</button></article>
+          <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-tivi-2.jpg?v=1750319729&width=500" alt=""><h3>Geniş Format Baskı</h3><p>$699.00'dan başlayan</p><button>Seçenekleri gör</button></article>
+          <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-tivi-2_88cda809-75af-49eb-8a94-8fa4e37702fd.jpg?v=1750319729&width=500" alt=""><h3>Parlak Poster Baskı</h3><p>$899.00</p><button>Seçenekleri gör</button></article>
+          <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-tivi-1_776f5eec-2844-4aa2-8179-358d4f205589.jpg?v=1750319729&width=500" alt=""><h3>Mat Poster Baskı</h3><p>$999.00'dan başlayan</p><button>Seçenekleri gör</button></article>
+          <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-tivi-2_ab09de17-367b-42b5-8ead-686d0a82c805.jpg?v=1750319729&width=500" alt=""><h3>Etkinlik Afişi</h3><p>$799.00</p><button>Seçenekleri gör</button></article>
+        </div>
+      </section>
+
+      <section class="container oled-banner">
+        <img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/home-4-cate-banner-2.jpg?v=1754039175&width=1200" alt="The world's first XLED TV">
+      </section>
+
+      <section class="container product-section">
+        <div class="section-title"><h2>Kurumsal Ürünler</h2><a href="#">Tümünü gör</a></div>
+        <div class="products">
+          <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-app-1.jpg?v=1750319766&width=500" alt=""><h3>Kurumsal Dosya Baskısı</h3><p>$99.00'dan başlayan</p><button>Seçenekleri gör</button></article>
+          <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-app-2.jpg?v=1750319766&width=500" alt=""><h3>Promosyon Etiketi</h3><p>$899.00</p><button>Sepete ekle</button></article>
+          <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-app-2_1da9eefd-f3e4-461f-857b-09397f3d6cf3.jpg?v=1750319766&width=500" alt=""><h3>Ürün Ambalaj Kartı</h3><p>$399.00</p><button>Seçenekleri gör</button></article>
+          <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-app-3.jpg?v=1750319766&width=500" alt=""><h3>Katalog Baskısı</h3><p>$89.00</p><button>Seçenekleri gör</button></article>
+          <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-app-2_50568174-f5b3-4d14-aaf3-d2b6f7ce1964.jpg?v=1750319766&width=500" alt=""><h3>Teşekkür Kartı</h3><p>$229.00</p><button>Seçenekleri gör</button></article>
+        </div>
+      </section>
+
+      <section class="container sale-banner">
+        <img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/home-4-cate-banner-3.jpg?v=1754039175&width=1200" alt="Yüzde 50'ye varan indirim">
+      </section>
+
+      <section class="container product-section">
+        <div class="section-title centered"><h2>Sizin İçin Önerilenler</h2></div>
+        <div class="products">
+          <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-1.jpg?v=1750319850&width=500" alt=""><h3>Premium Sticker Seti</h3><p>$89.00</p><button>Seçenekleri gör</button></article>
+          <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-laptop-2_9fd4acb2-8ad0-4a73-9461-f3f76ddbe8c5.jpg?v=1750319712&width=500" alt=""><h3>Hızlı Baskı Kartı</h3><p>$19.00</p><button>Seçenekleri gör</button></article>
+          <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-app-1_41bc4c60-5dce-41f9-b352-680ac3a2f9a0.jpg?v=1750319766&width=500" alt=""><h3>Ambalaj Etiketi</h3><p>$129.00</p><button>Seçenekleri gör</button></article>
+          <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-app-2.jpg?v=1750319766&width=500" alt=""><h3>Kurumsal Baskı Seti</h3><p>$899.00</p><button>Sepete ekle</button></article>
+          <article class="product-card"><img src="https://new-ella-demo-07.myshopify.com/cdn/shop/files/headphone-1b.jpg?v=1750319814&width=500" alt=""><h3>Özel Promosyon Paketi</h3><p>$199.00</p><button>Seçenekleri gör</button></article>
+        </div>
+      </section>
+
+      <section class="why">
+        <div class="container">
+          <h2>Neden bizden alışveriş yapmalısınız?</h2>
+          <div class="why__grid">
+            <div><strong>İlk siparişte avantaj</strong><span>Siparişinizi hızlıca üretime alırız.</span></div>
+            <div><strong>Haftalık fırsatlar</strong><span>Her hafta yeni baskı kampanyaları.</span></div>
+            <div><strong>Toplu alım indirimi</strong><span>Adet arttıkça avantajlı fiyatlar.</span></div>
+            <div><strong>Sipariş takip desteği</strong><span>Üretimden teslimata kadar takip.</span></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <section class="cart-panel" id="cart-panel" aria-label="Sepet ve ödeme">
+      <div class="cart-panel__header">
+        <h2>Sepetiniz</h2>
+        <button id="close-cart" type="button">Kapat</button>
+      </div>
+      <div id="cart-items" class="cart-items"></div>
+      <form id="checkout-form" class="checkout-form">
+        <h3>Siparişi tamamla</h3>
+        <input name="name" placeholder="Ad soyad" required>
+        <input name="email" type="email" placeholder="E-posta">
+        <input name="phone" placeholder="Telefon">
+        <textarea name="address" placeholder="Teslimat adresi" rows="3" required></textarea>
+        <button type="submit">Sipariş oluştur</button>
+      </form>
+    </section>
+
+    <footer class="footer">
+      <div class="container newsletter">
+        <h2>Bültenimize abone olun</h2>
+        <form>
+          <input type="email" placeholder="E-posta adresiniz">
+          <button type="submit">Abone ol</button>
+        </form>
+      </div>
+      <div class="container footer__grid">
+        <div><h3>Kategoriler</h3><a href="#">Sticker</a><a href="#">Kartvizit</a><a href="#">Poster</a><a href="#">Etiket</a></div>
+        <div><h3>Ürünler</h3><a href="#">Ambalaj</a><a href="#">Promosyon</a><a href="#">Kurumsal baskı</a><a href="#">Özel tasarım</a></div>
+        <div><h3>Müşteri Desteği</h3><a href="#">Bize ulaşın</a><a href="#">İade</a><a href="#">Kargo</a><a href="#">SSS</a></div>
+        <div class="footer-logo printable-wordmark"><strong>Printable</strong><p>685 Market Street, San Francisco, CA</p><p>Telefon: +1 000 999 8989</p></div>
+      </div>
+    </footer>
+
+    <button class="chat" type="button">?</button>
+    <script src="script.js"></script>
+  </body>
+</html>

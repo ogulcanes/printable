@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>STL Teklif Al | Printable</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="site-header stl-page-header">
+      <div class="container header-main">
+        <a class="logo printable-logo" href="/" aria-label="Printable ana sayfa">
+          <span>Printable</span>
+        </a>
+        <nav class="main-links" aria-label="Ana menü">
+          <a href="/">Ana Sayfa</a>
+          <a class="active" href="/stl-teklif">3D Baskı</a>
+          <a href="/#store-products">Ürünler</a>
+          <a href="/#checkout-form">Teklif Al</a>
+        </nav>
+        <nav class="header-actions" aria-label="Mağaza işlemleri">
+          <a class="header-quote" href="/stl-teklif">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 7.2v9.6L12 21l7.5-4.2V7.2L12 3Z"/><path d="M12 12 4.8 7.4M12 12l7.2-4.6M12 12v8.5"/></svg>
+            <span>3D Baskı Teklifi</span>
+          </a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="stl-quote stl-quote--page" id="stl-quote">
+        <div class="container stl-quote__grid">
+          <div class="stl-quote__copy">
+            <p class="section-kicker">Gerçek STL yükleme</p>
+            <h1>STL dosyanızı yükleyin, modeli 3D görün.</h1>
+            <p>Dosyanızı seçin; model tarayıcıda açılır, ölçü ve hacim hesaplanır, yaklaşık fiyat anında gösterilir.</p>
+            <label class="stl-upload">
+              <input id="stl-file" type="file" accept=".stl,model/stl">
+              <span>STL dosyası seç</span>
+            </label>
+            <small>Dosya şu an sadece tarayıcıda önizlenir; sunucuya gönderilmez.</small>
+          </div>
+          <div class="stl-viewer-card">
+            <div id="stl-viewer" class="stl-viewer">
+              <div class="stl-empty">
+                <strong>Model önizleme</strong>
+                <span>.stl dosyası seçtiğinizde burada görünecek.</span>
+              </div>
+            </div>
+            <div class="stl-results">
+              <div><span>Ölçüler</span><strong id="stl-dimensions">-</strong></div>
+              <div><span>Hacim</span><strong id="stl-volume">-</strong></div>
+              <div><span>Tahmini fiyat</span><strong id="stl-price">-</strong></div>
+            </div>
+            <a class="stl-cta" href="mailto:info@printable.com">Teklif için iletişime geç</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="stl-viewer.js"></script>
+  </body>
+</html>

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Printable Admin Girişi</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="admin.css">
+  </head>
+  <body class="login-page">
+    <main class="login-shell">
+      <section class="login-brand">
+        <a class="brand" href="/">
+          <span class="brand-mark">P</span>
+          <strong>Printable</strong>
+        </a>
+        <h1>Ürünleri, müşterileri ve siparişleri tek yerden yönetin.</h1>
+        <p>Ürün fotoğrafları, fiyatlar, ölçüler, müşteri kayıtları ve sipariş takibi için giriş yapın.</p>
+      </section>
+
+      <form id="login-form" class="login-card">
+        <p class="eyebrow">Admin girişi</p>
+        <h2>Tekrar hoş geldiniz</h2>
+        <label>Kullanıcı adı<input name="username" autocomplete="username" required></label>
+        <label>Şifre<input name="password" type="password" autocomplete="current-password" required></label>
+        <button type="submit">Giriş yap</button>
+        <p id="login-error" class="form-error" role="alert"></p>
+        <p class="hint">Yerel varsayılan: admin / printable-admin. ADMIN_USER ve ADMIN_PASSWORD ile değiştirin.</p>
+      </form>
+    </main>
+    <script>
+      document.querySelector("#login-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const error = document.querySelector("#login-error");
+        error.textContent = "";
+        const payload = Object.fromEntries(new FormData(form).entries());
+        const response = await fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (response.ok) window.location.href = "/admin";
+        else error.textContent = "Kullanıcı adı veya şifre hatalı.";
+      });
+    </script>
+  </body>
+</html>
