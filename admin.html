@@ -19,10 +19,12 @@
         <button class="tab" data-tab="banner"><span>02</span>Banner</button>
         <button class="tab" data-tab="categories"><span>03</span>Kategoriler</button>
         <button class="tab" data-tab="colors"><span>04</span>Renkler</button>
-        <button class="tab" data-tab="seo"><span>05</span>SEO</button>
-        <button class="tab" data-tab="products"><span>06</span>Ürünler</button>
-        <button class="tab" data-tab="orders"><span>07</span>Siparişler</button>
-        <button class="tab" data-tab="customers"><span>08</span>Müşteriler</button>
+        <button class="tab" data-tab="materials"><span>05</span>Malzeme & Fiyat</button>
+        <button class="tab" data-tab="quotes"><span>06</span>3D Teklifler</button>
+        <button class="tab" data-tab="seo"><span>07</span>SEO</button>
+        <button class="tab" data-tab="products"><span>08</span>Ürünler</button>
+        <button class="tab" data-tab="orders"><span>09</span>Siparişler</button>
+        <button class="tab" data-tab="customers"><span>10</span>Müşteriler</button>
       </nav>
       <div class="sidebar-note">
         <strong>Vercel notu</strong>
@@ -49,6 +51,7 @@
           <article><span>Müşteriler</span><strong id="stat-customers">0</strong><small>Kayıtlı müşteri profilleri</small></article>
           <article><span>Siparişler</span><strong id="stat-orders">0</strong><small>Sistemde takip edilenler</small></article>
           <article><span>Ciro</span><strong id="stat-revenue">0.00 TL</strong><small>Toplam sipariş tutarı</small></article>
+          <article><span>Bekleyen teklif</span><strong id="stat-quotes">0</strong><small>Yanıtlanmamış 3D teklifleri</small></article>
         </div>
         <div class="dashboard-grid">
           <div class="admin-card">
@@ -163,6 +166,70 @@
             </div>
             <div id="color-list" class="list"></div>
           </div>
+        </div>
+      </section>
+
+      <section id="materials" class="panel">
+        <div class="grid-two">
+          <div>
+            <form id="material-form" class="admin-card form-card">
+              <input type="hidden" name="id">
+              <div class="card-title"><h2>Malzeme Ekle / Düzenle</h2></div>
+              <label>Malzeme adı<input name="name" required placeholder="PLA"></label>
+              <label>Açıklama<input name="description" placeholder="Standart, ekonomik"></label>
+              <div class="form-grid">
+                <label>Birim fiyat (TL/cm³)<input name="price_per_cm3" type="number" min="0" step="0.01" required></label>
+                <label>Sıra<input name="sort_order" type="number" min="0" value="0"></label>
+              </div>
+              <label class="check"><input name="is_active" type="checkbox" checked value="1"> Teklif formunda göster</label>
+              <div class="actions">
+                <button type="submit">Malzemeyi kaydet</button>
+                <button type="button" class="ghost" id="reset-material">Temizle</button>
+              </div>
+            </form>
+
+            <form id="pricing-form" class="admin-card form-card" style="margin-top:18px">
+              <div class="card-title"><h2>Fiyat Katsayıları</h2></div>
+              <div class="form-grid">
+                <label>Hazırlık ücreti (TL)<input name="setup_fee" type="number" min="0" step="0.01"></label>
+                <label>Boyut ücreti (TL/cm)<input name="size_fee_per_cm" type="number" min="0" step="0.01"></label>
+                <label>Minimum sipariş tutarı (TL)<input name="min_order_total" type="number" min="0" step="0.01"></label>
+                <label>Kabuk oranı (0-1)<input name="shell_share" type="number" min="0" max="1" step="0.01"></label>
+                <label>Renk değişim ücreti (TL)<input name="color_change_fee" type="number" min="0" step="0.01"></label>
+              </div>
+              <div class="actions">
+                <button type="submit">Katsayıları kaydet</button>
+              </div>
+              <p class="form-note">
+                Fiyat = <strong>hazırlık ücreti + adet × (malzeme ücreti + boyut ücreti) + renk değişim ücreti</strong>,
+                minimum sipariş tutarının altına düşmez.<br>
+                Malzeme ücreti, dolgu oranına göre gerçekten harcanan hacimden hesaplanır:
+                <em>kullanılan hacim = model hacmi × (kabuk oranı + (1 − kabuk oranı) × dolgu)</em>.
+                Kabuk oranı, dolgudan bağımsız olarak her zaman katı basılan dış duvarların payıdır.<br>
+                <strong>Renk değişim ücreti</strong> ilk rengin üzerindeki <em>her ek renk</em> için, <em>her adette</em> alınır —
+                filament değişiminde purge kulesi çöpe gider ve makine bekler. 3 renkli bir modelin 2 adedi:
+                2 ek renk × 2 adet × ücret.
+              </p>
+            </form>
+          </div>
+
+          <div class="admin-card">
+            <div class="card-title">
+              <h2>Malzemeler</h2>
+              <span id="material-count" class="count-pill">0 malzeme</span>
+            </div>
+            <div id="material-list" class="list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="quotes" class="panel">
+        <div class="admin-card">
+          <div class="card-title">
+            <h2>3D Baskı Teklifleri</h2>
+            <span id="quote-count" class="count-pill">0 teklif</span>
+          </div>
+          <div id="quote-list" class="list"></div>
         </div>
       </section>
 

@@ -302,6 +302,14 @@ textarea { resize: vertical; }
   border-radius: 50%;
 }
 
+.badge .color-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 3px;
+  vertical-align: -1px;
+}
+
 .color-picker-field {
   margin: 0;
   padding: 12px 14px;

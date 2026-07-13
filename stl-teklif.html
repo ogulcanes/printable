@@ -7,8 +7,18 @@
     <link rel="preload" href="/assets/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/assets/fonts/manrope-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="styles.css">
+    <!-- three's addon modules import the bare specifier "three"; without this map
+         the browser cannot resolve it and the STL viewer never loads. -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.167.1/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.167.1/examples/jsm/"
+        }
+      }
+    </script>
   </head>
-  <body>
+  <body class="stl-page">
     <header class="site-header stl-page-header">
       <div class="container header-main">
         <a class="logo printable-logo" href="/" aria-label="Printable ana sayfa">
@@ -32,16 +42,75 @@
     <main>
       <section class="stl-quote stl-quote--page" id="stl-quote">
         <div class="container stl-quote__grid">
-          <div class="stl-quote__copy">
-            <p class="section-kicker">Gerçek STL yükleme</p>
-            <h1>STL dosyanızı yükleyin, modeli 3D görün.</h1>
-            <p>Dosyanızı seçin; model tarayıcıda açılır, ölçü ve hacim hesaplanır, yaklaşık fiyat anında gösterilir.</p>
-            <label class="stl-upload">
-              <input id="stl-file" type="file" accept=".stl,model/stl">
-              <span>STL dosyası seç</span>
-            </label>
-            <small>Dosya şu an sadece tarayıcıda önizlenir; sunucuya gönderilmez.</small>
+          <div class="stl-quote__copy stl-wizard">
+            <ol class="stl-steps" id="stl-steps">
+              <li data-step="1"><span>1</span>Dosya</li>
+              <li data-step="2"><span>2</span>Malzeme</li>
+              <li data-step="3"><span>3</span>Renk</li>
+              <li data-step="4"><span>4</span>Dolgu</li>
+              <li data-step="5"><span>5</span>Teklif</li>
+            </ol>
+
+            <div class="stl-panel" data-step="1">
+              <h1>Modelinizi yükleyin</h1>
+              <p>STL veya 3MF yükleyin. 3MF dosyalarındaki ayrı nesneler ve renkleri otomatik okunur — MakerWorld'den indirdiğiniz dosyayı doğrudan yükleyebilirsiniz.</p>
+              <label class="stl-upload">
+                <input id="stl-file" type="file" accept=".stl,.3mf,model/stl">
+                <span>STL / 3MF dosyası seç</span>
+              </label>
+              <small id="stl-file-name">Henüz dosya seçilmedi.</small>
+            </div>
+
+            <div class="stl-panel" data-step="2">
+              <h1>Malzeme seçin</h1>
+              <p>Fiyatı en çok belirleyen adım budur.</p>
+              <div class="stl-options" id="stl-materials"></div>
+            </div>
+
+            <div class="stl-panel" data-step="3">
+              <h1>Parçaları renklendirin</h1>
+              <p>STL dosyaları renk taşımaz; rengi basılacak filament belirler. Dosyanızdaki her bağımsız parçayı ayrı renkte basabilirsiniz — parçayı listeden ya da doğrudan modelden seçin.</p>
+              <p class="stl-warning" id="stl-painted-warning" hidden>
+                Bu dosyada bazı renkler modelin <strong>yüzeyine boyanmış</strong> (Bambu Studio boyama verisi) — örneğin gözler
+                veya desenler. Bu boyalar parça değil, yüzey bilgisidir; burada gösteremiyoruz. <strong>Ancak kaybolmuyorlar:</strong>
+                orijinal dosyanız üretime olduğu gibi aktarılıyor ve boyalar korunuyor. Aşağıdan seçtiğiniz renkler,
+                her parçanın basılacağı <strong>ana filament rengidir</strong>.
+              </p>
+              <div class="stl-parts" id="stl-parts"></div>
+              <div class="stl-swatches" id="stl-colors"></div>
+              <button type="button" class="stl-apply-all" id="stl-apply-all">Seçili rengi tüm parçalara uygula</button>
+            </div>
+
+            <div class="stl-panel" data-step="4">
+              <h1>Dolgu ve adet</h1>
+              <p>Dolgu oranı düştükçe harcanan malzeme, dolayısıyla fiyat da düşer.</p>
+              <div class="stl-options stl-options--compact" id="stl-infill"></div>
+              <label class="stl-qty">Adet
+                <input id="stl-quantity" type="number" min="1" max="500" value="1">
+              </label>
+            </div>
+
+            <div class="stl-panel" data-step="5">
+              <h1>Teklifinizi gönderin</h1>
+              <p>Bilgilerinizi bırakın; dosyanız ve seçimlerinizle birlikte size dönelim.</p>
+              <form id="stl-quote-form" class="stl-form">
+                <label>Ad soyad<input name="customer_name" required></label>
+                <div class="stl-form__row">
+                  <label>E-posta<input name="email" type="email"></label>
+                  <label>Telefon<input name="phone"></label>
+                </div>
+                <label>Not<textarea name="note" rows="2"></textarea></label>
+                <button type="submit" id="stl-submit">Teklifi gönder</button>
+                <small id="stl-form-message" role="status"></small>
+              </form>
+            </div>
+
+            <div class="stl-nav">
+              <button type="button" id="stl-prev" class="ghost">Geri</button>
+              <button type="button" id="stl-next">Devam</button>
+            </div>
           </div>
+
           <div class="stl-viewer-card">
             <div id="stl-viewer" class="stl-viewer">
               <div class="stl-empty">
@@ -54,7 +123,7 @@
               <div><span>Hacim</span><strong id="stl-volume">-</strong></div>
               <div><span>Tahmini fiyat</span><strong id="stl-price">-</strong></div>
             </div>
-            <a class="stl-cta" href="mailto:info@printable.com">Teklif için iletişime geç</a>
+            <p class="stl-breakdown" id="stl-breakdown">Malzeme ve dolgu seçtiğinizde fiyat dökümü burada görünür.</p>
           </div>
         </div>
       </section>

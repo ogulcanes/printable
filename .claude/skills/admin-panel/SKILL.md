@@ -46,7 +46,9 @@ Because rows are re-created on every `refresh()`, a listener bound to a row is d
 
 ## Tabs and what they manage
 
-`dashboard`, `banner` (hero slides: image, per-slide copy, buttons, order, visibility), `categories` (the storefront category grid), `colors` (the palette), `seo` (per-page meta + site-wide JSON-LD settings — see the `seo` skill), `products`, `orders`, `customers`.
+`dashboard`, `banner` (hero slides: image, per-slide copy, buttons, order, visibility), `categories` (the storefront category grid), `colors` (the palette), `materials` (3D printing materials **and** the pricing coefficients), `quotes` (incoming 3D print quotes with the uploaded STL), `seo` (per-page meta + site-wide JSON-LD settings — see the `seo` skill), `products`, `orders`, `customers`.
+
+**Pricing lives on the server.** The STL wizard never computes a price: it POSTs the model's volume/size and the customer's choices to `/api/quote-price` and displays what comes back, and `POST /api/quotes` recomputes the price again from the same engine, ignoring whatever the browser posted. Do not "optimise" this by trusting a client-sent `total` — a forged-price test covers it.
 
 - The SEO and colour forms send **JSON**; banner, category and product forms send **`FormData`** (they carry a file upload).
 - `renderSeo()` has no list — it just refills the two forms from `state.seo`.

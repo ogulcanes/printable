@@ -71,6 +71,65 @@ db.exec(`
     FOREIGN KEY(customer_id) REFERENCES customers(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS materials (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    price_per_cm3 REAL NOT NULL DEFAULT 0,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS pricing_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    setup_fee REAL NOT NULL DEFAULT 120,
+    size_fee_per_cm REAL NOT NULL DEFAULT 2.5,
+    min_order_total REAL NOT NULL DEFAULT 150,
+    shell_share REAL NOT NULL DEFAULT 0.15,
+    color_change_fee REAL NOT NULL DEFAULT 35,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS quotes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    quote_number TEXT NOT NULL UNIQUE,
+    customer_name TEXT NOT NULL,
+    email TEXT,
+    phone TEXT,
+    note TEXT,
+    file_name TEXT,
+    file_path TEXT,
+    width REAL,
+    height REAL,
+    depth REAL,
+    volume_cm3 REAL NOT NULL DEFAULT 0,
+    material_id INTEGER,
+    material_name TEXT,
+    color_id INTEGER,
+    color_name TEXT,
+    infill INTEGER NOT NULL DEFAULT 15,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    unit_price REAL NOT NULL DEFAULT 0,
+    total REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'new',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(material_id) REFERENCES materials(id) ON DELETE SET NULL,
+    FOREIGN KEY(color_id) REFERENCES colors(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS quote_parts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    quote_id INTEGER NOT NULL,
+    part_index INTEGER NOT NULL,
+    volume_cm3 REAL NOT NULL DEFAULT 0,
+    color_id INTEGER,
+    color_name TEXT,
+    color_hex TEXT,
+    FOREIGN KEY(quote_id) REFERENCES quotes(id) ON DELETE CASCADE,
+    FOREIGN KEY(color_id) REFERENCES colors(id) ON DELETE SET NULL
+  );
+
   CREATE TABLE IF NOT EXISTS colors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -161,10 +220,41 @@ const hasColumn = (table, column) =>
   ["products", "meta_title", "TEXT"],
   ["products", "meta_description", "TEXT"],
   ["products", "image_alt", "TEXT"],
-  ["hero_slides", "image_alt", "TEXT"]
+  ["hero_slides", "image_alt", "TEXT"],
+  // Renamed: the floor applies to the order total, not to the unit price.
+  ["pricing_settings", "min_order_total", "REAL NOT NULL DEFAULT 150"],
+  // Each extra colour means a filament swap: purge waste plus machine time.
+  ["pricing_settings", "color_change_fee", "REAL NOT NULL DEFAULT 35"],
+  // Per-part STL the workshop can drop straight into a slicer.
+  ["quote_parts", "file_path", "TEXT"],
+  ["quote_parts", "name", "TEXT"],
+  // Surface-painted 3MF: the paint only survives in the original file.
+  ["quotes", "painted", "INTEGER NOT NULL DEFAULT 0"]
 ].forEach(([table, column, type]) => {
   if (!hasColumn(table, column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
 });
+
+const existingMaterials = db.prepare("SELECT COUNT(*) count FROM materials").get().count;
+if (!existingMaterials) {
+  const seedMaterial = db.prepare(`
+    INSERT INTO materials (name, description, price_per_cm3, sort_order)
+    VALUES (@name, @description, @price_per_cm3, @sort_order)
+  `);
+  // PLA keeps the 8.50 TL/cm3 rate the old hardcoded formula used, so prices do not move.
+  [
+    { name: "PLA", description: "Standart, ekonomik, iç mekan kullanımı", price_per_cm3: 8.5 },
+    { name: "PETG", description: "Dayanıklı, ısıya ve neme daha dirençli", price_per_cm3: 11 },
+    { name: "ABS", description: "Mekanik parçalar, yüksek sıcaklık dayanımı", price_per_cm3: 10 },
+    { name: "Reçine (SLA)", description: "Yüksek detay, pürüzsüz yüzey", price_per_cm3: 18 }
+  ].forEach((material, index) => seedMaterial.run({ ...material, sort_order: index + 1 }));
+}
+
+if (!db.prepare("SELECT COUNT(*) count FROM pricing_settings").get().count) {
+  db.prepare(`
+    INSERT INTO pricing_settings (id, setup_fee, size_fee_per_cm, min_order_total, shell_share)
+    VALUES (1, 120, 2.5, 150, 0.15)
+  `).run();
+}
 
 const existingColors = db.prepare("SELECT COUNT(*) count FROM colors").get().count;
 if (!existingColors) {
@@ -542,7 +632,8 @@ app.get("/api/stats", requireAdmin, (req, res) => {
     products: db.prepare("SELECT COUNT(*) count FROM products").get().count,
     customers: db.prepare("SELECT COUNT(*) count FROM customers").get().count,
     orders: db.prepare("SELECT COUNT(*) count FROM orders").get().count,
-    revenue: db.prepare("SELECT COALESCE(SUM(total), 0) total FROM orders").get().total
+    revenue: db.prepare("SELECT COALESCE(SUM(total), 0) total FROM orders").get().total,
+    quotes: db.prepare("SELECT COUNT(*) count FROM quotes WHERE status = 'new'").get().count
   };
   res.json(stats);
 });
@@ -671,6 +762,258 @@ app.put("/api/hero-slides/:id", requireAdmin, upload.single("image"), (req, res)
 
 app.delete("/api/hero-slides/:id", requireAdmin, (req, res) => {
   db.prepare("DELETE FROM hero_slides WHERE id = ?").run(req.params.id);
+  res.status(204).end();
+});
+
+// ---- 3D printing quote: one pricing engine, used by both the live preview and
+// the saved quote, so what the customer sees is what the server records.
+// "model" is what the customer uploaded (.stl or .3mf); "part_files" are the
+// per-part STLs the wizard generates, one per coloured piece, ready for a slicer.
+const uploadModel = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      const safe = path.basename(file.originalname, ext)
+        .replace(/[^a-z0-9]+/gi, "-").slice(0, 40);
+      cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${safe}${ext}`);
+    }
+  }),
+  fileFilter: (req, file, cb) => cb(null, /\.(stl|3mf)$/i.test(file.originalname)),
+  limits: { fileSize: 80 * 1024 * 1024, files: 65 }
+}).fields([
+  { name: "model", maxCount: 1 },
+  { name: "part_files", maxCount: 64 }
+]);
+
+const pricingSettings = () => db.prepare("SELECT * FROM pricing_settings WHERE id = 1").get();
+
+function priceQuote({ volume_cm3, max_dim_mm, material_id, infill, quantity, color_count }) {
+  const settings = pricingSettings();
+  const material = material_id
+    ? db.prepare("SELECT * FROM materials WHERE id = ? AND is_active = 1").get(material_id)
+    : null;
+  if (!material) return { error: "Malzeme seçilmedi." };
+
+  const volume = Math.max(0, Number(volume_cm3) || 0);
+  const maxDim = Math.max(0, Number(max_dim_mm) || 0);
+  const infillRatio = Math.min(100, Math.max(0, toInt(infill))) / 100;
+  const qty = Math.max(1, toInt(quantity) || 1);
+
+  // The shell is always printed solid, so only the interior scales with infill.
+  const usedVolume = volume * (settings.shell_share + (1 - settings.shell_share) * infillRatio);
+  const materialFee = usedVolume * material.price_per_cm3;
+  const sizeFee = (maxDim / 10) * settings.size_fee_per_cm;
+  // Per piece. Setup is charged once per order, and the floor applies to the
+  // order total — putting the floor on the unit price would swallow the whole
+  // material difference and make every material cost the same.
+  const unitPrice = materialFee + sizeFee;
+
+  // Every colour beyond the first means a filament swap on every copy: the purge
+  // tower is thrown away and the machine sits there doing it.
+  const colors = Math.max(1, toInt(color_count) || 1);
+  const colorFee = settings.color_change_fee * (colors - 1) * qty;
+
+  const total = Math.max(settings.min_order_total, settings.setup_fee + unitPrice * qty + colorFee);
+
+  return {
+    material: { id: material.id, name: material.name, price_per_cm3: material.price_per_cm3 },
+    volume_cm3: volume,
+    used_volume_cm3: usedVolume,
+    infill: Math.round(infillRatio * 100),
+    quantity: qty,
+    setup_fee: settings.setup_fee,
+    material_fee: materialFee,
+    size_fee: sizeFee,
+    unit_price: unitPrice,
+    color_count: colors,
+    color_change_fee: settings.color_change_fee,
+    color_fee: colorFee,
+    min_order_total: settings.min_order_total,
+    total
+  };
+}
+
+app.get("/api/materials", (req, res) => {
+  const all = req.query.all === "1" && isAuthed(req);
+  res.json(db.prepare(`
+    SELECT * FROM materials
+    ${all ? "" : "WHERE is_active = 1"}
+    ORDER BY sort_order ASC, id ASC
+  `).all());
+});
+
+function materialPayload(body) {
+  return {
+    name: body.name?.trim(),
+    description: body.description?.trim() || null,
+    price_per_cm3: Math.max(0, Number(body.price_per_cm3) || 0),
+    sort_order: toInt(body.sort_order),
+    is_active: body.is_active === "0" ? 0 : 1
+  };
+}
+
+app.post("/api/materials", requireAdmin, (req, res) => {
+  const material = materialPayload(req.body);
+  if (!material.name) return res.status(400).json({ error: "Malzeme adı zorunludur." });
+  const result = db.prepare(`
+    INSERT INTO materials (name, description, price_per_cm3, sort_order, is_active)
+    VALUES (@name, @description, @price_per_cm3, @sort_order, @is_active)
+  `).run(material);
+  res.status(201).json(db.prepare("SELECT * FROM materials WHERE id = ?").get(result.lastInsertRowid));
+});
+
+app.put("/api/materials/:id", requireAdmin, (req, res) => {
+  const current = db.prepare("SELECT * FROM materials WHERE id = ?").get(req.params.id);
+  if (!current) return res.status(404).json({ error: "Malzeme bulunamadı." });
+  const material = materialPayload(req.body);
+  if (!material.name) return res.status(400).json({ error: "Malzeme adı zorunludur." });
+  material.id = current.id;
+  db.prepare(`
+    UPDATE materials SET name=@name, description=@description, price_per_cm3=@price_per_cm3,
+      sort_order=@sort_order, is_active=@is_active WHERE id=@id
+  `).run(material);
+  res.json(db.prepare("SELECT * FROM materials WHERE id = ?").get(current.id));
+});
+
+app.delete("/api/materials/:id", requireAdmin, (req, res) => {
+  db.prepare("DELETE FROM materials WHERE id = ?").run(req.params.id);
+  res.status(204).end();
+});
+
+app.get("/api/pricing", requireAdmin, (req, res) => res.json(pricingSettings()));
+
+app.put("/api/pricing", requireAdmin, (req, res) => {
+  const shell = Number(req.body.shell_share);
+  db.prepare(`
+    UPDATE pricing_settings SET
+      setup_fee=@setup_fee, size_fee_per_cm=@size_fee_per_cm,
+      min_order_total=@min_order_total, shell_share=@shell_share,
+      color_change_fee=@color_change_fee, updated_at=CURRENT_TIMESTAMP
+    WHERE id=1
+  `).run({
+    setup_fee: Math.max(0, Number(req.body.setup_fee) || 0),
+    size_fee_per_cm: Math.max(0, Number(req.body.size_fee_per_cm) || 0),
+    min_order_total: Math.max(0, Number(req.body.min_order_total) || 0),
+    shell_share: Math.min(1, Math.max(0, Number.isFinite(shell) ? shell : 0.15)),
+    color_change_fee: Math.max(0, Number(req.body.color_change_fee) || 0)
+  });
+  res.json(pricingSettings());
+});
+
+// Live price for the wizard. The browser never computes the price itself.
+app.post("/api/quote-price", (req, res) => {
+  const price = priceQuote(req.body);
+  if (price.error) return res.status(400).json({ error: price.error });
+  res.json(price);
+});
+
+app.post("/api/quotes", uploadModel, (req, res) => {
+  const body = req.body;
+  const modelFile = req.files?.model?.[0] || null;
+  const partFiles = req.files?.part_files || [];
+  if (!body.customer_name?.trim()) return res.status(400).json({ error: "Ad soyad zorunludur." });
+  if (!body.email?.trim() && !body.phone?.trim()) {
+    return res.status(400).json({ error: "E-posta veya telefon bilgisi gereklidir." });
+  }
+
+  // The wizard posts one entry per disconnected part of the STL, each with its
+  // own colour. A single-part model simply yields one entry.
+  let parts = [];
+  try {
+    parts = JSON.parse(body.parts || "[]");
+  } catch {
+    parts = [];
+  }
+  if (!Array.isArray(parts)) parts = [];
+
+  // Colour count is derived from the parts, never taken from the browser.
+  const distinctColors = new Set(parts.map((part) => part.color_id).filter(Boolean));
+
+  // Recomputed here on purpose: a price posted by the browser is never trusted.
+  const price = priceQuote({ ...body, color_count: Math.max(1, distinctColors.size) });
+  if (price.error) return res.status(400).json({ error: price.error });
+
+  const primaryColorId = parts[0]?.color_id || body.color_id || null;
+  const color = primaryColorId ? db.prepare("SELECT * FROM colors WHERE id = ?").get(primaryColorId) : null;
+  const quoteNumber = `TKF-${Date.now().toString().slice(-8)}`;
+
+  const result = db.prepare(`
+    INSERT INTO quotes (quote_number, customer_name, email, phone, note, file_name, file_path,
+      width, height, depth, volume_cm3, material_id, material_name, color_id, color_name,
+      infill, quantity, unit_price, total, painted)
+    VALUES (@quote_number, @customer_name, @email, @phone, @note, @file_name, @file_path,
+      @width, @height, @depth, @volume_cm3, @material_id, @material_name, @color_id, @color_name,
+      @infill, @quantity, @unit_price, @total, @painted)
+  `).run({
+    quote_number: quoteNumber,
+    customer_name: body.customer_name.trim(),
+    email: body.email?.trim() || null,
+    phone: body.phone?.trim() || null,
+    note: body.note?.trim() || null,
+    file_name: modelFile?.originalname || null,
+    file_path: modelFile ? `/uploads/${modelFile.filename}` : null,
+    width: nullableMoney(body.width),
+    height: nullableMoney(body.height),
+    depth: nullableMoney(body.depth),
+    volume_cm3: price.volume_cm3,
+    material_id: price.material.id,
+    material_name: price.material.name,
+    color_id: color?.id || null,
+    color_name: color?.name || null,
+    infill: price.infill,
+    quantity: price.quantity,
+    unit_price: price.unit_price,
+    total: price.total,
+    painted: body.painted === "1" ? 1 : 0
+  });
+
+  const insertPart = db.prepare(`
+    INSERT INTO quote_parts (quote_id, part_index, name, volume_cm3, color_id, color_name, color_hex, file_path)
+    VALUES (@quote_id, @part_index, @name, @volume_cm3, @color_id, @color_name, @color_hex, @file_path)
+  `);
+  db.transaction(() => {
+    parts.forEach((part, index) => {
+      const partColor = part.color_id
+        ? db.prepare("SELECT * FROM colors WHERE id = ?").get(part.color_id)
+        : null;
+      // part_files arrive in the same order as parts.
+      const file = partFiles[index];
+      insertPart.run({
+        quote_id: result.lastInsertRowid,
+        part_index: index + 1,
+        name: part.name?.trim() || null,
+        volume_cm3: Math.max(0, Number(part.volume_cm3) || 0),
+        color_id: partColor?.id || null,
+        color_name: partColor?.name || null,
+        color_hex: partColor?.hex || null,
+        file_path: file ? `/uploads/${file.filename}` : null
+      });
+    });
+  })();
+
+  res.status(201).json(withParts(db.prepare("SELECT * FROM quotes WHERE id = ?").get(result.lastInsertRowid)));
+});
+
+const partsOfQuote = db.prepare("SELECT * FROM quote_parts WHERE quote_id = ? ORDER BY part_index");
+const withParts = (quote) => ({ ...quote, parts: partsOfQuote.all(quote.id) });
+
+app.get("/api/quotes", requireAdmin, (req, res) => {
+  res.json(db.prepare("SELECT * FROM quotes ORDER BY created_at DESC").all().map(withParts));
+});
+
+app.patch("/api/quotes/:id", requireAdmin, (req, res) => {
+  const current = db.prepare("SELECT * FROM quotes WHERE id = ?").get(req.params.id);
+  if (!current) return res.status(404).json({ error: "Teklif bulunamadı." });
+  db.prepare("UPDATE quotes SET status=@status WHERE id=@id").run({
+    id: current.id,
+    status: req.body.status || current.status
+  });
+  res.json(db.prepare("SELECT * FROM quotes WHERE id = ?").get(current.id));
+});
+
+app.delete("/api/quotes/:id", requireAdmin, (req, res) => {
+  db.prepare("DELETE FROM quotes WHERE id = ?").run(req.params.id);
   res.status(204).end();
 });
 

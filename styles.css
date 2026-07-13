@@ -2244,3 +2244,369 @@ body {
   .hero__slide { transition: none; }
   .hero__slider { animation: none; }
 }
+
+/* ---- STL quote wizard ---- */
+.stl-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0 0 18px;
+  padding: 0;
+  list-style: none;
+}
+
+.stl-steps li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #9b968f;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.stl-steps li span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid #e6d8cc;
+  border-radius: 50%;
+  background: #fff;
+  font-size: 12px;
+}
+
+.stl-steps li.is-active { color: #1f2128; }
+
+.stl-steps li.is-active span {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.stl-steps li.is-done { color: #1f2128; }
+
+.stl-steps li.is-done span {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.stl-panel { display: none; }
+.stl-panel.is-active { display: block; }
+
+.stl-panel h1 {
+  margin: 0 0 8px;
+  font-size: clamp(24px, 2.4vw, 36px);
+  line-height: 1.1;
+}
+
+.stl-panel > p {
+  margin: 0 0 16px;
+  max-width: 460px;
+  color: #6b6660;
+}
+
+.stl-options {
+  display: grid;
+  gap: 8px;
+  max-width: 460px;
+}
+
+.stl-options--compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.stl-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #eadfd4;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.stl-option:has(input:checked) {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255,101,66,.14);
+}
+
+.stl-option__body {
+  display: grid;
+  flex: 1;
+}
+
+.stl-option__body strong { font-size: 14px; }
+.stl-option__body small { color: #8b837b; }
+.stl-option__price { color: var(--accent); font-weight: 800; font-size: 13px; }
+
+.stl-warning {
+  max-width: 460px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #ffd9c9;
+  border-radius: 10px;
+  background: #fff4ee;
+  color: #8a4a32;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.stl-parts {
+  display: grid;
+  gap: 6px;
+  max-width: 460px;
+  max-height: min(26vh, 220px);
+  margin-bottom: 12px;
+  padding-right: 4px;
+  overflow-y: auto;
+}
+
+.stl-part {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid #eadfd4;
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.stl-part.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255,101,66,.14);
+}
+
+.stl-part__dot {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  border: 1px solid #e0d5c9;
+  border-radius: 50%;
+}
+
+.stl-part__body { display: grid; }
+.stl-part__body strong { font-size: 13px; }
+.stl-part__body small { color: #8b837b; font-size: 12px; }
+
+.stl-apply-all {
+  margin-top: 10px;
+  padding: 7px 14px;
+  border: 1px solid #e6d8cc;
+  border-radius: 999px;
+  background: #fff;
+  color: #1f2128;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.stl-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  max-width: 460px;
+}
+
+.stl-swatch {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px 6px 6px;
+  border: 1px solid #eadfd4;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.stl-swatch span {
+  width: 20px;
+  height: 20px;
+  border: 1px solid #e0d5c9;
+  border-radius: 50%;
+}
+
+.stl-swatch:has(input:checked) {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255,101,66,.14);
+}
+
+/* Hidden but still focusable — the label carries the visible focus ring. */
+.stl-swatch input,
+.stl-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.stl-option:has(input:focus-visible),
+.stl-swatch:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.stl-qty {
+  display: grid;
+  gap: 5px;
+  width: 120px;
+  margin-top: 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.stl-form { display: grid; gap: 10px; max-width: 460px; }
+.stl-form label { display: grid; gap: 5px; font-size: 13px; font-weight: 700; }
+.stl-form__row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.stl-qty input,
+.stl-form input,
+.stl-form textarea {
+  padding: 9px 11px;
+  border: 1px solid #e6d8cc;
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  font-weight: 500;
+}
+
+.stl-form button {
+  justify-self: start;
+  min-height: 42px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.stl-form button:disabled { opacity: .6; cursor: not-allowed; }
+#stl-form-message { color: #6b6660; }
+
+.stl-nav {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.stl-nav button {
+  min-height: 40px;
+  padding: 0 22px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.stl-nav button.ghost {
+  background: #fff;
+  color: #1f2128;
+  border-color: #e6d8cc;
+}
+
+.stl-nav button:disabled { opacity: .45; cursor: not-allowed; }
+
+.stl-breakdown {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff8f3;
+  color: #6b6660;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* STL quote page: fit the whole thing in one viewport, no page scroll.
+   The header height is never hardcoded — the body is a flex column and the
+   section simply takes whatever is left, so a taller header cannot break it. */
+.stl-page {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.stl-page main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.stl-page .stl-quote--page {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  padding: clamp(10px, 2vh, 26px) 0;
+  /* stretch, not center: the card needs a definite height to shrink against. */
+  align-items: stretch;
+  border-bottom: 0;
+}
+
+/* The card must stretch to the full row height, otherwise it stays content-sized
+   and the viewer's flex:1 has no slack to absorb — it collapses to its min. */
+.stl-page .stl-quote__grid {
+  min-height: 0;
+  align-items: stretch;
+}
+
+.stl-page .stl-quote__copy {
+  align-self: center;
+}
+
+/* The card is the thing that must shrink: the viewer absorbs the slack, the
+   results row and CTA keep their natural height. */
+.stl-page .stl-viewer-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 100%;
+}
+
+.stl-page .stl-quote--page .stl-viewer {
+  flex: 1;
+  height: auto;
+  min-height: 180px;
+}
+
+.stl-page .stl-results {
+  margin: 10px 0;
+}
+
+.stl-page .stl-results div {
+  min-height: 0;
+  padding: 10px 12px;
+}
+
+.stl-page .stl-quote__copy h1 {
+  margin: 0 0 12px;
+  font-size: clamp(26px, 2.6vw, 40px);
+  line-height: 1.08;
+}
+
+/* Short or narrow screens: stop forcing one viewport and let the page scroll,
+   otherwise the viewer gets crushed to nothing. */
+@media (max-width: 900px), (max-height: 620px) {
+  .stl-page {
+    height: auto;
+    overflow: visible;
+  }
+
+  .stl-page main { display: block; }
+
+  .stl-page .stl-quote--page {
+    padding: 34px 0;
+  }
+
+  .stl-page .stl-quote--page .stl-viewer {
+    height: clamp(300px, 46vh, 440px);
+    flex: none;
+  }
+}

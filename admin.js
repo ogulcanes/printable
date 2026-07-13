@@ -5,6 +5,9 @@ const state = {
   slides: [],
   categories: [],
   colors: [],
+  materials: [],
+  quotes: [],
+  pricing: {},
   seo: { pages: [], site: {} }
 };
 
@@ -102,6 +105,86 @@ function renderSlides() {
       </div>
     </article>
   `).join("") || "<p>Henüz banner görseli yok.</p>";
+}
+
+const quoteStatusLabels = {
+  new: "Yeni",
+  contacted: "İletişime geçildi",
+  quoted: "Fiyat verildi",
+  won: "Kazanıldı",
+  lost: "Kaybedildi"
+};
+
+function renderMaterials() {
+  qs("#material-count").textContent = `${state.materials.length} malzeme`;
+  qs("#material-list").innerHTML = state.materials.map((material) => `
+    <article class="row">
+      <span class="brand-mark">${material.name.slice(0, 1).toUpperCase()}</span>
+      <div>
+        <h3>${material.name}</h3>
+        <p>${material.description || "Açıklama yok."}</p>
+        <div class="meta-line">
+          <span class="badge blue">${money(material.price_per_cm3)} / cm³</span>
+          <span class="badge ${material.is_active ? "green" : "orange"}">${material.is_active ? "Kullanımda" : "Pasif"}</span>
+          <span class="badge">Sıra ${material.sort_order}</span>
+        </div>
+      </div>
+      <div class="row-actions">
+        <button data-edit-material="${material.id}">Düzenle</button>
+        <button class="danger" data-delete-material="${material.id}">Sil</button>
+      </div>
+    </article>
+  `).join("") || "<p>Henüz malzeme yok.</p>";
+
+  const form = qs("#pricing-form");
+  ["setup_fee", "size_fee_per_cm", "min_order_total", "shell_share", "color_change_fee"].forEach((key) => {
+    form.elements[key].value = state.pricing[key] ?? "";
+  });
+}
+
+function renderQuotes() {
+  qs("#quote-count").textContent = `${state.quotes.length} teklif`;
+  qs("#quote-list").innerHTML = state.quotes.map((quote) => `
+    <article class="row">
+      <span class="brand-mark">3D</span>
+      <div>
+        <h3>${quote.quote_number} - ${quote.customer_name}</h3>
+        <p>${quote.file_name || "Dosya yok"} | ${quote.width ?? "?"} x ${quote.height ?? "?"} x ${quote.depth ?? "?"} mm | ${Number(quote.volume_cm3).toFixed(2)} cm³</p>
+        <div class="meta-line">
+          <span class="badge ${quote.status === "new" ? "orange" : "green"}">${quoteStatusLabels[quote.status] || quote.status}</span>
+          <span class="badge blue">${money(quote.total)}</span>
+          ${quote.painted ? '<span class="badge orange">Boyalı 3MF - orijinal dosyayla basın</span>' : ""}
+          ${(() => {
+            const colors = new Set((quote.parts || []).map((p) => p.color_name).filter(Boolean)).size;
+            return colors > 1 ? `<span class="badge orange">${colors} renk - filament değişimi</span>` : "";
+          })()}
+          <span class="badge">${quote.material_name || "-"}</span>
+          <span class="badge">%${quote.infill} dolgu</span>
+          <span class="badge">${quote.quantity} adet</span>
+          <span class="badge">${quote.email || quote.phone || "-"}</span>
+        </div>
+        <div class="meta-line">
+          ${(quote.parts || []).length
+            ? quote.parts.map((part) => `
+                <span class="badge">
+                  <span class="color-dot" style="background:${part.color_hex || "#ddd"}"></span>
+                  ${part.name || `Parça ${part.part_index}`}: ${part.color_name || "renk yok"} (${Number(part.volume_cm3).toFixed(2)} cm³)
+                  ${part.file_path ? `<a href="${part.file_path}" download>STL</a>` : ""}
+                </span>
+              `).join("")
+            : `<span class="badge">${quote.color_name || "Renk yok"}</span>`}
+        </div>
+        ${quote.note ? `<p>Not: ${quote.note}</p>` : ""}
+      </div>
+      <div class="row-actions">
+        ${quote.file_path ? `<a class="small-button" href="${quote.file_path}" download>STL indir</a>` : ""}
+        <select data-quote-status="${quote.id}">
+          ${Object.entries(quoteStatusLabels).map(([value, label]) => `<option value="${value}" ${value === quote.status ? "selected" : ""}>${label}</option>`).join("")}
+        </select>
+        <button class="danger" data-delete-quote="${quote.id}">Sil</button>
+      </div>
+    </article>
+  `).join("") || "<p>Henüz teklif yok.</p>";
 }
 
 function renderColors() {
@@ -240,7 +323,7 @@ function renderOrders() {
 }
 
 async function refresh() {
-  const [stats, products, customers, orders, slides, categories, colors, seo] = await Promise.all([
+  const [stats, products, customers, orders, slides, categories, colors, materials, quotes, pricing, seo] = await Promise.all([
     api("/api/stats"),
     api("/api/products"),
     api("/api/customers"),
@@ -248,6 +331,9 @@ async function refresh() {
     api("/api/hero-slides?all=1"),
     api("/api/categories?all=1"),
     api("/api/colors?all=1"),
+    api("/api/materials?all=1"),
+    api("/api/quotes"),
+    api("/api/pricing"),
     api("/api/seo")
   ]);
   state.products = products;
@@ -256,17 +342,23 @@ async function refresh() {
   state.slides = slides;
   state.categories = categories;
   state.colors = colors;
+  state.materials = materials;
+  state.quotes = quotes;
+  state.pricing = pricing;
   state.seo = seo;
   qs("#stat-products").textContent = stats.products;
   qs("#stat-customers").textContent = stats.customers;
   qs("#stat-orders").textContent = stats.orders;
   qs("#stat-revenue").textContent = money(stats.revenue);
+  qs("#stat-quotes").textContent = stats.quotes;
   renderProducts();
   renderCustomers();
   renderOrders();
   renderSlides();
   renderCategories();
   renderColors();
+  renderMaterials();
+  renderQuotes();
   renderProductColorOptions(currentProductColorIds());
   renderSeo();
 }
@@ -333,6 +425,77 @@ qs("#product-list").addEventListener("click", async (event) => {
     await api(`/api/products/${deleteId}`, { method: "DELETE" });
     await refresh();
   }
+});
+
+function resetMaterialForm() {
+  const form = qs("#material-form");
+  form.reset();
+  form.elements.id.value = "";
+  form.is_active.checked = true;
+}
+
+qs("#material-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const data = Object.fromEntries(new FormData(form).entries());
+  data.is_active = form.is_active.checked ? "1" : "0";
+  await api(data.id ? `/api/materials/${data.id}` : "/api/materials", {
+    method: data.id ? "PUT" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data)
+  });
+  resetMaterialForm();
+  await refresh();
+});
+
+qs("#reset-material").addEventListener("click", resetMaterialForm);
+
+qs("#material-list").addEventListener("click", async (event) => {
+  const editId = event.target.dataset.editMaterial;
+  const deleteId = event.target.dataset.deleteMaterial;
+  if (editId) {
+    const material = state.materials.find((item) => item.id === Number(editId));
+    const form = qs("#material-form");
+    ["id", "name", "description", "price_per_cm3", "sort_order"].forEach((key) => {
+      form.elements[key].value = material[key] ?? "";
+    });
+    form.is_active.checked = Boolean(material.is_active);
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  if (deleteId && confirm("Bu malzeme silinsin mi?")) {
+    await api(`/api/materials/${deleteId}`, { method: "DELETE" });
+    await refresh();
+  }
+});
+
+qs("#pricing-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const data = Object.fromEntries(new FormData(event.currentTarget).entries());
+  await api("/api/pricing", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data)
+  });
+  await refresh();
+  alert("Fiyat katsayıları kaydedildi.");
+});
+
+qs("#quote-list").addEventListener("change", async (event) => {
+  const id = event.target.dataset.quoteStatus;
+  if (!id) return;
+  await api(`/api/quotes/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: event.target.value })
+  });
+  await refresh();
+});
+
+qs("#quote-list").addEventListener("click", async (event) => {
+  const id = event.target.dataset.deleteQuote;
+  if (!id || !confirm("Bu teklif silinsin mi?")) return;
+  await api(`/api/quotes/${id}`, { method: "DELETE" });
+  await refresh();
 });
 
 // The <input type="color"> and the hex text box are two views of one value.
