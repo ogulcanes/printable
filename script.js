@@ -7,18 +7,33 @@ const cartItems = document.querySelector("#cart-items");
 const searchToggle = document.querySelector(".search-toggle");
 const searchPopover = document.querySelector(".search-popover");
 
-function renderProducts(products) {
-  if (!storeProducts || !products.length) return;
-  storeProducts.innerHTML = products.filter((product) => product.is_active).map((product) => `
+// Shared card markup — reused by every product row on the homepage and by /urunler.
+const discountPercent = (product) =>
+  product.sale_price && product.price > product.sale_price
+    ? Math.round((1 - product.sale_price / product.price) * 100)
+    : 0;
+
+function productCardHTML(product) {
+  const off = discountPercent(product);
+  return `
     <article class="product-card">
-      <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}">
-      <h3>${product.name}</h3>
+      ${off ? `<span class="discount-badge">-%${off}</span>` : ""}
+      <a class="product-card__link" href="/urun/${product.id}">
+        <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" loading="lazy">
+        <h3>${product.name}</h3>
+      </a>
       <p>${money(product.sale_price || product.price)}${product.sale_price ? ` <s>${money(product.price)}</s>` : ""}</p>
       <div class="swatches">${(product.colors || []).map((color) => `<span style="background:${color.hex}" title="${color.name}"></span>`).join("")}</div>
       <button data-add-product="${product.id}">Sepete ekle</button>
     </article>
-  `).join("");
-  observeCards();
+  `;
+}
+
+function fillProductGrid(target, products) {
+  const grid = typeof target === "string" ? document.querySelector(target) : target;
+  if (!grid) return;
+  const active = products.filter((product) => product.is_active);
+  grid.innerHTML = active.map(productCardHTML).join("") || `<p class="products-empty">Ürün bulunamadı.</p>`;
 }
 
 function renderCart() {
@@ -36,14 +51,15 @@ function renderCart() {
 
 const categoryGrid = document.querySelector("#category-grid");
 
-// Admin-managed. The markup already in index.html is the fallback if this fails.
+// Admin-managed. Tiles link to the filterable catalogue page, pre-filtered by category.
 async function loadCategories() {
   if (!categoryGrid) return;
   try {
     const categories = await fetch("/api/categories").then((response) => response.json());
     if (!Array.isArray(categories) || !categories.length) return;
+    window.printableCategories = categories;
     categoryGrid.innerHTML = categories.map((category) => `
-      <a href="${category.href || "#store-products"}">
+      <a href="/urunler?kategori=${category.id}">
         <img src="${category.image_path || "/assets/printable-logo.svg"}" alt="${category.image_alt || ""}">${category.name}
       </a>
     `).join("");
@@ -52,11 +68,29 @@ async function loadCategories() {
   }
 }
 
+// The homepage rows are curated slices of the same catalogue; /urunler owns real filtering.
 async function loadProducts() {
   try {
     const products = await fetch("/api/products").then((response) => response.json());
     window.printableProducts = products;
-    renderProducts(products);
+    const active = products.filter((product) => product.is_active);
+    fillProductGrid(storeProducts, active);
+    fillProductGrid(".js-featured", [...active].sort((a, b) => (b.sale_price || b.price) - (a.sale_price || a.price)).slice(0, 5));
+    fillProductGrid(".js-popular", active.slice(0, 5));
+    fillProductGrid(".js-recommended", [...active].reverse().slice(0, 5));
+
+    // Discounted products get their own section — hidden entirely when nothing is on sale.
+    const onSale = active.filter((product) => product.sale_price && product.price > product.sale_price);
+    const saleSection = document.querySelector("#sale-section");
+    if (saleSection) {
+      if (onSale.length) {
+        fillProductGrid(".js-sale", onSale.slice(0, 5));
+        saleSection.hidden = false;
+      } else {
+        saleSection.hidden = true;
+      }
+    }
+    observeCards();
   } catch {
     window.printableProducts = [];
   }

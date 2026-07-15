@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!--seo-->
+    <link rel="preload" href="/assets/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/assets/fonts/manrope-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preconnect" href="https://makerworld.bblmw.com">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <!--header-->
+
+    <main>
+      <section class="container catalog-head">
+        <p class="section-kicker">Tüm ürünler</p>
+        <h1>3D Baskı Ürünleri</h1>
+        <p class="catalog-head__lead">Figür, anahtarlık, fidget, düdük ve daha fazlası. Kategori, renk ve fiyata göre filtreleyin.</p>
+      </section>
+
+      <section class="container catalog">
+        <button class="catalog__filter-toggle" type="button" id="filter-toggle" aria-expanded="false">Filtreler</button>
+        <aside class="catalog__filters" id="catalog-filters" aria-label="Ürün filtreleri">
+          <div class="filter-head">
+            <h2>Filtreler</h2>
+            <button type="button" id="clear-filters" class="filter-clear">Temizle</button>
+          </div>
+          <form id="filter-form">
+            <fieldset class="filter-group">
+              <legend>Kategori</legend>
+              <div id="filter-categories" class="filter-options"></div>
+            </fieldset>
+            <fieldset class="filter-group">
+              <legend>Renk</legend>
+              <div id="filter-colors" class="filter-options filter-options--colors"></div>
+            </fieldset>
+            <fieldset class="filter-group">
+              <legend>Fiyat (TL)</legend>
+              <div class="filter-price">
+                <input type="number" id="price-min" min="0" step="1" placeholder="En az" aria-label="En az fiyat">
+                <span aria-hidden="true">–</span>
+                <input type="number" id="price-max" min="0" step="1" placeholder="En çok" aria-label="En çok fiyat">
+              </div>
+            </fieldset>
+            <fieldset class="filter-group">
+              <legend>Durum</legend>
+              <label class="filter-check"><input type="checkbox" id="in-stock"> Sadece stokta olanlar</label>
+              <label class="filter-check"><input type="checkbox" id="on-sale"> Sadece indirimli ürünler</label>
+            </fieldset>
+          </form>
+        </aside>
+
+        <div class="catalog__main">
+          <div class="catalog__bar">
+            <span id="catalog-count" class="catalog-count">Yükleniyor…</span>
+            <label class="catalog-sort">Sırala
+              <select id="sort-select">
+                <option value="new">Yeniden eskiye</option>
+                <option value="price-asc">Fiyat: artan</option>
+                <option value="price-desc">Fiyat: azalan</option>
+                <option value="name">İsim (A-Z)</option>
+              </select>
+            </label>
+          </div>
+          <div id="active-filters" class="active-filters" hidden></div>
+          <div class="products products--grid" id="catalog-grid"></div>
+        </div>
+      </section>
+    </main>
+
+    <!--cart-->
+
+    <footer class="footer">
+      <div class="container footer__grid">
+        <div><h3>Kategoriler</h3><a href="/urunler">Figürler</a><a href="/urunler">Anahtarlıklar</a><a href="/urunler">Fidget & Stres</a><a href="/urunler">Düdükler</a></div>
+        <div><h3>Hizmetler</h3><a href="/urunler">Tüm ürünler</a><a href="/stl-teklif">STL yükle, fiyat al</a><a href="/stl-teklif">Özel 3D baskı</a></div>
+        <div><h3>Müşteri Desteği</h3><a href="#">Bize ulaşın</a><a href="#">İade</a><a href="#">Kargo</a><a href="#">SSS</a></div>
+        <div class="footer-logo printable-wordmark"><strong>Printable</strong><p>Özel 3D baskı ürünleri ve STL baskı hizmeti.</p><p>Türkiye</p></div>
+      </div>
+    </footer>
+
+    <button class="chat" type="button">?</button>
+    <script src="script.js"></script>
+    <script src="urunler.js"></script>
+  </body>
+</html>

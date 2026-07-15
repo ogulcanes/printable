@@ -38,6 +38,7 @@ db.exec(`
     weight REAL,
     stock INTEGER NOT NULL DEFAULT 0,
     image_path TEXT,
+    meta_keywords TEXT,
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -147,6 +148,23 @@ db.exec(`
     FOREIGN KEY(color_id) REFERENCES colors(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS product_categories (
+    product_id INTEGER NOT NULL,
+    category_id INTEGER NOT NULL,
+    PRIMARY KEY (product_id, category_id),
+    FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE,
+    FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS price_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id INTEGER NOT NULL,
+    price REAL NOT NULL,
+    sale_price REAL,
+    changed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -180,6 +198,7 @@ db.exec(`
     description TEXT,
     logo_path TEXT,
     social_links TEXT,
+    default_og_image TEXT,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -219,8 +238,10 @@ const hasColumn = (table, column) =>
 [
   ["products", "meta_title", "TEXT"],
   ["products", "meta_description", "TEXT"],
+  ["products", "meta_keywords", "TEXT"],
   ["products", "image_alt", "TEXT"],
   ["hero_slides", "image_alt", "TEXT"],
+  ["site_settings", "default_og_image", "TEXT"],
   // Renamed: the floor applies to the order total, not to the unit price.
   ["pricing_settings", "min_order_total", "REAL NOT NULL DEFAULT 150"],
   // Each extra colour means a filament swap: purge waste plus machine time.
@@ -277,17 +298,15 @@ if (!existingCategories) {
     INSERT INTO categories (name, image_path, image_alt, href, sort_order)
     VALUES (@name, @image_path, @image_alt, @href, @sort_order)
   `);
-  // Placeholder artwork inherited from the demo theme — replace these from the admin panel.
-  const demoImage = (n) => `https://new-ella-demo-07.myshopify.com/cdn/shop/files/super_market_1_${n}.png?v=1754039110&width=300`;
-  ["Sticker", "Kartvizit", "Poster", "Etiket", "Ambalaj", "Promosyon"].forEach((name, index) => {
-    seedCategory.run({
-      name,
-      image_path: demoImage(index + 1),
-      image_alt: `${name} baskı kategorisi`,
-      href: "#store-products",
-      sort_order: index + 1
-    });
-  });
+  // 3D baskı alt kategorileri — kapak görselleri temsili MakerWorld ürünlerinden,
+  // admin panelinden değiştirilebilir. Bir ürün birden fazla kategoride olabilir.
+  [
+    { name: "Figürler", image_path: "https://makerworld.bblmw.com/makerworld/model/USf3226a122488f2/design/613a3d21dba2bbba.jpg?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "3D baskı figür kategorisi" },
+    { name: "Anahtarlıklar", image_path: "https://makerworld.bblmw.com/makerworld/model/USe2e8a5bf3ddaed/design/34e00292d363c821.png?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "3D baskı anahtarlık kategorisi" },
+    { name: "Fidget & Stres", image_path: "https://makerworld.bblmw.com/makerworld/model/US9a6f7ab9cda059/design/2025-09-11_7ae60a50cbf4a8.png?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "3D baskı fidget ve stres oyuncağı kategorisi" },
+    { name: "Düdükler", image_path: "https://makerworld.bblmw.com/makerworld/model/US208abf1d1f1a36/design/2024-01-09_42430df1b0709.png?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "3D baskı düdük kategorisi" },
+    { name: "Ev & Organizer", image_path: "https://makerworld.bblmw.com/makerworld/model/US9f63a04055cd4b/design/2026-01-13_59140b7190323.png?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "3D baskı ev ve organizer kategorisi" }
+  ].forEach((category, index) => seedCategory.run({ ...category, href: "#store-products", sort_order: index + 1 }));
 }
 
 const existingSeoPages = db.prepare("SELECT COUNT(*) count FROM seo_pages").get().count;
@@ -300,11 +319,22 @@ if (!existingSeoPages) {
     {
       slug: "home",
       label: "Ana sayfa",
-      title: "Printable | Markanız İçin Özel Baskı ve 3D Baskı",
-      description: "Sticker, poster, kartvizit ve ambalaj baskısı. STL dosyanızı yükleyin, 3D baskı için anında fiyat alın.",
+      title: "Printable | 3D Baskı Figür, Oyuncak ve Anahtarlık",
+      description: "Hazır 3D baskı figür, oyuncak, anahtarlık ve fidget ürünleri. STL dosyanızı yükleyin, 3D baskı için anında fiyat alın.",
       canonical: "",
-      og_title: "Printable | Özel Baskı ve 3D Baskı Çözümleri",
-      og_description: "Sticker, poster, kartvizit, ambalaj ve 3D baskı. Net fiyat, hızlı üretim.",
+      og_title: "Printable | 3D Baskı Ürünleri ve STL Baskı Hizmeti",
+      og_description: "Eklemli figürler, sevimli anahtarlıklar, fidget ve düdükler. Kendi STL dosyanızı da bastırın.",
+      og_image: "",
+      robots: "index,follow"
+    },
+    {
+      slug: "urunler",
+      label: "Ürünler sayfası",
+      title: "Tüm 3D Baskı Ürünleri | Printable",
+      description: "Figür, anahtarlık, fidget, düdük ve daha fazlası. Kategori, renk ve fiyata göre filtreleyin.",
+      canonical: "",
+      og_title: "Tüm 3D Baskı Ürünleri | Printable",
+      og_description: "3D baskı ürünlerini kategori, renk ve fiyata göre filtreleyerek keşfedin.",
       og_image: "",
       robots: "index,follow"
     },
@@ -322,73 +352,58 @@ if (!existingSeoPages) {
   ].forEach((page) => seedPage.run(page));
 }
 
+// The urunler page shipped after the seo_pages seed already ran on live databases,
+// so add its row idempotently (slug is UNIQUE, INSERT OR IGNORE is a no-op if present).
+db.prepare(`
+  INSERT OR IGNORE INTO seo_pages (slug, label, title, description, og_title, og_description, robots)
+  VALUES ('urunler', 'Ürünler sayfası', 'Tüm 3D Baskı Ürünleri | Printable',
+          'Figür, anahtarlık, fidget, düdük ve daha fazlası. Kategori, renk ve fiyata göre filtreleyin.',
+          'Tüm 3D Baskı Ürünleri | Printable',
+          '3D baskı ürünlerini kategori, renk ve fiyata göre filtreleyerek keşfedin.', 'index,follow')
+`).run();
+
 const existingSite = db.prepare("SELECT COUNT(*) count FROM site_settings").get().count;
 if (!existingSite) {
   db.prepare(`
-    INSERT INTO site_settings (id, site_name, site_url, description, logo_path, social_links)
-    VALUES (1, @site_name, @site_url, @description, @logo_path, @social_links)
+    INSERT INTO site_settings (id, site_name, site_url, description, logo_path, social_links, default_og_image)
+    VALUES (1, @site_name, @site_url, @description, @logo_path, @social_links, @default_og_image)
   `).run({
     site_name: "Printable",
     site_url: "",
-    description: "Markanız için özel baskı ve 3D baskı çözümleri.",
+    description: "Özel 3D baskı figür, oyuncak ve anahtarlık ürünleri; STL baskı hizmeti.",
     logo_path: "/assets/printable-logo.svg",
-    social_links: ""
+    social_links: "",
+    default_og_image: ""
   });
 }
 
 const existingProducts = db.prepare("SELECT COUNT(*) count FROM products").get().count;
 if (!existingProducts) {
   const seedProduct = db.prepare(`
-    INSERT INTO products (name, sku, category, description, color, price, sale_price, width, height, depth, weight, stock, image_path)
-    VALUES (@name, @sku, @category, @description, @color, @price, @sale_price, @width, @height, @depth, @weight, @stock, @image_path)
+    INSERT INTO products (name, sku, category, description, color, price, sale_price, width, height, depth, weight, stock, image_path, image_alt, meta_keywords)
+    VALUES (@name, @sku, @category, @description, @color, @price, @sale_price, @width, @height, @depth, @weight, @stock, @image_path, @image_alt, @meta_keywords)
   `);
   [
-    {
-      name: "Custom Sticker Pack",
-      sku: "PR-STK-001",
-      category: "Stickers",
-      description: "Marka ambalajları için mat laminasyonlu özel sticker paketi.",
-      color: "Tam renk",
-      price: 24.9,
-      sale_price: 19.9,
-      width: 10,
-      height: 10,
-      depth: 0.1,
-      weight: 0.2,
-      stock: 120,
-      image_path: "https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-1.jpg?v=1750319850&width=500"
-    },
-    {
-      name: "A4 Poster Print",
-      sku: "PR-POS-A4",
-      category: "Posters",
-      description: "Premium saten kağıda yüksek çözünürlüklü A4 poster baskı.",
-      color: "CMYK",
-      price: 39,
-      sale_price: 29,
-      width: 21,
-      height: 29.7,
-      depth: 0.1,
-      weight: 0.08,
-      stock: 80,
-      image_path: "https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-laptop-1_8ba38545-e982-4cc5-a601-9f7adb782d6f.jpg?v=1750319712&width=500"
-    },
-    {
-      name: "Business Card Set",
-      sku: "PR-BC-250",
-      category: "Cards",
-      description: "Soft touch yüzeyli 250 adet çift taraflı kartvizit.",
-      color: "Beyaz",
-      price: 59,
-      sale_price: 49,
-      width: 8.5,
-      height: 5.5,
-      depth: 0.03,
-      weight: 0.4,
-      stock: 65,
-      image_path: "https://new-ella-demo-07.myshopify.com/cdn/shop/files/product-app-4_23546feb-c1d6-4645-819e-10afcda659f6.jpg?v=1750319766&width=500"
-    }
+    // 3D baskı ürünleri — MakerWorld kapak görselleri, admin'den güncellenebilir.
+    { name: "Oynar Eklemli Toothless Ejderha Anahtarlık", sku: "PR-3D-001", category: null, description: "Destek gerektirmeden basılan, tüm eklemleri oynayan sevimli Toothless ejderha anahtarlık.", color: "PLA / çok renkli", price: 199, sale_price: null, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/USe2e8a5bf3ddaed/design/34e00292d363c821.png?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "Oynar eklemli Toothless ejderha anahtarlık 3D baskı", meta_keywords: "toothless, ejderha anahtarlık, oynar eklemli ejderha, dişsiz ejderha, 3d baskı ejderha" },
+    { name: "Urban Spider-Man Figürü", sku: "PR-3D-002", category: null, description: "Hareketli pozların sergilendiği detaylı Urban Spider-Man koleksiyon figürü.", color: "PLA / çok renkli", price: 299, sale_price: 249, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/USf3226a122488f2/design/613a3d21dba2bbba.jpg?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "Urban Spider-Man 3D baskı koleksiyon figürü", meta_keywords: "spiderman, örümcek adam figürü, koleksiyon figürü, marvel, 3d baskı figür" },
+    { name: "Gezegen Dişlili Fidget Spinner", sku: "PR-3D-003", category: null, description: "Gezegen dişli mekanizmalı, parmakla döndürülen tatmin edici fidget spinner.", color: "PLA / çok renkli", price: 249, sale_price: null, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/US3fa154f896830/design/2024-09-22_de7d140930a96.gif?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "Gezegen dişlili 3D baskı fidget spinner", meta_keywords: "fidget spinner, gezegen dişli, stres çarkı, 3d baskı oyuncak" },
+    { name: "Minecraft TNT Sonsuzluk Küpü", sku: "PR-3D-004", category: null, description: "Minecraft TNT temalı, sonsuz katlanan stres atma küpü.", color: "PLA / çok renkli", price: 229, sale_price: null, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/US12141e05f5f0fd/design/2025-08-21_8f51c9c715866.jpg?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "Minecraft TNT sonsuzluk küpü 3D baskı", meta_keywords: "minecraft, tnt, sonsuzluk küpü, infinity cube, stres küpü, 3d baskı" },
+    { name: "Mini Oynar Yengeç Anahtarlık", sku: "PR-3D-005", category: null, description: "Cebe sığan, tüm bacakları oynayan mini yengeç anahtarlık.", color: "PLA / çok renkli", price: 149, sale_price: null, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/US12e41188080aab/design/2025-07-23_3378c9e01bc278.jpg?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "Mini oynar yengeç anahtarlık 3D baskı", meta_keywords: "yengeç anahtarlık, oynar yengeç, mini figür, 3d baskı anahtarlık" },
+    { name: "Sevimli Oynar Ender Ejderha (Minecraft)", sku: "PR-3D-006", category: null, description: "Minecraft evreninden, oynar eklemli sevimli Ender ejderha figürü.", color: "PLA / çok renkli", price: 279, sale_price: null, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/US2cec27bd30066e/design/4e48dee9d2d8e1f5.jpg?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "Sevimli oynar Ender ejderha 3D baskı figürü", meta_keywords: "minecraft, ender ejderha, ender dragon, oynar figür, 3d baskı" },
+    { name: "Sesli Düdük", sku: "PR-3D-007", category: null, description: "Tek parça basılan, gerçekten yüksek sesli çıkan düdük.", color: "PLA / çok renkli", price: 99, sale_price: null, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/US208abf1d1f1a36/design/2024-01-09_42430df1b0709.png?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "Sesli 3D baskı düdük", meta_keywords: "düdük, sesli düdük, spor düdüğü, 3d baskı düdük" },
+    { name: "Rocktopus – The Rock Ahtapot Figürü", sku: "PR-3D-008", category: null, description: "Dwayne 'The Rock' Johnson esintili, esprili Rocktopus ahtapot figürü.", color: "PLA / çok renkli", price: 349, sale_price: 299, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/US6190ca67669c45/design/2023-09-25_8rzk09cv34gg.png?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "Rocktopus The Rock ahtapot 3D baskı figürü", meta_keywords: "the rock, dwayne johnson, ahtapot figürü, rocktopus, komik figür, 3d baskı" },
+    { name: "Sevimli Esnek Bebek Ejderha Anahtarlık", sku: "PR-3D-009", category: null, description: "Esnek gövdeli, sevimli bebek ejderha oyuncağı ve anahtarlık.", color: "PLA / çok renkli", price: 179, sale_price: null, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/US422918d45a4599/design/635bbc2657e9d831.png?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "Sevimli esnek bebek ejderha anahtarlık 3D baskı", meta_keywords: "bebek ejderha, esnek ejderha, flexi dragon, anahtarlık, 3d baskı oyuncak" },
+    { name: "Kuş Sesli Su Düdüğü", sku: "PR-3D-010", category: null, description: "İçine biraz su koyup üflediğinizde gerçek kuş sesi çıkaran düdük.", color: "PLA / çok renkli", price: 119, sale_price: null, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/UScb82f263114ea6/design/1cd37e5d307e246d.png?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "Kuş sesli su düdüğü 3D baskı", meta_keywords: "kuş düdüğü, su düdüğü, kuş sesi, 3d baskı düdük" },
+    { name: "2026 Dünya Kupası Düdüğü", sku: "PR-3D-011", category: null, description: "2026 Dünya Kupası temalı, sesli hakem düdüğü.", color: "PLA / çok renkli", price: 129, sale_price: null, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/USb0e373f9ff76f9/design/3698b5b15f6b7d96.webp?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "2026 Dünya Kupası temalı 3D baskı düdük", meta_keywords: "dünya kupası 2026, hakem düdüğü, futbol düdüğü, 3d baskı" },
+    { name: "Açılı Fidget Küp Stres Oyuncağı", sku: "PR-3D-012", category: null, description: "Altı yüzünde farklı hareketler sunan açılı fidget küp stres oyuncağı.", color: "PLA / çok renkli", price: 199, sale_price: null, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/US9a6f7ab9cda059/design/2025-09-11_7ae60a50cbf4a8.png?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "Açılı fidget küp stres oyuncağı 3D baskı", meta_keywords: "fidget küp, stres oyuncağı, açılı fidget, 3d baskı oyuncak" },
+    { name: "Twerking Ghostface Figürü", sku: "PR-3D-013", category: null, description: "Eğlenceli Twerking Ghostface figürü — parti ve masaüstü için.", color: "PLA / çok renkli", price: 259, sale_price: null, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/US9586770665c394/design/2025-09-15_d14c8919233368.jpg?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "Twerking Ghostface 3D baskı figürü", meta_keywords: "ghostface, scream, twerking, komik figür, 3d baskı figür" },
+    { name: "Boks Eldiveni Anahtarlık (Sol El)", sku: "PR-3D-014", category: null, description: "Boks eldiveni şeklinde şık anahtarlık (sol el).", color: "PLA / çok renkli", price: 149, sale_price: null, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/US98a21712a93141/design/2025-11-22_a82377e6e5808.png?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "Boks eldiveni anahtarlık sol el 3D baskı", meta_keywords: "boks eldiveni, anahtarlık, boks figürü, 3d baskı anahtarlık" },
+    { name: "Sevimli Sallanan Penguen", sku: "PR-3D-015", category: null, description: "Dokununca sallanan, AMS gerektirmeden basılan sevimli penguen.", color: "PLA / çok renkli", price: 189, sale_price: null, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/USb73ca708d54e53/design/c8ff7e84b2e36794.png?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "Sevimli sallanan penguen 3D baskı", meta_keywords: "penguen, sallanan penguen, sevimli figür, 3d baskı oyuncak" },
+    { name: "Ejderha Kafası Masaüstü Düzenleyici Tepsi", sku: "PR-3D-016", category: null, description: "Ejderha kafası formunda masaüstü / giriş düzenleyici tepsi — anahtar ve takı için.", color: "PLA / çok renkli", price: 399, sale_price: null, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/US9f63a04055cd4b/design/2026-01-13_59140b7190323.png?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "Ejderha kafası masaüstü düzenleyici tepsi 3D baskı", meta_keywords: "ejderha tepsi, masaüstü organizer, catchall tray, ejderha kafası, 3d baskı ev" }
   ].forEach((product) => seedProduct.run(product));
+
+  const productIdBySku = db.prepare("SELECT id FROM products WHERE sku = ?");
 
   // Give the seeded products a few palette colours so the storefront swatches
   // are not empty on a fresh install.
@@ -397,11 +412,51 @@ if (!existingProducts) {
     SELECT ?, id FROM colors WHERE name = ?
   `);
   [
-    [1, ["Beyaz", "Turuncu", "Siyah"]],
-    [2, ["Mavi", "Sarı", "Pembe"]],
-    [3, ["Beyaz", "Siyah"]]
-  ].forEach(([productId, names]) => names.forEach((name) => linkColor.run(productId, name)));
+    ["PR-3D-001", ["Beyaz", "Siyah", "Turuncu"]],
+    ["PR-3D-002", ["Mavi", "Siyah", "Kırmızı"]],
+    ["PR-3D-003", ["Mavi", "Sarı", "Siyah"]]
+  ].forEach(([sku, names]) => {
+    const product = productIdBySku.get(sku);
+    if (product) names.forEach((name) => linkColor.run(product.id, name));
+  });
+
+  // A product can belong to more than one category — link by name so it survives
+  // whatever ids the category seed produced.
+  const linkCategory = db.prepare(`
+    INSERT OR IGNORE INTO product_categories (product_id, category_id)
+    SELECT ?, id FROM categories WHERE name = ?
+  `);
+  [
+    ["PR-3D-001", ["Figürler", "Anahtarlıklar"]],
+    ["PR-3D-002", ["Figürler"]],
+    ["PR-3D-003", ["Fidget & Stres"]],
+    ["PR-3D-004", ["Fidget & Stres"]],
+    ["PR-3D-005", ["Figürler", "Anahtarlıklar"]],
+    ["PR-3D-006", ["Figürler"]],
+    ["PR-3D-007", ["Düdükler"]],
+    ["PR-3D-008", ["Figürler"]],
+    ["PR-3D-009", ["Figürler", "Anahtarlıklar"]],
+    ["PR-3D-010", ["Düdükler"]],
+    ["PR-3D-011", ["Düdükler"]],
+    ["PR-3D-012", ["Fidget & Stres"]],
+    ["PR-3D-013", ["Figürler"]],
+    ["PR-3D-014", ["Anahtarlıklar"]],
+    ["PR-3D-015", ["Figürler"]],
+    ["PR-3D-016", ["Ev & Organizer"]]
+  ].forEach(([sku, names]) => {
+    const product = productIdBySku.get(sku);
+    if (product) names.forEach((name) => linkCategory.run(product.id, name));
+  });
 }
+
+// Baseline price history: every product gets at least one entry so the log is never
+// empty and the "current price since" reference exists. Idempotent — only products
+// that have no history yet are seeded.
+db.prepare(`
+  INSERT INTO price_history (product_id, price, sale_price)
+  SELECT p.id, p.price, p.sale_price FROM products p
+  WHERE NOT EXISTS (SELECT 1 FROM price_history h WHERE h.product_id = p.id)
+`).run();
 
 const existingSlides = db.prepare("SELECT COUNT(*) count FROM hero_slides").get().count;
 if (!existingSlides) {
@@ -412,20 +467,20 @@ if (!existingSlides) {
   [
     {
       image_path: "https://images.unsplash.com/photo-1572044162444-ad60f128bdea?auto=format&fit=crop&w=1800&q=75",
-      title: "Markanız İçin Özel Baskı Ürünleri",
-      subtitle: "Sticker, poster, kartvizit ve ambalaj çözümleri",
-      primary_label: "STL yükle, fiyat al",
-      primary_href: "/stl-teklif",
-      secondary_label: "Ürünleri incele",
-      secondary_href: "#store-products",
+      title: "3D Baskı Figür, Oyuncak ve Anahtarlıklar",
+      subtitle: "Hazır 3D baskı ürünlerini keşfedin veya kendi STL dosyanızı yükleyin",
+      primary_label: "Ürünleri incele",
+      primary_href: "/urunler",
+      secondary_label: "STL yükle, fiyat al",
+      secondary_href: "/stl-teklif",
       sort_order: 1
     },
     {
       image_path: "https://images.unsplash.com/photo-1503694978374-8a2fa686963a?auto=format&fit=crop&w=1800&q=75",
-      title: "Ofset Kalitesinde Seri Baskı",
-      subtitle: "Net fiyat, hızlı üretim ve zamanında teslimat",
+      title: "Eklemli Figürler ve Sevimli Anahtarlıklar",
+      subtitle: "PLA ile dayanıklı, renkli ve oynar eklemli 3D baskılar",
       primary_label: "Ürünleri incele",
-      primary_href: "#store-products",
+      primary_href: "/urunler",
       secondary_label: "Teklif al",
       secondary_href: "/stl-teklif",
       sort_order: 2
@@ -433,7 +488,7 @@ if (!existingSlides) {
     {
       image_path: "https://images.unsplash.com/photo-1622547748225-3fc4abd2cca0?auto=format&fit=crop&w=1800&q=75",
       title: "3D Modelinizi Yükleyin, Fiyatı Görün",
-      subtitle: "STL dosyanızı yükleyin, anında teklif alın",
+      subtitle: "STL veya 3MF dosyanızı yükleyin, anında teklif alın",
       primary_label: "STL yükle, fiyat al",
       primary_href: "/stl-teklif",
       secondary_label: "",
@@ -484,7 +539,7 @@ function seoHead(req, slug) {
   const canonical = absoluteUrl(req, page.canonical || req.originalUrl.split("?")[0], site.site_url);
   const ogTitle = page.og_title || title;
   const ogDescription = page.og_description || description;
-  const ogImage = absoluteUrl(req, page.og_image, site.site_url);
+  const ogImage = absoluteUrl(req, page.og_image || site.default_og_image, site.site_url);
   const logo = absoluteUrl(req, site.logo_path, site.site_url);
   const siteUrl = absoluteUrl(req, "/", site.site_url);
 
@@ -505,6 +560,17 @@ function seoHead(req, slug) {
     ogDescription && `<meta name="twitter:description" content="${escapeHtml(ogDescription)}">`,
     ogImage && `<meta name="twitter:image" content="${escapeHtml(ogImage)}">`
   ].filter(Boolean);
+
+  // Roll the active products' own keywords up into a page-level keywords meta.
+  // Meta keywords are a weak ranking signal, but this is the correct place for it:
+  // server-rendered, where crawlers see it (the product grid itself is JS-rendered).
+  if (slug === "home") {
+    const rows = db.prepare("SELECT meta_keywords FROM products WHERE is_active = 1 AND meta_keywords IS NOT NULL AND meta_keywords <> ''").all();
+    const keywords = [...new Set(
+      rows.flatMap((row) => row.meta_keywords.split(",")).map((word) => word.trim().toLowerCase()).filter(Boolean)
+    )].slice(0, 40).join(", ");
+    if (keywords) tags.push(`<meta name="keywords" content="${escapeHtml(keywords)}">`);
+  }
 
   const sameAs = (site.social_links || "").split(/[\s,]+/).filter(Boolean);
   const jsonLd = {
@@ -532,14 +598,179 @@ function seoHead(req, slug) {
   return tags.join("\n    ");
 }
 
+// One header for every public page, injected server-side so the navbar can never
+// drift between pages again. `active` marks the current main-link (home | urunler | stl-teklif).
+function renderHeader(active) {
+  const link = (href, label, key) => `<a${active === key ? ' class="active"' : ""} href="${href}">${label}</a>`;
+  return `
+    <header class="site-header">
+      <div class="container header-main">
+        <a class="logo printable-logo" href="/" aria-label="Printable ana sayfa">
+          <span>Printable</span>
+        </a>
+        <nav class="main-links" aria-label="Ana menü">
+          ${link("/", "Ana Sayfa", "home")}
+          ${link("/urunler", "Ürünler", "urunler")}
+          ${link("/stl-teklif", "3D Baskı Teklifi", "stl-teklif")}
+        </nav>
+        <nav class="header-actions" aria-label="Mağaza işlemleri">
+          <button class="search-toggle icon-button" type="button" aria-label="Arama aç" aria-expanded="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.3-4.3m1.3-5.2a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"/></svg>
+          </button>
+          <a class="cart icon-button" href="#cart-panel" aria-label="Sepet">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 8h14l-1.4 7.2a2 2 0 0 1-2 1.6H9a2 2 0 0 1-2-1.7L5.8 4H3"/><path d="M9.5 20.5h.01M17.5 20.5h.01"/></svg>
+            <strong id="cart-count">0</strong>
+          </a>
+          <a class="admin-link icon-button" href="/admin" aria-label="Yönetim paneli">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+          </a>
+          <a class="header-quote" href="/stl-teklif">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 7.2v9.6L12 21l7.5-4.2V7.2L12 3Z"/><path d="M12 12 4.8 7.4M12 12l7.2-4.6M12 12v8.5"/></svg>
+            <span>3D Baskı Teklifi</span>
+          </a>
+        </nav>
+      </div>
+      <form class="search search-popover" role="search">
+        <input type="search" placeholder="Ürün ara">
+        <button type="submit">Ara</button>
+      </form>
+    </header>`;
+}
+
+// Shared cart panel + checkout form, so the cart works on every page that loads script.js.
+function renderCartPanel() {
+  return `
+    <section class="cart-panel" id="cart-panel" aria-label="Sepet ve ödeme">
+      <div class="cart-panel__header">
+        <h2>Sepetiniz</h2>
+        <button id="close-cart" type="button">Kapat</button>
+      </div>
+      <div id="cart-items" class="cart-items"></div>
+      <form id="checkout-form" class="checkout-form">
+        <h3>Siparişi tamamla</h3>
+        <input name="name" placeholder="Ad soyad" required>
+        <input name="email" type="email" placeholder="E-posta">
+        <input name="phone" placeholder="Telefon">
+        <textarea name="address" placeholder="Teslimat adresi" rows="3" required></textarea>
+        <button type="submit">Sipariş oluştur</button>
+      </form>
+    </section>`;
+}
+
+function injectShell(html, headActive) {
+  return html
+    .replace("<!--header-->", renderHeader(headActive))
+    .replace("<!--cart-->", renderCartPanel());
+}
+
 function sendPage(req, res, file, slug) {
   const html = fs.readFileSync(path.join(ROOT, file), "utf8");
-  res.type("html").send(html.replace("<!--seo-->", seoHead(req, slug)));
+  res.type("html").send(injectShell(html.replace("<!--seo-->", seoHead(req, slug)), slug));
 }
 
 app.get("/", (req, res) => sendPage(req, res, "index.html", "home"));
+app.get("/urunler", (req, res) => sendPage(req, res, "urunler.html", "urunler"));
 app.get("/stl-teklif", (req, res) => sendPage(req, res, "stl-teklif.html", "stl-teklif"));
-["styles.css", "script.js", "stl-viewer.js", "admin.css", "admin.js"].forEach((file) => {
+
+// Per-product SEO: crawlers need real title/description/og:image/JSON-LD in the HTML
+// (the visible detail is filled by urun.js, matching the rest of the JS-rendered site).
+function productMetaTags(req, product) {
+  const site = db.prepare("SELECT * FROM site_settings WHERE id = 1").get() || {};
+  const title = product.meta_title || `${product.name} | Printable`;
+  const description = product.meta_description || product.description || site.description || "";
+  const canonical = absoluteUrl(req, `/urun/${product.id}`, site.site_url);
+  const image = absoluteUrl(req, product.image_path || site.default_og_image, site.site_url);
+  const price = Number(product.sale_price || product.price || 0).toFixed(2);
+
+  const tags = [
+    `<title>${escapeHtml(title)}</title>`,
+    description && `<meta name="description" content="${escapeHtml(description)}">`,
+    product.meta_keywords && `<meta name="keywords" content="${escapeHtml(product.meta_keywords)}">`,
+    `<meta name="robots" content="index,follow">`,
+    `<link rel="canonical" href="${escapeHtml(canonical)}">`,
+    `<meta property="og:type" content="product">`,
+    `<meta property="og:site_name" content="${escapeHtml(site.site_name || "Printable")}">`,
+    `<meta property="og:locale" content="tr_TR">`,
+    `<meta property="og:title" content="${escapeHtml(title)}">`,
+    description && `<meta property="og:description" content="${escapeHtml(description)}">`,
+    `<meta property="og:url" content="${escapeHtml(canonical)}">`,
+    image && `<meta property="og:image" content="${escapeHtml(image)}">`,
+    `<meta name="twitter:card" content="${image ? "summary_large_image" : "summary"}">`,
+    `<meta name="twitter:title" content="${escapeHtml(title)}">`,
+    description && `<meta name="twitter:description" content="${escapeHtml(description)}">`,
+    image && `<meta name="twitter:image" content="${escapeHtml(image)}">`
+  ].filter(Boolean);
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.name,
+    ...(image ? { image } : {}),
+    ...(description ? { description } : {}),
+    ...(product.sku ? { sku: product.sku } : {}),
+    brand: { "@type": "Brand", name: site.site_name || "Printable" },
+    offers: {
+      "@type": "Offer",
+      price,
+      priceCurrency: "TRY",
+      availability: product.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+      url: canonical
+    }
+  };
+  tags.push(`<script type="application/ld+json">${JSON.stringify(jsonLd).replace(/</g, "\\u003c")}</script>`);
+
+  // Breadcrumb trail helps search engines show Ana Sayfa › Ürünler › ürün in results.
+  const breadcrumb = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Ana Sayfa", item: absoluteUrl(req, "/", site.site_url) },
+      { "@type": "ListItem", position: 2, name: "Ürünler", item: absoluteUrl(req, "/urunler", site.site_url) },
+      { "@type": "ListItem", position: 3, name: product.name, item: canonical }
+    ]
+  };
+  tags.push(`<script type="application/ld+json">${JSON.stringify(breadcrumb).replace(/</g, "\\u003c")}</script>`);
+  return tags.join("\n    ");
+}
+
+app.get("/urun/:id", (req, res) => {
+  const product = db.prepare("SELECT * FROM products WHERE id = ? AND is_active = 1").get(req.params.id);
+  if (!product) return res.redirect(302, "/urunler");
+  const html = fs.readFileSync(path.join(ROOT, "urun.html"), "utf8");
+  res.type("html").send(injectShell(html.replace("<!--seo-->", productMetaTags(req, withColors(product))), "urunler"));
+});
+
+// Tell crawlers what to index and where the sitemap is. Admin and API paths are off-limits.
+app.get("/robots.txt", (req, res) => {
+  const site = db.prepare("SELECT site_url FROM site_settings WHERE id = 1").get() || {};
+  const base = (site.site_url || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
+  res.type("text/plain").send(
+    ["User-agent: *", "Allow: /", "Disallow: /admin", "Disallow: /login", "Disallow: /api/", "", `Sitemap: ${base}/sitemap.xml`, ""].join("\n")
+  );
+});
+
+// Dynamic sitemap: the static pages plus every active product detail page.
+app.get("/sitemap.xml", (req, res) => {
+  const site = db.prepare("SELECT site_url FROM site_settings WHERE id = 1").get() || {};
+  const urls = [
+    { loc: "/", priority: "1.0" },
+    { loc: "/urunler", priority: "0.9" },
+    { loc: "/stl-teklif", priority: "0.8" }
+  ];
+  db.prepare("SELECT id, updated_at FROM products WHERE is_active = 1 ORDER BY id").all()
+    .forEach((p) => urls.push({ loc: `/urun/${p.id}`, priority: "0.7", lastmod: String(p.updated_at || "").slice(0, 10) }));
+
+  const body = urls.map((u) => {
+    const loc = escapeHtml(absoluteUrl(req, u.loc, site.site_url));
+    return `  <url>\n    <loc>${loc}</loc>${u.lastmod ? `\n    <lastmod>${u.lastmod}</lastmod>` : ""}\n    <priority>${u.priority}</priority>\n  </url>`;
+  }).join("\n");
+
+  res.type("application/xml").send(
+    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`
+  );
+});
+
+["styles.css", "script.js", "stl-viewer.js", "admin.css", "admin.js", "urunler.js", "urun.js"].forEach((file) => {
   app.get(`/${file}`, (req, res) => res.sendFile(path.join(ROOT, file)));
 });
 
@@ -623,6 +854,7 @@ function productPayload(body, file) {
     image_alt: body.image_alt?.trim() || null,
     meta_title: body.meta_title?.trim() || null,
     meta_description: body.meta_description?.trim() || null,
+    meta_keywords: body.meta_keywords?.trim() || null,
     is_active: body.is_active === "0" ? 0 : 1
   };
 }
@@ -645,7 +877,22 @@ const colorsOfProduct = db.prepare(`
   ORDER BY colors.sort_order ASC, colors.id ASC
 `);
 
-const withColors = (product) => ({ ...product, colors: colorsOfProduct.all(product.id) });
+// Only the id/name the storefront and admin need — categories carry image/alt/href
+// too, but a product card just filters and badges by these two.
+const categoriesOfProduct = db.prepare(`
+  SELECT categories.id, categories.name FROM categories
+  JOIN product_categories ON product_categories.category_id = categories.id
+  WHERE product_categories.product_id = ?
+  ORDER BY categories.sort_order ASC, categories.id ASC
+`);
+
+// One decorate step so /api/products, POST and PUT all return the same shape:
+// the product row plus its colours and categories.
+const withColors = (product) => ({
+  ...product,
+  colors: colorsOfProduct.all(product.id),
+  categories: categoriesOfProduct.all(product.id)
+});
 
 // A multi-select posts one value per checked box; multer/urlencoded gives a string
 // when exactly one is checked and an array when several are.
@@ -659,9 +906,44 @@ function setProductColors(productId, colorIds) {
   replace();
 }
 
+// Same shape as setProductColors — the category multi-select posts repeated category_ids.
+function setProductCategories(productId, categoryIds) {
+  const ids = [].concat(categoryIds ?? []).map((id) => toInt(id)).filter(Boolean);
+  const replace = db.transaction(() => {
+    db.prepare("DELETE FROM product_categories WHERE product_id = ?").run(productId);
+    const link = db.prepare("INSERT OR IGNORE INTO product_categories (product_id, category_id) VALUES (?, ?)");
+    ids.forEach((categoryId) => link.run(productId, categoryId));
+  });
+  replace();
+}
+
+const insertPriceHistory = db.prepare(
+  "INSERT INTO price_history (product_id, price, sale_price) VALUES (?, ?, ?)"
+);
+// Append a price-history row. Call on create, and on update only when the price or
+// discount actually changed, so the log stays a meaningful timeline of changes.
+function logPrice(productId, price, salePrice) {
+  insertPriceHistory.run(productId, price, salePrice ?? null);
+}
+const priceChanged = (before, price, salePrice) =>
+  Number(before.price) !== Number(price) || (before.sale_price ?? null) !== (salePrice ?? null);
+
 app.get("/api/products", (req, res) => {
   const products = db.prepare("SELECT * FROM products ORDER BY created_at DESC").all();
   res.json(products.map(withColors));
+});
+
+app.get("/api/products/:id", (req, res) => {
+  const product = db.prepare("SELECT * FROM products WHERE id = ?").get(req.params.id);
+  if (!product) return res.status(404).json({ error: "Ürün bulunamadı." });
+  res.json(withColors(product));
+});
+
+app.get("/api/products/:id/price-history", (req, res) => {
+  const rows = db.prepare(
+    "SELECT id, price, sale_price, changed_at FROM price_history WHERE product_id = ? ORDER BY changed_at DESC, id DESC"
+  ).all(req.params.id);
+  res.json(rows);
 });
 
 app.post("/api/products", requireAdmin, upload.single("image"), (req, res) => {
@@ -669,11 +951,13 @@ app.post("/api/products", requireAdmin, upload.single("image"), (req, res) => {
   if (!product.name) return res.status(400).json({ error: "Ürün adı zorunludur." });
 
   const result = db.prepare(`
-    INSERT INTO products (name, sku, category, description, color, price, sale_price, width, height, depth, weight, stock, image_path, image_alt, meta_title, meta_description, is_active)
-    VALUES (@name, @sku, @category, @description, @color, @price, @sale_price, @width, @height, @depth, @weight, @stock, @image_path, @image_alt, @meta_title, @meta_description, @is_active)
+    INSERT INTO products (name, sku, category, description, color, price, sale_price, width, height, depth, weight, stock, image_path, image_alt, meta_title, meta_description, meta_keywords, is_active)
+    VALUES (@name, @sku, @category, @description, @color, @price, @sale_price, @width, @height, @depth, @weight, @stock, @image_path, @image_alt, @meta_title, @meta_description, @meta_keywords, @is_active)
   `).run(product);
 
   setProductColors(result.lastInsertRowid, req.body.color_ids);
+  setProductCategories(result.lastInsertRowid, req.body.category_ids);
+  logPrice(result.lastInsertRowid, product.price, product.sale_price);
   res.status(201).json(withColors(db.prepare("SELECT * FROM products WHERE id = ?").get(result.lastInsertRowid)));
 });
 
@@ -688,12 +972,16 @@ app.put("/api/products/:id", requireAdmin, upload.single("image"), (req, res) =>
       name=@name, sku=@sku, category=@category, description=@description, color=@color,
       price=@price, sale_price=@sale_price, width=@width, height=@height, depth=@depth,
       weight=@weight, stock=@stock, image_path=@image_path, image_alt=@image_alt,
-      meta_title=@meta_title, meta_description=@meta_description, is_active=@is_active,
+      meta_title=@meta_title, meta_description=@meta_description, meta_keywords=@meta_keywords, is_active=@is_active,
       updated_at=CURRENT_TIMESTAMP
     WHERE id=@id
   `).run(product);
 
   setProductColors(current.id, req.body.color_ids);
+  setProductCategories(current.id, req.body.category_ids);
+  if (priceChanged(current, product.price, product.sale_price)) {
+    logPrice(current.id, product.price, product.sale_price);
+  }
   res.json(withColors(db.prepare("SELECT * FROM products WHERE id = ?").get(current.id)));
 });
 
@@ -1160,14 +1448,16 @@ app.put("/api/seo/site", requireAdmin, (req, res) => {
   db.prepare(`
     UPDATE site_settings SET
       site_name=@site_name, site_url=@site_url, description=@description,
-      logo_path=@logo_path, social_links=@social_links, updated_at=CURRENT_TIMESTAMP
+      logo_path=@logo_path, social_links=@social_links, default_og_image=@default_og_image,
+      updated_at=CURRENT_TIMESTAMP
     WHERE id=1
   `).run({
     site_name: req.body.site_name?.trim() || null,
     site_url: req.body.site_url?.trim().replace(/\/$/, "") || null,
     description: req.body.description?.trim() || null,
     logo_path: req.body.logo_path?.trim() || null,
-    social_links: req.body.social_links?.trim() || null
+    social_links: req.body.social_links?.trim() || null,
+    default_og_image: req.body.default_og_image?.trim() || null
   });
 
   res.json(db.prepare("SELECT * FROM site_settings WHERE id = 1").get());

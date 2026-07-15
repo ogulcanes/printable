@@ -542,3 +542,28 @@ textarea { resize: vertical; }
   }
   .row-actions { flex-wrap: wrap; }
 }
+
+/* Per-product price history panel (toggled from the "Fiyat geçmişi" button). */
+.price-history {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #e8eaf0;
+  border-radius: 10px;
+  background: #f6f7fb;
+}
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.history-table th,
+.history-table td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid #e8eaf0;
+}
+.history-table th {
+  color: #6c7180;
+  font-weight: 600;
+}
+.history-table tr:last-child td { border-bottom: 0; }

@@ -65,14 +65,17 @@ function renderProducts() {
         <h3>${product.name}</h3>
         <p>${product.description || "Henüz açıklama yok."}</p>
         <div class="meta-line">
-          <span class="badge">${product.category || "Kategori yok"}</span>
+          ${(product.categories || []).map((category) => `<span class="badge">${category.name}</span>`).join("") || '<span class="badge">Kategori yok</span>'}
           <span class="badge">${product.color || "Renk yok"}</span>
           <span class="badge ${product.stock > 0 ? "green" : "orange"}">Stok ${product.stock}</span>
           <span class="badge blue">${money(product.sale_price || product.price)}${product.sale_price ? ` / <s>${money(product.price)}</s>` : ""}</span>
+          ${product.sale_price ? `<span class="badge orange">%${Math.round((1 - product.sale_price / product.price) * 100)} indirim</span>` : ""}
         </div>
+        <div class="price-history" data-history-for="${product.id}" hidden></div>
       </div>
       <div class="row-actions">
         <button data-edit-product="${product.id}">Düzenle</button>
+        <button data-history-product="${product.id}">Fiyat geçmişi</button>
         <button class="danger" data-delete-product="${product.id}">Sil</button>
       </div>
     </article>
@@ -220,6 +223,17 @@ function renderProductColorOptions(selectedIds = []) {
   `).join("") || "<p>Önce Renkler sekmesinden renk ekleyin.</p>";
 }
 
+// Same pattern as the colour checkboxes: a product can be in several categories,
+// posted as repeated category_ids. Checked state is restored from state, not the DOM.
+function renderProductCategoryOptions(selectedIds = []) {
+  qs("#product-categories").innerHTML = state.categories.map((category) => `
+    <label class="color-option">
+      <input type="checkbox" name="category_ids" value="${category.id}" ${selectedIds.includes(category.id) ? "checked" : ""}>
+      ${category.name}
+    </label>
+  `).join("") || "<p>Önce Kategoriler sekmesinden kategori ekleyin.</p>";
+}
+
 function renderCategories() {
   qs("#category-count").textContent = `${state.categories.length} kategori`;
   qs("#category-list").innerHTML = state.categories.map((category) => `
@@ -243,7 +257,7 @@ function renderCategories() {
 }
 
 const SEO_PAGE_FIELDS = ["title", "description", "canonical", "og_title", "og_description", "og_image", "robots"];
-const SEO_SITE_FIELDS = ["site_name", "site_url", "description", "logo_path", "social_links"];
+const SEO_SITE_FIELDS = ["site_name", "site_url", "description", "logo_path", "default_og_image", "social_links"];
 
 function fillSeoPageForm(slug) {
   const page = state.seo.pages.find((item) => item.slug === slug);
@@ -360,6 +374,7 @@ async function refresh() {
   renderMaterials();
   renderQuotes();
   renderProductColorOptions(currentProductColorIds());
+  renderProductCategoryOptions(currentProductCategoryIds());
   renderSeo();
 }
 
@@ -369,6 +384,14 @@ function currentProductColorIds() {
   if (!editingId) return qsa('#product-colors input:checked').map((input) => Number(input.value));
   const product = state.products.find((item) => item.id === editingId);
   return (product?.colors || []).map((color) => color.id);
+}
+
+// Same idea for the category checkboxes.
+function currentProductCategoryIds() {
+  const editingId = Number(qs('#product-form input[name="id"]').value);
+  if (!editingId) return qsa('#product-categories input:checked').map((input) => Number(input.value));
+  const product = state.products.find((item) => item.id === editingId);
+  return (product?.categories || []).map((category) => category.id);
 }
 
 qsa(".tab").forEach((button) => button.addEventListener("click", () => showTab(button.dataset.tab)));
@@ -399,6 +422,7 @@ qs("#product-form").addEventListener("submit", async (event) => {
   form.elements.id.value = "";
   form.is_active.checked = true;
   renderProductColorOptions([]);
+  renderProductCategoryOptions([]);
   await refresh();
 });
 
@@ -406,6 +430,7 @@ qs("#reset-product").addEventListener("click", () => {
   qs("#product-form").reset();
   qs('#product-form input[name="id"]').value = "";
   renderProductColorOptions([]);
+  renderProductCategoryOptions([]);
 });
 
 qs("#product-list").addEventListener("click", async (event) => {
@@ -419,13 +444,43 @@ qs("#product-list").addEventListener("click", async (event) => {
     });
     form.is_active.checked = Boolean(product.is_active);
     renderProductColorOptions((product.colors || []).map((color) => color.id));
+    renderProductCategoryOptions((product.categories || []).map((category) => category.id));
     form.scrollIntoView({ behavior: "smooth", block: "start" });
   }
   if (deleteId && confirm("Bu ürünü silmek istiyor musunuz?")) {
     await api(`/api/products/${deleteId}`, { method: "DELETE" });
     await refresh();
   }
+  const historyId = event.target.dataset.historyProduct;
+  if (historyId) {
+    const panel = qs(`.price-history[data-history-for="${historyId}"]`);
+    if (!panel) return;
+    if (!panel.hidden) { panel.hidden = true; return; }
+    panel.hidden = false;
+    panel.innerHTML = "<p>Yükleniyor…</p>";
+    const rows = await api(`/api/products/${historyId}/price-history`);
+    panel.innerHTML = renderPriceHistory(rows);
+  }
 });
+
+// SQLite stores changed_at as UTC "YYYY-MM-DD HH:MM:SS"; render it in local Turkish format.
+function formatDateTime(value) {
+  const date = new Date(String(value).replace(" ", "T") + "Z");
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("tr-TR", { dateStyle: "medium", timeStyle: "short" });
+}
+
+function renderPriceHistory(rows) {
+  if (!rows || !rows.length) return "<p>Fiyat kaydı yok.</p>";
+  return `<table class="history-table">
+    <thead><tr><th>Tarih</th><th>Fiyat</th><th>İndirimli</th></tr></thead>
+    <tbody>${rows.map((row, index) => `
+      <tr>
+        <td>${formatDateTime(row.changed_at)}${index === 0 ? ' <span class="badge blue">güncel</span>' : ""}</td>
+        <td>${money(row.price)}</td>
+        <td>${row.sale_price != null ? money(row.sale_price) : "—"}</td>
+      </tr>`).join("")}</tbody>
+  </table>`;
+}
 
 function resetMaterialForm() {
   const form = qs("#material-form");

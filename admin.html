@@ -259,6 +259,7 @@
             <label>Site adresi<input name="site_url" placeholder="https://printable.com.tr"></label>
             <label>Site açıklaması<textarea name="description" rows="3"></textarea></label>
             <label>Logo yolu<input name="logo_path" placeholder="/assets/printable-logo.svg"></label>
+            <label>Varsayılan paylaşım görseli (OG)<input name="default_og_image" placeholder="/uploads/... veya https://... — sosyal medya önizleme görseli"></label>
             <label>Sosyal hesap adresleri (her satıra bir tane)<textarea name="social_links" rows="4" placeholder="https://instagram.com/..."></textarea></label>
             <div class="actions">
               <button type="submit">Site ayarlarını kaydet</button>
@@ -275,7 +276,6 @@
             <div class="card-title"><h2>Ürün Ekle / Düzenle</h2></div>
             <label>Ürün adı<input name="name" required></label>
             <label>SKU<input name="sku"></label>
-            <label>Kategori<input name="category"></label>
             <label>Açıklama<textarea name="description" rows="4"></textarea></label>
             <div class="form-grid">
               <label>Renk açıklaması<input name="color" placeholder="Örn. CMYK, Tam renk"></label>
@@ -288,6 +288,10 @@
               <label>Ağırlık<input name="weight" type="number" min="0" step="0.01"></label>
             </div>
             <fieldset class="color-picker-field">
+              <legend>Kategoriler</legend>
+              <div id="product-categories" class="color-options"></div>
+            </fieldset>
+            <fieldset class="color-picker-field">
               <legend>Renk seçenekleri</legend>
               <div id="product-colors" class="color-options"></div>
             </fieldset>
@@ -295,6 +299,7 @@
             <label>Fotoğraf alt metni (SEO)<input name="image_alt" placeholder="Boşsa ürün adı kullanılır"></label>
             <label>Meta başlık (SEO)<input name="meta_title" maxlength="70"></label>
             <label>Meta açıklama (SEO)<textarea name="meta_description" rows="2" maxlength="170"></textarea></label>
+            <label>Anahtar kelimeler (SEO)<textarea name="meta_keywords" rows="2" placeholder="Virgülle ayırın: 3d baskı, ejderha, anahtarlık"></textarea></label>
             <label class="check"><input name="is_active" type="checkbox" checked value="1"> Mağazada aktif</label>
             <div class="actions">
               <button type="submit">Ürünü kaydet</button>
