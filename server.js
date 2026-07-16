@@ -684,6 +684,8 @@ function renderHeader(active) {
           ${link("/", "Ana Sayfa", "home")}
           ${link("/urunler", "Ürünler", "urunler")}
           ${link("/stl-teklif", "3D Baskı Teklifi", "stl-teklif")}
+          ${link("/hakkinda", "Hakkımızda", "hakkinda")}
+          ${link("/iletisim", "İletişim", "iletisim")}
         </nav>
         <nav class="header-actions" aria-label="Mağaza işlemleri">
           <button class="search-toggle icon-button" type="button" aria-label="Arama aç" aria-expanded="false">

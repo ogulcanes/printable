@@ -1854,6 +1854,8 @@ body {
   color: #343741;
   font-size: 13px;
   font-weight: 850;
+  white-space: nowrap;
+  flex: 0 0 auto;
   transition: color .2s ease, background .2s ease, transform .2s ease;
 }
 
