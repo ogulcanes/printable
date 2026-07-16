@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!--seo-->
+    <link rel="preload" href="/assets/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/assets/fonts/manrope-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preconnect" href="https://makerworld.bblmw.com">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <!--header-->
+
+    <main>
+      <section class="container page-hero">
+        <p class="section-kicker">İletişim</p>
+        <h1>Bize Ulaşın</h1>
+        <p class="page-lead">Sorularınız, özel baskı talepleriniz ve iş birlikleri için formu doldurun ya da aşağıdaki kanallardan yazın.</p>
+      </section>
+
+      <section class="container contact-grid">
+        <div class="contact-info">
+          <div class="contact-item">
+            <h3>Telefon</h3>
+            <p class="placeholder" data-contact="phone">[Telefon numarası eklenecek]</p>
+          </div>
+          <div class="contact-item">
+            <h3>E-posta</h3>
+            <p class="placeholder" data-contact="email">[E-posta adresi eklenecek]</p>
+          </div>
+          <div class="contact-item">
+            <h3>Adres</h3>
+            <p class="placeholder" data-contact="address">[Açık adres eklenecek]</p>
+          </div>
+          <div class="contact-item">
+            <h3>Çalışma saatleri</h3>
+            <p class="placeholder" data-contact="working_hours">[Çalışma saatleri eklenecek — ör. Hafta içi 09:00–18:00]</p>
+          </div>
+          <div class="contact-item">
+            <h3>Sosyal medya</h3>
+            <p class="placeholder" data-contact="social_links">[Instagram / diğer hesaplar eklenecek]</p>
+          </div>
+        </div>
+
+        <form id="contact-form" class="contact-form">
+          <h2>Mesaj gönderin</h2>
+          <label>Ad soyad *<input name="name" required autocomplete="name"></label>
+          <div class="checkout-form__row">
+            <label>E-posta<input name="email" type="email" autocomplete="email"></label>
+            <label>Telefon<input name="phone" inputmode="tel" autocomplete="tel"></label>
+          </div>
+          <label>Konu<input name="subject"></label>
+          <label>Mesajınız *<textarea name="message" rows="6" required></textarea></label>
+          <button type="submit" id="contact-submit">Gönder</button>
+          <p class="contact-status" id="contact-status" role="status" hidden></p>
+        </form>
+      </section>
+    </main>
+
+    <!--cart-->
+    <!--footer-->
+
+    <button class="chat" type="button">?</button>
+    <script src="/script.js"></script>
+    <script src="/iletisim.js"></script>
+  </body>
+</html>

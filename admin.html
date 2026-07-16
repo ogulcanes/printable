@@ -25,6 +25,7 @@
         <button class="tab" data-tab="products"><span>08</span>Ürünler</button>
         <button class="tab" data-tab="orders"><span>09</span>Siparişler</button>
         <button class="tab" data-tab="customers"><span>10</span>Müşteriler</button>
+        <button class="tab" data-tab="messages"><span>11</span>Mesajlar</button>
       </nav>
       <div class="sidebar-note">
         <strong>Vercel notu</strong>
@@ -196,6 +197,7 @@
                 <label>Minimum sipariş tutarı (TL)<input name="min_order_total" type="number" min="0" step="0.01"></label>
                 <label>Kabuk oranı (0-1)<input name="shell_share" type="number" min="0" max="1" step="0.01"></label>
                 <label>Renk değişim ücreti (TL)<input name="color_change_fee" type="number" min="0" step="0.01"></label>
+                <label>KDV oranı (%)<input name="tax_rate" type="number" min="0" max="100" step="1"></label>
               </div>
               <div class="actions">
                 <button type="submit">Katsayıları kaydet</button>
@@ -260,6 +262,12 @@
             <label>Site açıklaması<textarea name="description" rows="3"></textarea></label>
             <label>Logo yolu<input name="logo_path" placeholder="/assets/printable-logo.svg"></label>
             <label>Varsayılan paylaşım görseli (OG)<input name="default_og_image" placeholder="/uploads/... veya https://... — sosyal medya önizleme görseli"></label>
+            <div class="form-grid">
+              <label>Telefon<input name="phone" placeholder="+90 5xx xxx xx xx"></label>
+              <label>E-posta<input name="email" type="email" placeholder="info@printable.com.tr"></label>
+            </div>
+            <label>Adres<textarea name="contact_address" rows="2" placeholder="Açık adres — /iletisim sayfasında gösterilir"></textarea></label>
+            <label>Çalışma saatleri<input name="working_hours" placeholder="Hafta içi 09:00–18:00"></label>
             <label>Sosyal hesap adresleri (her satıra bir tane)<textarea name="social_links" rows="4" placeholder="https://instagram.com/..."></textarea></label>
             <div class="actions">
               <button type="submit">Site ayarlarını kaydet</button>
@@ -360,6 +368,16 @@
             </div>
             <div id="customer-list" class="list"></div>
           </div>
+        </div>
+      </section>
+
+      <section id="messages" class="panel">
+        <div class="admin-card">
+          <div class="card-title">
+            <h2>İletişim Mesajları</h2>
+            <span id="message-count" class="count-pill">0 mesaj</span>
+          </div>
+          <div id="message-list" class="list"></div>
         </div>
       </section>
     </main>

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!--seo-->
+    <link rel="preload" href="/assets/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/assets/fonts/manrope-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preconnect" href="https://makerworld.bblmw.com">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <!--header-->
+
+    <main class="checkout">
+      <section class="container">
+        <h1 class="checkout-title">Ödeme</h1>
+        <ol class="checkout-steps" id="checkout-steps">
+          <li data-step="1" class="active"><span>1</span>Sepet</li>
+          <li data-step="2"><span>2</span>Teslimat</li>
+          <li data-step="3"><span>3</span>Fatura</li>
+          <li data-step="4"><span>4</span>Ödeme</li>
+        </ol>
+
+        <div class="checkout-grid">
+          <div class="checkout-main">
+            <!-- Step 1: Cart -->
+            <section class="checkout-panel active" data-step="1">
+              <h2>Sepetiniz</h2>
+              <div id="checkout-cart" class="checkout-cart"></div>
+            </section>
+
+            <!-- Step 2: Delivery -->
+            <section class="checkout-panel" data-step="2">
+              <h2>Teslimat bilgileri</h2>
+              <form id="delivery-form" class="checkout-form">
+                <label>Ad soyad *<input name="name" required autocomplete="name"></label>
+                <div class="checkout-form__row">
+                  <label>Telefon *<input name="phone" required inputmode="tel" autocomplete="tel" placeholder="05xx xxx xx xx"></label>
+                  <label>E-posta<input name="email" type="email" autocomplete="email"></label>
+                </div>
+                <div class="checkout-form__row">
+                  <label>İl *<input name="city" required autocomplete="address-level1" placeholder="İstanbul"></label>
+                  <label>İlçe *<input name="district" required autocomplete="address-level2" placeholder="Kadıköy"></label>
+                </div>
+                <div class="checkout-form__row">
+                  <label>Mahalle<input name="neighborhood" autocomplete="address-level3"></label>
+                  <label>Posta kodu<input name="postal_code" inputmode="numeric" maxlength="5" autocomplete="postal-code" placeholder="34000"></label>
+                </div>
+                <label>Açık adres *<textarea name="address" rows="3" required autocomplete="street-address" placeholder="Cadde, sokak, bina no, daire"></textarea></label>
+                <p class="checkout-error" id="delivery-error" hidden></p>
+              </form>
+            </section>
+
+            <!-- Step 3: Invoice / e-fatura -->
+            <section class="checkout-panel" data-step="3">
+              <h2>Fatura bilgileri</h2>
+              <p class="checkout-hint">E-fatura / e-arşiv için gereklidir.</p>
+              <div class="invoice-type" role="radiogroup" aria-label="Fatura tipi">
+                <label class="invoice-type__opt"><input type="radio" name="invoice_type" value="individual" checked> Bireysel</label>
+                <label class="invoice-type__opt"><input type="radio" name="invoice_type" value="corporate"> Kurumsal</label>
+              </div>
+              <form id="invoice-form" class="checkout-form">
+                <div class="invoice-fields" data-for="individual">
+                  <label>TC Kimlik No *<input name="tc_no" inputmode="numeric" maxlength="11" placeholder="11 haneli"></label>
+                </div>
+                <div class="invoice-fields" data-for="corporate" hidden>
+                  <label>Şirket unvanı *<input name="company_name" autocomplete="organization"></label>
+                  <div class="checkout-form__row">
+                    <label>Vergi dairesi *<input name="tax_office"></label>
+                    <label>Vergi no (VKN) *<input name="tax_number" inputmode="numeric" maxlength="10" placeholder="10 haneli"></label>
+                  </div>
+                </div>
+                <label class="checkout-check"><input type="checkbox" id="same-address" checked> Fatura adresi teslimat adresiyle aynı</label>
+                <label id="billing-address-field" hidden>Fatura adresi<textarea name="billing_address" rows="3"></textarea></label>
+                <p class="checkout-error" id="invoice-error" hidden></p>
+              </form>
+            </section>
+
+            <!-- Step 4: Payment -->
+            <section class="checkout-panel" data-step="4">
+              <h2>Ödeme yöntemi</h2>
+              <div class="payment-methods" role="radiogroup" aria-label="Ödeme yöntemi">
+                <label class="payment-opt"><input type="radio" name="payment_method" value="havale" checked> <span><strong>Havale / EFT</strong><small>Sipariş sonrası hesap bilgileri paylaşılır</small></span></label>
+                <label class="payment-opt"><input type="radio" name="payment_method" value="kapida"> <span><strong>Kapıda ödeme</strong><small>Teslimatta nakit veya kart</small></span></label>
+                <label class="payment-opt payment-opt--soon"><input type="radio" name="payment_method" value="kart" disabled> <span><strong>Kredi / banka kartı</strong><small>Çok yakında</small></span></label>
+              </div>
+              <p class="checkout-error" id="payment-error" hidden></p>
+              <div id="checkout-result" class="checkout-result" hidden></div>
+            </section>
+
+            <div class="checkout-nav">
+              <button type="button" id="co-prev" class="ghost" hidden>Geri</button>
+              <button type="button" id="co-next">Devam</button>
+              <button type="button" id="co-submit" hidden>Siparişi oluştur</button>
+            </div>
+          </div>
+
+          <aside class="checkout-summary" aria-label="Sipariş özeti">
+            <h2>Sipariş özeti</h2>
+            <div id="summary-items" class="summary-items"></div>
+            <div class="summary-line"><span>Ara toplam (KDV hariç)</span><strong id="summary-subtotal">0.00 TL</strong></div>
+            <div class="summary-line summary-line--muted"><span>KDV (<span id="summary-tax-rate">%20</span>)</span><span id="summary-tax">0.00 TL</span></div>
+            <div class="summary-line summary-line--muted"><span>Kargo</span><span class="summary-shipping">Alıcı ödemeli</span></div>
+            <div class="summary-line summary-total"><span>Genel toplam</span><strong id="summary-total">0.00 TL</strong></div>
+            <p class="summary-note">Fiyatlara KDV eklenir. Kargo ücreti teslimatta alıcı tarafından ödenir.</p>
+            <a class="summary-back" href="/urunler">← Alışverişe devam et</a>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <!--cart-->
+
+    <!--footer-->
+
+    <button class="chat" type="button">?</button>
+    <script src="/script.js"></script>
+    <script src="/odeme.js"></script>
+  </body>
+</html>

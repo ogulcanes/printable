@@ -567,3 +567,6 @@ textarea { resize: vertical; }
   font-weight: 600;
 }
 .history-table tr:last-child td { border-bottom: 0; }
+
+/* Unread contact message row */
+.row--unread { border-left: 3px solid #ff6542; }

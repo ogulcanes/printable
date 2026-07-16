@@ -7,11 +7,15 @@ const state = {
   colors: [],
   materials: [],
   quotes: [],
+  messages: [],
   pricing: {},
   seo: { pages: [], site: {} }
 };
 
 const money = (value) => `${Number(value || 0).toFixed(2)} TL`;
+// Contact messages are public user input — escape before interpolating into innerHTML.
+const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ESC[char]);
 const qs = (selector, root = document) => root.querySelector(selector);
 const qsa = (selector, root = document) => [...root.querySelectorAll(selector)];
 const statusClass = {
@@ -35,6 +39,11 @@ const paymentLabels = {
   paid: "Ödendi",
   failed: "Başarısız",
   refunded: "İade edildi"
+};
+const paymentMethodLabels = {
+  havale: "Havale / EFT",
+  kapida: "Kapıda ödeme",
+  kart: "Kredi / banka kartı"
 };
 
 async function api(path, options = {}) {
@@ -140,7 +149,7 @@ function renderMaterials() {
   `).join("") || "<p>Henüz malzeme yok.</p>";
 
   const form = qs("#pricing-form");
-  ["setup_fee", "size_fee_per_cm", "min_order_total", "shell_share", "color_change_fee"].forEach((key) => {
+  ["setup_fee", "size_fee_per_cm", "min_order_total", "shell_share", "color_change_fee", "tax_rate"].forEach((key) => {
     form.elements[key].value = state.pricing[key] ?? "";
   });
 }
@@ -257,7 +266,7 @@ function renderCategories() {
 }
 
 const SEO_PAGE_FIELDS = ["title", "description", "canonical", "og_title", "og_description", "og_image", "robots"];
-const SEO_SITE_FIELDS = ["site_name", "site_url", "description", "logo_path", "default_og_image", "social_links"];
+const SEO_SITE_FIELDS = ["site_name", "site_url", "description", "logo_path", "default_og_image", "phone", "email", "contact_address", "working_hours", "social_links"];
 
 function fillSeoPageForm(slug) {
   const page = state.seo.pages.find((item) => item.slug === slug);
@@ -320,8 +329,17 @@ function renderOrders() {
         <div class="meta-line">
           <span class="badge ${statusClass[order.status] || ""}">${statusLabels[order.status] || order.status}</span>
           <span class="badge blue">${money(order.total)}</span>
+          <span class="badge">KDV %${order.tax_rate ?? 20}: ${money(order.tax_amount)}</span>
+          <span class="badge">Kargo: ${order.shipping_method === "recipient_paid" ? "Alıcı ödemeli" : "-"}</span>
           <span class="badge">${paymentLabels[order.payment_status] || order.payment_status}</span>
+          <span class="badge">${paymentMethodLabels[order.payment_method] || "Ödeme yöntemi belirtilmemiş"}</span>
           <span class="badge">${order.tracking_code || "Takip kodu yok"}</span>
+        </div>
+        <div class="meta-line">
+          <span class="badge ${order.invoice_type === "corporate" ? "blue" : ""}">${order.invoice_type === "corporate" ? "Kurumsal fatura" : "Bireysel fatura"}</span>
+          ${order.invoice_type === "corporate"
+            ? `<span class="badge">${order.company_name || "-"}</span><span class="badge">VKN ${order.tax_number || "-"}</span><span class="badge">${order.tax_office || "-"}</span>`
+            : `<span class="badge">TC ${order.tc_no || "-"}</span>`}
         </div>
       </div>
       <div class="row-actions">
@@ -336,8 +354,31 @@ function renderOrders() {
   qs("#recent-orders").innerHTML = markup;
 }
 
+function renderMessages() {
+  const unread = state.messages.filter((m) => !m.is_read).length;
+  qs("#message-count").textContent = `${state.messages.length} mesaj${unread ? ` · ${unread} okunmamış` : ""}`;
+  qs("#message-list").innerHTML = state.messages.map((m) => `
+    <article class="row ${m.is_read ? "" : "row--unread"}">
+      <span class="brand-mark">✉</span>
+      <div>
+        <h3>${escapeHtml(m.name)}${m.subject ? ` — ${escapeHtml(m.subject)}` : ""} ${m.is_read ? "" : '<span class="badge orange">Yeni</span>'}</h3>
+        <p>${escapeHtml(m.message)}</p>
+        <div class="meta-line">
+          <span class="badge">${escapeHtml(m.email) || "E-posta yok"}</span>
+          <span class="badge">${escapeHtml(m.phone) || "Telefon yok"}</span>
+          <span class="badge">${formatDateTime(m.created_at)}</span>
+        </div>
+      </div>
+      <div class="row-actions">
+        <button data-toggle-message="${m.id}" data-read="${m.is_read ? 1 : 0}">${m.is_read ? "Okunmadı yap" : "Okundu yap"}</button>
+        <button class="danger" data-delete-message="${m.id}">Sil</button>
+      </div>
+    </article>
+  `).join("") || "<p>Henüz mesaj yok.</p>";
+}
+
 async function refresh() {
-  const [stats, products, customers, orders, slides, categories, colors, materials, quotes, pricing, seo] = await Promise.all([
+  const [stats, products, customers, orders, slides, categories, colors, materials, quotes, pricing, seo, messages] = await Promise.all([
     api("/api/stats"),
     api("/api/products"),
     api("/api/customers"),
@@ -348,7 +389,8 @@ async function refresh() {
     api("/api/materials?all=1"),
     api("/api/quotes"),
     api("/api/pricing"),
-    api("/api/seo")
+    api("/api/seo"),
+    api("/api/messages")
   ]);
   state.products = products;
   state.customers = customers;
@@ -360,6 +402,7 @@ async function refresh() {
   state.quotes = quotes;
   state.pricing = pricing;
   state.seo = seo;
+  state.messages = messages;
   qs("#stat-products").textContent = stats.products;
   qs("#stat-customers").textContent = stats.customers;
   qs("#stat-orders").textContent = stats.orders;
@@ -373,10 +416,29 @@ async function refresh() {
   renderColors();
   renderMaterials();
   renderQuotes();
+  renderMessages();
   renderProductColorOptions(currentProductColorIds());
   renderProductCategoryOptions(currentProductCategoryIds());
   renderSeo();
 }
+
+qs("#message-list").addEventListener("click", async (event) => {
+  const toggleId = event.target.dataset.toggleMessage;
+  const deleteId = event.target.dataset.deleteMessage;
+  if (toggleId) {
+    const wasRead = event.target.dataset.read === "1";
+    await api(`/api/messages/${toggleId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_read: !wasRead })
+    });
+    await refresh();
+  }
+  if (deleteId && confirm("Bu mesaj silinsin mi?")) {
+    await api(`/api/messages/${deleteId}`, { method: "DELETE" });
+    await refresh();
+  }
+});
 
 // Preserve the ticked colours across a refresh while editing a product.
 function currentProductColorIds() {

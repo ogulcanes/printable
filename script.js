@@ -1,5 +1,17 @@
 const money = (value) => `${Number(value || 0).toFixed(2)} TL`;
-const cart = [];
+
+// Cart persists in localStorage so it survives page navigation (to /odeme and back).
+const CART_KEY = "printable_cart";
+function loadCart() {
+  try {
+    const data = JSON.parse(localStorage.getItem(CART_KEY));
+    return Array.isArray(data) ? data : [];
+  } catch { return []; }
+}
+function saveCart() {
+  try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch { /* ignore quota/privacy errors */ }
+}
+const cart = loadCart();
 const storeProducts = document.querySelector("#store-products");
 const cartPanel = document.querySelector("#cart-panel");
 const cartCount = document.querySelector("#cart-count");
@@ -22,7 +34,7 @@ function productCardHTML(product) {
         <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" loading="lazy">
         <h3>${product.name}</h3>
       </a>
-      <p>${money(product.sale_price || product.price)}${product.sale_price ? ` <s>${money(product.price)}</s>` : ""}</p>
+      <p>${money(product.sale_price || product.price)}${product.sale_price ? ` <s>${money(product.price)}</s>` : ""} <span class="price-tax">+ KDV</span></p>
       <div class="swatches">${(product.colors || []).map((color) => `<span style="background:${color.hex}" title="${color.name}"></span>`).join("")}</div>
       <button data-add-product="${product.id}">Sepete ekle</button>
     </article>
@@ -36,17 +48,34 @@ function fillProductGrid(target, products) {
   grid.innerHTML = active.map(productCardHTML).join("") || `<p class="products-empty">Ürün bulunamadı.</p>`;
 }
 
+const cartSubtotal = () => cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
 function renderCart() {
-  cartCount.textContent = cart.reduce((sum, item) => sum + item.quantity, 0);
+  if (cartCount) cartCount.textContent = cart.reduce((sum, item) => sum + item.quantity, 0);
+  if (!cartItems) return;
   cartItems.innerHTML = cart.map((item) => `
     <article class="cart-item">
-      <div>
+      <img src="${item.image || "/assets/printable-logo.svg"}" alt="">
+      <div class="cart-item__info">
         <h3>${item.name}</h3>
-        <p>${item.quantity} x ${money(item.price)}</p>
+        <p>${money(item.price)}</p>
+        <div class="cart-qty">
+          <button type="button" data-dec="${item.id}" aria-label="Azalt">−</button>
+          <span>${item.quantity}</span>
+          <button type="button" data-inc="${item.id}" aria-label="Artır">+</button>
+        </div>
       </div>
-      <button type="button" data-remove-product="${item.id}">Kaldır</button>
+      <div class="cart-item__end">
+        <strong>${money(item.price * item.quantity)}</strong>
+        <button type="button" class="cart-remove" data-remove-product="${item.id}">Kaldır</button>
+      </div>
     </article>
-  `).join("") || "<p>Sepetiniz boş.</p>";
+  `).join("") || "<p class='cart-empty'>Sepetiniz boş.</p>";
+
+  const footer = document.querySelector("#cart-footer");
+  if (footer) footer.hidden = cart.length === 0;
+  const subtotalEl = document.querySelector("#cart-subtotal");
+  if (subtotalEl) subtotalEl.textContent = money(cartSubtotal());
 }
 
 const categoryGrid = document.querySelector("#category-grid");
@@ -96,21 +125,48 @@ async function loadProducts() {
   }
 }
 
+// Add a product to the cart (used by every "Sepete ekle" button across the site).
+function addToCart(product, quantity = 1) {
+  const existing = cart.find((item) => item.id === product.id);
+  if (existing) existing.quantity += quantity;
+  else cart.push({
+    id: product.id,
+    name: product.name,
+    price: product.sale_price || product.price,
+    image: product.image_path || null,
+    quantity
+  });
+  saveCart();
+  renderCart();
+}
+
 document.addEventListener("click", (event) => {
   const addId = event.target.dataset.addProduct;
   const removeId = event.target.dataset.removeProduct;
+  const incId = event.target.dataset.inc;
+  const decId = event.target.dataset.dec;
   if (addId) {
-    const product = window.printableProducts.find((item) => item.id === Number(addId));
-    const existing = cart.find((item) => item.id === product.id);
-    if (existing) existing.quantity += 1;
-    else cart.push({ id: product.id, name: product.name, price: product.sale_price || product.price, quantity: 1 });
-    cartPanel.classList.add("open");
-    renderCart();
+    const product = (window.printableProducts || []).find((item) => item.id === Number(addId));
+    if (!product) return;
+    addToCart(product);
+    cartPanel?.classList.add("open");
+  }
+  if (incId) {
+    const item = cart.find((entry) => entry.id === Number(incId));
+    if (item) { item.quantity += 1; saveCart(); renderCart(); }
+  }
+  if (decId) {
+    const item = cart.find((entry) => entry.id === Number(decId));
+    if (item) {
+      item.quantity -= 1;
+      if (item.quantity <= 0) cart.splice(cart.indexOf(item), 1);
+      saveCart();
+      renderCart();
+    }
   }
   if (removeId) {
     const index = cart.findIndex((item) => item.id === Number(removeId));
-    if (index >= 0) cart.splice(index, 1);
-    renderCart();
+    if (index >= 0) { cart.splice(index, 1); saveCart(); renderCart(); }
   }
 });
 
@@ -120,40 +176,7 @@ document.querySelector(".cart")?.addEventListener("click", (event) => {
 });
 
 document.querySelector("#close-cart")?.addEventListener("click", () => cartPanel.classList.remove("open"));
-
-document.querySelector("#checkout-form")?.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (!cart.length) return alert("Sepetiniz boş.");
-  const form = event.currentTarget;
-  const data = Object.fromEntries(new FormData(form).entries());
-  try {
-    const customer = await fetch("/api/customers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: data.name,
-        email: data.email,
-        phone: data.phone,
-        address: data.address
-      })
-    }).then((response) => response.json());
-    const order = await fetch("/api/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        customer_id: customer.id,
-        shipping_address: data.address,
-        items: cart.map((item) => ({ product_id: item.id, quantity: item.quantity }))
-      })
-    }).then((response) => response.json());
-    cart.length = 0;
-    renderCart();
-    form.reset();
-    alert(`Sipariş oluşturuldu: ${order.order_number}`);
-  } catch {
-    alert("Sipariş oluşturulamadı.");
-  }
-});
+document.querySelector("#cart-continue")?.addEventListener("click", () => cartPanel.classList.remove("open"));
 
 const searchForm = document.querySelector(".search");
 

@@ -15,6 +15,7 @@ const ADMIN_USER = process.env.ADMIN_USER || "admin";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "printable-admin";
 const SESSION_SECRET = process.env.SESSION_SECRET || "local-printable-session-secret";
 const SESSION_COOKIE = "printable_admin";
+const KDV_RATE = 20; // Ürün fiyatları KDV dahildir; faturada bu oranla ayrıştırılır.
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -67,6 +68,16 @@ db.exec(`
     discount REAL NOT NULL DEFAULT 0,
     total REAL NOT NULL DEFAULT 0,
     notes TEXT,
+    invoice_type TEXT,
+    tc_no TEXT,
+    tax_office TEXT,
+    tax_number TEXT,
+    company_name TEXT,
+    billing_address TEXT,
+    payment_method TEXT,
+    tax_rate REAL NOT NULL DEFAULT 20,
+    tax_amount REAL NOT NULL DEFAULT 0,
+    shipping_method TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(customer_id) REFERENCES customers(id) ON DELETE CASCADE
@@ -89,6 +100,7 @@ db.exec(`
     min_order_total REAL NOT NULL DEFAULT 150,
     shell_share REAL NOT NULL DEFAULT 0.15,
     color_change_fee REAL NOT NULL DEFAULT 35,
+    tax_rate REAL NOT NULL DEFAULT 20,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -165,6 +177,17 @@ db.exec(`
     FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT,
+    phone TEXT,
+    subject TEXT,
+    message TEXT NOT NULL,
+    is_read INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -199,6 +222,10 @@ db.exec(`
     logo_path TEXT,
     social_links TEXT,
     default_og_image TEXT,
+    phone TEXT,
+    email TEXT,
+    contact_address TEXT,
+    working_hours TEXT,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -242,6 +269,24 @@ const hasColumn = (table, column) =>
   ["products", "image_alt", "TEXT"],
   ["hero_slides", "image_alt", "TEXT"],
   ["site_settings", "default_og_image", "TEXT"],
+  // e-fatura + ödeme bilgileri sipariş üzerinde tutulur (fatura anlık görüntüsü).
+  ["orders", "invoice_type", "TEXT"],
+  ["orders", "tc_no", "TEXT"],
+  ["orders", "tax_office", "TEXT"],
+  ["orders", "tax_number", "TEXT"],
+  ["orders", "company_name", "TEXT"],
+  ["orders", "billing_address", "TEXT"],
+  ["orders", "payment_method", "TEXT"],
+  // KDV dökümü + kargo yöntemi (kargo alıcı ödemeli).
+  ["orders", "tax_rate", "REAL NOT NULL DEFAULT 20"],
+  ["orders", "tax_amount", "REAL NOT NULL DEFAULT 0"],
+  ["orders", "shipping_method", "TEXT"],
+  // Admin-editable KDV oranı + iletişim bilgileri.
+  ["pricing_settings", "tax_rate", "REAL NOT NULL DEFAULT 20"],
+  ["site_settings", "phone", "TEXT"],
+  ["site_settings", "email", "TEXT"],
+  ["site_settings", "contact_address", "TEXT"],
+  ["site_settings", "working_hours", "TEXT"],
   // Renamed: the floor applies to the order total, not to the unit price.
   ["pricing_settings", "min_order_total", "REAL NOT NULL DEFAULT 150"],
   // Each extra colour means a filament swap: purge waste plus machine time.
@@ -352,15 +397,42 @@ if (!existingSeoPages) {
   ].forEach((page) => seedPage.run(page));
 }
 
-// The urunler page shipped after the seo_pages seed already ran on live databases,
-// so add its row idempotently (slug is UNIQUE, INSERT OR IGNORE is a no-op if present).
-db.prepare(`
+// Pages that shipped after the seo_pages seed already ran on live databases get their
+// rows idempotently (slug is UNIQUE, INSERT OR IGNORE is a no-op if already present).
+const addSeoPage = db.prepare(`
   INSERT OR IGNORE INTO seo_pages (slug, label, title, description, og_title, og_description, robots)
-  VALUES ('urunler', 'Ürünler sayfası', 'Tüm 3D Baskı Ürünleri | Printable',
-          'Figür, anahtarlık, fidget, düdük ve daha fazlası. Kategori, renk ve fiyata göre filtreleyin.',
-          'Tüm 3D Baskı Ürünleri | Printable',
-          '3D baskı ürünlerini kategori, renk ve fiyata göre filtreleyerek keşfedin.', 'index,follow')
-`).run();
+  VALUES (@slug, @label, @title, @description, @og_title, @og_description, 'index,follow')
+`);
+[
+  {
+    slug: "urunler", label: "Ürünler sayfası",
+    title: "Tüm 3D Baskı Ürünleri | Printable",
+    description: "Figür, anahtarlık, fidget, düdük ve daha fazlası. Kategori, renk ve fiyata göre filtreleyin.",
+    og_title: "Tüm 3D Baskı Ürünleri | Printable",
+    og_description: "3D baskı ürünlerini kategori, renk ve fiyata göre filtreleyerek keşfedin."
+  },
+  {
+    slug: "hakkinda", label: "Hakkımızda sayfası",
+    title: "Hakkımızda | Printable",
+    description: "Printable; hazır 3D baskı figür, oyuncak ve anahtarlık satan, aynı zamanda STL baskı hizmeti veren bir atölyedir.",
+    og_title: "Hakkımızda | Printable",
+    og_description: "Tasarımı gerçeğe dönüştüren 3D baskı atölyesi."
+  },
+  {
+    slug: "iletisim", label: "İletişim sayfası",
+    title: "İletişim | Printable",
+    description: "Sorularınız, özel baskı talepleriniz ve iş birlikleri için Printable ile iletişime geçin.",
+    og_title: "İletişim | Printable",
+    og_description: "Printable ile iletişime geçin."
+  },
+  {
+    slug: "sss", label: "S.S.S. sayfası",
+    title: "Sıkça Sorulan Sorular | Printable",
+    description: "3D baskı ürünleri, kargo, ödeme, e-fatura ve iade hakkında sık sorulan sorular.",
+    og_title: "Sıkça Sorulan Sorular | Printable",
+    og_description: "3D baskı, kargo, ödeme ve e-fatura hakkında merak edilenler."
+  }
+].forEach((page) => addSeoPage.run(page));
 
 const existingSite = db.prepare("SELECT COUNT(*) count FROM site_settings").get().count;
 if (!existingSite) {
@@ -637,30 +709,50 @@ function renderHeader(active) {
     </header>`;
 }
 
-// Shared cart panel + checkout form, so the cart works on every page that loads script.js.
+// Shared cart drawer. Item rows + a footer with the subtotal and a link to the
+// full /odeme checkout flow. Rendered on every page that loads script.js.
 function renderCartPanel() {
   return `
-    <section class="cart-panel" id="cart-panel" aria-label="Sepet ve ödeme">
+    <section class="cart-panel" id="cart-panel" aria-label="Sepet">
       <div class="cart-panel__header">
         <h2>Sepetiniz</h2>
-        <button id="close-cart" type="button">Kapat</button>
+        <button id="close-cart" type="button" aria-label="Sepeti kapat">Kapat</button>
       </div>
       <div id="cart-items" class="cart-items"></div>
-      <form id="checkout-form" class="checkout-form">
-        <h3>Siparişi tamamla</h3>
-        <input name="name" placeholder="Ad soyad" required>
-        <input name="email" type="email" placeholder="E-posta">
-        <input name="phone" placeholder="Telefon">
-        <textarea name="address" placeholder="Teslimat adresi" rows="3" required></textarea>
-        <button type="submit">Sipariş oluştur</button>
-      </form>
+      <div class="cart-panel__footer" id="cart-footer" hidden>
+        <div class="cart-subtotal"><span>Ara toplam</span><strong id="cart-subtotal">0.00 TL</strong></div>
+        <p class="cart-note">Fiyatlara KDV eklenir · Kargo alıcı ödemeli</p>
+        <a class="cart-checkout" href="/odeme">Ödemeye geç</a>
+        <button type="button" class="cart-continue" id="cart-continue">Alışverişe devam et</button>
+      </div>
     </section>`;
+}
+
+// Shared footer, injected server-side so links stay consistent across every page.
+function renderFooter() {
+  return `
+    <footer class="footer">
+      <div class="container newsletter">
+        <h2>Bültenimize abone olun</h2>
+        <form>
+          <input type="email" placeholder="E-posta adresiniz">
+          <button type="submit">Abone ol</button>
+        </form>
+      </div>
+      <div class="container footer__grid">
+        <div><h3>Kategoriler</h3><a href="/urunler">Figürler</a><a href="/urunler">Anahtarlıklar</a><a href="/urunler">Fidget & Stres</a><a href="/urunler">Düdükler</a></div>
+        <div><h3>Kurumsal</h3><a href="/hakkinda">Hakkımızda</a><a href="/iletisim">İletişim</a><a href="/stl-teklif">Özel 3D baskı</a><a href="/urunler">Tüm ürünler</a></div>
+        <div><h3>Müşteri Desteği</h3><a href="/iletisim">Bize ulaşın</a><a href="/sss">İade & Değişim</a><a href="/sss">Kargo</a><a href="/sss">S.S.S.</a></div>
+        <div class="footer-logo printable-wordmark"><strong>Printable</strong><p>Özel 3D baskı ürünleri ve STL baskı hizmeti.</p><p>Türkiye</p></div>
+      </div>
+    </footer>`;
 }
 
 function injectShell(html, headActive) {
   return html
     .replace("<!--header-->", renderHeader(headActive))
-    .replace("<!--cart-->", renderCartPanel());
+    .replace("<!--cart-->", renderCartPanel())
+    .replace("<!--footer-->", renderFooter());
 }
 
 function sendPage(req, res, file, slug) {
@@ -671,6 +763,9 @@ function sendPage(req, res, file, slug) {
 app.get("/", (req, res) => sendPage(req, res, "index.html", "home"));
 app.get("/urunler", (req, res) => sendPage(req, res, "urunler.html", "urunler"));
 app.get("/stl-teklif", (req, res) => sendPage(req, res, "stl-teklif.html", "stl-teklif"));
+app.get("/hakkinda", (req, res) => sendPage(req, res, "hakkinda.html", "hakkinda"));
+app.get("/iletisim", (req, res) => sendPage(req, res, "iletisim.html", "iletisim"));
+app.get("/sss", (req, res) => sendPage(req, res, "sss.html", "sss"));
 
 // Per-product SEO: crawlers need real title/description/og:image/JSON-LD in the HTML
 // (the visible detail is filled by urun.js, matching the rest of the JS-rendered site).
@@ -740,12 +835,23 @@ app.get("/urun/:id", (req, res) => {
   res.type("html").send(injectShell(html.replace("<!--seo-->", productMetaTags(req, withColors(product))), "urunler"));
 });
 
+// Checkout flow — noindex (a transactional page crawlers should not list).
+app.get("/odeme", (req, res) => {
+  const site = db.prepare("SELECT site_name FROM site_settings WHERE id = 1").get() || {};
+  const head = [
+    `<title>Ödeme | ${escapeHtml(site.site_name || "Printable")}</title>`,
+    `<meta name="robots" content="noindex,nofollow">`
+  ].join("\n    ");
+  const html = fs.readFileSync(path.join(ROOT, "odeme.html"), "utf8");
+  res.type("html").send(injectShell(html.replace("<!--seo-->", head), ""));
+});
+
 // Tell crawlers what to index and where the sitemap is. Admin and API paths are off-limits.
 app.get("/robots.txt", (req, res) => {
   const site = db.prepare("SELECT site_url FROM site_settings WHERE id = 1").get() || {};
   const base = (site.site_url || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
   res.type("text/plain").send(
-    ["User-agent: *", "Allow: /", "Disallow: /admin", "Disallow: /login", "Disallow: /api/", "", `Sitemap: ${base}/sitemap.xml`, ""].join("\n")
+    ["User-agent: *", "Allow: /", "Disallow: /admin", "Disallow: /login", "Disallow: /api/", "Disallow: /odeme", "", `Sitemap: ${base}/sitemap.xml`, ""].join("\n")
   );
 });
 
@@ -755,7 +861,10 @@ app.get("/sitemap.xml", (req, res) => {
   const urls = [
     { loc: "/", priority: "1.0" },
     { loc: "/urunler", priority: "0.9" },
-    { loc: "/stl-teklif", priority: "0.8" }
+    { loc: "/stl-teklif", priority: "0.8" },
+    { loc: "/hakkinda", priority: "0.5" },
+    { loc: "/iletisim", priority: "0.5" },
+    { loc: "/sss", priority: "0.5" }
   ];
   db.prepare("SELECT id, updated_at FROM products WHERE is_active = 1 ORDER BY id").all()
     .forEach((p) => urls.push({ loc: `/urun/${p.id}`, priority: "0.7", lastmod: String(p.updated_at || "").slice(0, 10) }));
@@ -770,7 +879,7 @@ app.get("/sitemap.xml", (req, res) => {
   );
 });
 
-["styles.css", "script.js", "stl-viewer.js", "admin.css", "admin.js", "urunler.js", "urun.js"].forEach((file) => {
+["styles.css", "script.js", "stl-viewer.js", "admin.css", "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js"].forEach((file) => {
   app.get(`/${file}`, (req, res) => res.sendFile(path.join(ROOT, file)));
 });
 
@@ -865,7 +974,8 @@ app.get("/api/stats", requireAdmin, (req, res) => {
     customers: db.prepare("SELECT COUNT(*) count FROM customers").get().count,
     orders: db.prepare("SELECT COUNT(*) count FROM orders").get().count,
     revenue: db.prepare("SELECT COALESCE(SUM(total), 0) total FROM orders").get().total,
-    quotes: db.prepare("SELECT COUNT(*) count FROM quotes WHERE status = 'new'").get().count
+    quotes: db.prepare("SELECT COUNT(*) count FROM quotes WHERE status = 'new'").get().count,
+    messages: db.prepare("SELECT COUNT(*) count FROM messages WHERE is_read = 0").get().count
   };
   res.json(stats);
 });
@@ -1177,14 +1287,15 @@ app.put("/api/pricing", requireAdmin, (req, res) => {
     UPDATE pricing_settings SET
       setup_fee=@setup_fee, size_fee_per_cm=@size_fee_per_cm,
       min_order_total=@min_order_total, shell_share=@shell_share,
-      color_change_fee=@color_change_fee, updated_at=CURRENT_TIMESTAMP
+      color_change_fee=@color_change_fee, tax_rate=@tax_rate, updated_at=CURRENT_TIMESTAMP
     WHERE id=1
   `).run({
     setup_fee: Math.max(0, Number(req.body.setup_fee) || 0),
     size_fee_per_cm: Math.max(0, Number(req.body.size_fee_per_cm) || 0),
     min_order_total: Math.max(0, Number(req.body.min_order_total) || 0),
     shell_share: Math.min(1, Math.max(0, Number.isFinite(shell) ? shell : 0.15)),
-    color_change_fee: Math.max(0, Number(req.body.color_change_fee) || 0)
+    color_change_fee: Math.max(0, Number(req.body.color_change_fee) || 0),
+    tax_rate: Math.min(100, Math.max(0, Number(req.body.tax_rate) ?? 20))
   });
   res.json(pricingSettings());
 });
@@ -1449,6 +1560,7 @@ app.put("/api/seo/site", requireAdmin, (req, res) => {
     UPDATE site_settings SET
       site_name=@site_name, site_url=@site_url, description=@description,
       logo_path=@logo_path, social_links=@social_links, default_og_image=@default_og_image,
+      phone=@phone, email=@email, contact_address=@contact_address, working_hours=@working_hours,
       updated_at=CURRENT_TIMESTAMP
     WHERE id=1
   `).run({
@@ -1457,7 +1569,11 @@ app.put("/api/seo/site", requireAdmin, (req, res) => {
     description: req.body.description?.trim() || null,
     logo_path: req.body.logo_path?.trim() || null,
     social_links: req.body.social_links?.trim() || null,
-    default_og_image: req.body.default_og_image?.trim() || null
+    default_og_image: req.body.default_og_image?.trim() || null,
+    phone: req.body.phone?.trim() || null,
+    email: req.body.email?.trim() || null,
+    contact_address: req.body.contact_address?.trim() || null,
+    working_hours: req.body.working_hours?.trim() || null
   });
 
   res.json(db.prepare("SELECT * FROM site_settings WHERE id = 1").get());
@@ -1547,6 +1663,115 @@ app.post("/api/orders", (req, res) => {
   res.status(201).json(db.prepare("SELECT * FROM orders WHERE id = ?").get(id));
 });
 
+// Turkish national ID (TC Kimlik No): 11 digits with two trailing checksum digits.
+function isValidTC(value) {
+  const tc = String(value || "").trim();
+  if (!/^[1-9][0-9]{10}$/.test(tc)) return false;
+  const d = tc.split("").map(Number);
+  const oddSum = d[0] + d[2] + d[4] + d[6] + d[8];
+  const evenSum = d[1] + d[3] + d[5] + d[7];
+  if ((((oddSum * 7) - evenSum) % 10 + 10) % 10 !== d[9]) return false;
+  return d.slice(0, 10).reduce((a, b) => a + b, 0) % 10 === d[10];
+}
+const isValidVKN = (value) => /^[0-9]{10}$/.test(String(value || "").trim());
+
+// One-shot checkout: create the customer, validate the e-fatura details, price the
+// items server-side (never trusting client prices), and write the order atomically.
+app.post("/api/checkout", (req, res) => {
+  const body = req.body || {};
+  const customer = body.customer || {};
+  const invoice = body.invoice || {};
+  const items = Array.isArray(body.items) ? body.items : [];
+
+  if (!customer.name?.trim()) return res.status(400).json({ error: "Ad soyad zorunludur." });
+  if (!customer.phone?.trim()) return res.status(400).json({ error: "Telefon numarası zorunludur." });
+  if (!customer.city?.trim()) return res.status(400).json({ error: "İl zorunludur." });
+  if (!customer.district?.trim()) return res.status(400).json({ error: "İlçe zorunludur." });
+  if (!customer.address?.trim()) return res.status(400).json({ error: "Açık adres zorunludur." });
+  if (!items.length) return res.status(400).json({ error: "Sepetiniz boş." });
+
+  const invoiceType = invoice.type === "corporate" ? "corporate" : "individual";
+  if (invoiceType === "individual") {
+    if (!isValidTC(invoice.tc_no)) return res.status(400).json({ error: "Geçerli bir TC Kimlik Numarası girin." });
+  } else {
+    if (!invoice.company_name?.trim()) return res.status(400).json({ error: "Şirket unvanı zorunludur." });
+    if (!invoice.tax_office?.trim()) return res.status(400).json({ error: "Vergi dairesi zorunludur." });
+    if (!isValidVKN(invoice.tax_number)) return res.status(400).json({ error: "Geçerli bir vergi numarası girin (10 hane)." });
+  }
+
+  const paymentMethod = ["havale", "kapida", "kart"].includes(body.payment_method) ? body.payment_method : "havale";
+
+  const create = db.transaction(() => {
+    const cust = db.prepare("INSERT INTO customers (name, email, phone, address, city) VALUES (?,?,?,?,?)").run(
+      customer.name.trim(), customer.email?.trim() || null, customer.phone.trim(), customer.address.trim(), customer.city?.trim() || null
+    );
+
+    const normalized = items.map((item) => {
+      const product = item.product_id ? db.prepare("SELECT * FROM products WHERE id = ?").get(item.product_id) : null;
+      const quantity = Math.max(1, toInt(item.quantity));
+      const unitPrice = money(product?.sale_price || product?.price || item.unit_price);
+      return {
+        product_id: product?.id || null,
+        product_name: product?.name || item.product_name || "Ürün",
+        quantity,
+        unit_price: unitPrice,
+        line_total: quantity * unitPrice
+      };
+    });
+    const subtotal = normalized.reduce((sum, item) => sum + item.line_total, 0);
+    // Prices are KDV-hariç (net); VAT is added on top. Shipping is recipient-paid
+    // (alıcı ödemeli), so it is not added to the total.
+    const taxRate = pricingSettings().tax_rate ?? KDV_RATE;
+    const taxAmount = money(subtotal * taxRate / 100);
+    const grandTotal = money(subtotal + taxAmount);
+    // Compose the structured address (mahalle / ilçe / il / posta kodu) into one line.
+    const locality = [
+      customer.neighborhood?.trim() && `${customer.neighborhood.trim()} Mah.`,
+      [customer.district?.trim(), customer.city?.trim()].filter(Boolean).join("/"),
+      customer.postal_code?.trim()
+    ].filter(Boolean).join(" ");
+    const shippingAddress = [customer.address.trim(), locality].filter(Boolean).join(" — ");
+    const billingAddress = invoice.same_as_shipping === false && invoice.billing_address?.trim()
+      ? invoice.billing_address.trim()
+      : shippingAddress;
+    const orderNumber = `PRN-${Date.now().toString().slice(-8)}`;
+
+    const order = db.prepare(`
+      INSERT INTO orders (order_number, customer_id, status, payment_status, shipping_address, subtotal, discount, total, notes,
+        invoice_type, tc_no, tax_office, tax_number, company_name, billing_address, payment_method,
+        tax_rate, tax_amount, shipping_method)
+      VALUES (@order_number, @customer_id, 'new', 'pending', @shipping_address, @subtotal, 0, @total, @notes,
+        @invoice_type, @tc_no, @tax_office, @tax_number, @company_name, @billing_address, @payment_method,
+        @tax_rate, @tax_amount, 'recipient_paid')
+    `).run({
+      order_number: orderNumber,
+      customer_id: cust.lastInsertRowid,
+      shipping_address: shippingAddress,
+      subtotal,
+      total: grandTotal,
+      notes: body.notes?.trim() || null,
+      invoice_type: invoiceType,
+      tc_no: invoiceType === "individual" ? String(invoice.tc_no).trim() : null,
+      tax_office: invoiceType === "corporate" ? invoice.tax_office.trim() : null,
+      tax_number: invoiceType === "corporate" ? String(invoice.tax_number).trim() : null,
+      company_name: invoiceType === "corporate" ? invoice.company_name.trim() : null,
+      billing_address: billingAddress,
+      payment_method: paymentMethod,
+      tax_rate: taxRate,
+      tax_amount: taxAmount
+    });
+
+    const insertItem = db.prepare(`
+      INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price, line_total)
+      VALUES (@order_id, @product_id, @product_name, @quantity, @unit_price, @line_total)
+    `);
+    normalized.forEach((item) => insertItem.run({ ...item, order_id: order.lastInsertRowid }));
+    return orderNumber;
+  });
+
+  res.status(201).json({ order_number: create() });
+});
+
 app.patch("/api/orders/:id", requireAdmin, (req, res) => {
   const current = db.prepare("SELECT * FROM orders WHERE id = ?").get(req.params.id);
   if (!current) return res.status(404).json({ error: "Sipariş bulunamadı." });
@@ -1561,6 +1786,51 @@ app.patch("/api/orders/:id", requireAdmin, (req, res) => {
     notes: req.body.notes ?? current.notes
   });
   res.json(db.prepare("SELECT * FROM orders WHERE id = ?").get(current.id));
+});
+
+// Public site info — KDV oranı + iletişim bilgileri (storefront ve /iletisim kullanır).
+app.get("/api/site-info", (req, res) => {
+  const site = db.prepare("SELECT phone, email, contact_address, working_hours, social_links FROM site_settings WHERE id = 1").get() || {};
+  const pricing = db.prepare("SELECT tax_rate FROM pricing_settings WHERE id = 1").get() || {};
+  res.json({
+    tax_rate: pricing.tax_rate ?? 20,
+    phone: site.phone || "",
+    email: site.email || "",
+    address: site.contact_address || "",
+    working_hours: site.working_hours || "",
+    social_links: site.social_links || ""
+  });
+});
+
+// Public contact form → stored as a message the admin can read in the "Mesajlar" tab.
+app.post("/api/contact", (req, res) => {
+  const name = req.body.name?.trim();
+  const message = req.body.message?.trim();
+  if (!name || !message) return res.status(400).json({ error: "Ad soyad ve mesaj alanları zorunludur." });
+  db.prepare("INSERT INTO messages (name, email, phone, subject, message) VALUES (?,?,?,?,?)").run(
+    name,
+    req.body.email?.trim() || null,
+    req.body.phone?.trim() || null,
+    req.body.subject?.trim() || null,
+    message
+  );
+  res.status(201).json({ ok: true });
+});
+
+app.get("/api/messages", requireAdmin, (req, res) => {
+  res.json(db.prepare("SELECT * FROM messages ORDER BY created_at DESC, id DESC").all());
+});
+
+app.patch("/api/messages/:id", requireAdmin, (req, res) => {
+  const current = db.prepare("SELECT * FROM messages WHERE id = ?").get(req.params.id);
+  if (!current) return res.status(404).json({ error: "Mesaj bulunamadı." });
+  db.prepare("UPDATE messages SET is_read = ? WHERE id = ?").run(req.body.is_read ? 1 : 0, current.id);
+  res.json(db.prepare("SELECT * FROM messages WHERE id = ?").get(current.id));
+});
+
+app.delete("/api/messages/:id", requireAdmin, (req, res) => {
+  db.prepare("DELETE FROM messages WHERE id = ?").run(req.params.id);
+  res.status(204).end();
 });
 
 app.get("/admin", requireAdmin, (req, res) => res.sendFile(path.join(ROOT, "admin.html")));

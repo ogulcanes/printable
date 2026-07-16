@@ -35,8 +35,9 @@
         <div class="product-detail__info">
           ${cats ? `<div class="product-detail__cats">${cats}</div>` : ""}
           <h1>${product.name}</h1>
-          <p class="product-detail__price">${money(price)}${onSale ? ` <s>${money(product.price)}</s> <span class="discount-badge">-%${off}</span>` : ""}</p>
+          <p class="product-detail__price">${money(price)} <span class="price-tax">+ KDV</span>${onSale ? ` <s>${money(product.price)}</s> <span class="discount-badge">-%${off}</span>` : ""}</p>
           ${onSale ? `<p class="product-detail__save">${money(product.price - product.sale_price)} tasarruf edin</p>` : ""}
+          <p class="product-detail__tax">Fiyata KDV eklenir · Kargo alıcı ödemeli</p>
           ${swatches ? `<div class="product-detail__colors"><span>Renkler</span><div class="swatches">${swatches}</div></div>` : ""}
           ${product.description ? `<p class="product-detail__desc">${product.description}</p>` : ""}
           <ul class="product-detail__specs">
@@ -57,11 +58,8 @@
 
     document.querySelector("#detail-add")?.addEventListener("click", () => {
       const qty = Math.max(1, parseInt(document.querySelector("#detail-qty").value, 10) || 1);
-      const existing = cart.find((item) => item.id === product.id);
-      if (existing) existing.quantity += qty;
-      else cart.push({ id: product.id, name: product.name, price, quantity: qty });
+      addToCart(product, qty);
       if (typeof cartPanel !== "undefined" && cartPanel) cartPanel.classList.add("open");
-      renderCart();
     });
   }
 
