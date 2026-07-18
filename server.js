@@ -323,13 +323,20 @@ async function initDb() {
   );
 `);
 
-// CREATE TABLE IF NOT EXISTS never adds a column to a database that already exists,
-// so every new column needs an explicit, idempotent migration as well.
-// (SQLite'ta PRAGMA table_info idi; Postgres'te karşılığı information_schema.)
-const hasColumn = async (table, column) => Boolean(await db.prepare(`
-  SELECT 1 FROM information_schema.columns
-  WHERE table_schema = 'public' AND table_name = ? AND column_name = ?
-`).get(table, column));
+/* CREATE TABLE IF NOT EXISTS never adds a column to a database that already
+   exists, so every new column needs an explicit, idempotent migration as well.
+   (SQLite'ta PRAGMA table_info idi; Postgres'te karşılığı information_schema.)
+
+   Tüm kolonlar TEK sorguda çekilip bellekte kontrol ediliyor. Ayrı ayrı
+   sorulunca her migration bir gidiş-dönüş demekti; uzak bir veritabanında
+   (Supabase) bu tek başına soğuk başlatmaya saniyeler ekliyordu. */
+const existingColumns = new Set(
+  (await db.prepare(`
+    SELECT table_name, column_name FROM information_schema.columns
+    WHERE table_schema = 'public'
+  `).all()).map((r) => `${r.table_name}.${r.column_name}`)
+);
+const hasColumn = async (table, column) => existingColumns.has(`${table}.${column}`);
 
 for (const [table, column, type] of [
   ["products", "meta_title", "TEXT"],
@@ -678,10 +685,13 @@ if (!existingSlides) {
 /* Şema hazır olana kadar hiçbir istek veritabanına dokunmamalı. initDb() modül
    yüklenirken bir kez başlar; aşağıdaki kapı her isteği o söz tutulana kadar
    bekletir. Vercel'de her soğuk başlatmada bir kez ödenen bir gecikme. */
-const dbReady = initDb().catch((error) => {
-  console.error("Veritabanı başlatılamadı:", error);
-  throw error;
-});
+const dbReady = initDb().then(
+  () => console.log("Veritabanı hazır."),
+  (error) => {
+    console.error("VERİTABANI BAŞLATILAMADI:", error.message);
+    throw error;
+  }
+);
 
 const upload = multer({
   storage: multer.diskStorage({

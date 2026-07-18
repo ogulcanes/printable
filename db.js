@@ -32,12 +32,19 @@ async function connect() {
     const pg = require("pg");
     Object.entries(NUMERIC_OIDS).forEach(([oid, parser]) => pg.types.setTypeParser(Number(oid), parser));
     // Supabase bağlantıları TLS ister; havuz serverless'ta küçük tutulur.
+    /* Zaman aşımları olmadan basarısiz bir baglanti sonsuza kadar bekliyor:
+       istek asla yanit vermiyor, log'da da hata görünmüyor. Kısa timeout'lar
+       sessiz beklemeyi net bir hataya çeviriyor. */
     const pool = new pg.Pool({
       connectionString: CONNECTION,
       ssl: { rejectUnauthorized: false },
       max: 3,
-      idleTimeoutMillis: 10_000
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 8_000,
+      statement_timeout: 15_000,
+      query_timeout: 15_000
     });
+    pool.on("error", (error) => console.error("Postgres havuz hatası:", error.message));
     client = {
       query: (sql, params) => pool.query(sql, params),
       begin: () => pool.connect(),
