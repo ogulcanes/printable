@@ -49,7 +49,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "1";
+const SCHEMA_VERSION = "2";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -331,6 +331,13 @@ async function initDb() {
     PRIMARY KEY (campaign_id, category_id),
     FOREIGN KEY(campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
     FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE CASCADE
+  );
+
+  -- Bülten aboneleri. Form daha önce hiçbir yere kaydetmiyordu.
+  CREATE TABLE IF NOT EXISTS subscribers (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
   -- Müşteri değerlendirmeleri. Herkese açık gönderim, admin onayından sonra yayında.
@@ -876,7 +883,12 @@ async function renderHeader(active) {
         <a class="logo printable-logo" href="/" aria-label="Printable ana sayfa">
           <span>Printable</span>
         </a>
-        <nav class="main-links" aria-label="Ana menü">
+        <!-- Yalnızca mobilde görünür; menüyü açar. -->
+        <button class="nav-toggle" type="button" id="nav-toggle"
+                aria-label="Menüyü aç" aria-expanded="false" aria-controls="main-links">
+          <span></span><span></span><span></span>
+        </button>
+        <nav class="main-links" id="main-links" aria-label="Ana menü">
           ${await link("/", "Ana Sayfa", "home")}
           ${await link("/urunler", "Ürünler", "urunler")}
           ${await link("/stl-teklif", "3D Baskı Teklifi", "stl-teklif")}
@@ -987,10 +999,11 @@ async function renderFooter() {
     <footer class="footer">
       <div class="container newsletter">
         <h2>Bültenimize abone olun</h2>
-        <form>
-          <input type="email" placeholder="E-posta adresiniz">
+        <form id="newsletter-form" novalidate>
+          <input type="email" name="email" placeholder="E-posta adresiniz" autocomplete="email" required>
           <button type="submit">Abone ol</button>
         </form>
+        <p class="newsletter__msg" id="newsletter-msg" role="status" hidden></p>
       </div>
       <div class="container footer__grid">
         <div><h3>Kategoriler</h3><a href="/urunler">Figürler</a><a href="/urunler">Anahtarlıklar</a><a href="/urunler">Fidget & Stres</a><a href="/urunler">Düdükler</a></div>
@@ -2558,6 +2571,33 @@ app.get("/api/site-info", async (req, res) => {
     working_hours: site.working_hours || "",
     social_links: site.social_links || ""
   });
+});
+
+/* Bülten aboneliği. Bu form daha önce hiçbir yere gitmiyordu: action'ı, JS'i ve
+   sunucu ucu yoktu; gönderilince sayfa yenileniyor, e-posta kayboluyordu. */
+app.post("/api/subscribe", async (req, res) => {
+  const email = req.body.email?.trim().toLowerCase();
+  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)) {
+    return res.status(400).json({ error: "Geçerli bir e-posta adresi girin." });
+  }
+  if (email.length > 160) return res.status(400).json({ error: "E-posta adresi çok uzun." });
+
+  // Aynı adres ikinci kez gelirse hata değil, sessizce başarı: kullanıcıya
+  // "zaten kayıtlısınız" demek abonelik listesini sızdırmak olurdu.
+  await db.prepare(`
+    INSERT INTO subscribers (email) VALUES (?) ON CONFLICT (email) DO NOTHING
+  `).run(email);
+
+  res.status(201).json({ ok: true });
+});
+
+app.get("/api/subscribers", requireAdmin, async (req, res) => {
+  res.json(await db.prepare("SELECT * FROM subscribers ORDER BY created_at DESC").all());
+});
+
+app.delete("/api/subscribers/:id", requireAdmin, async (req, res) => {
+  await db.prepare("DELETE FROM subscribers WHERE id = ?").run(req.params.id);
+  res.status(204).end();
 });
 
 // Public contact form → stored as a message the admin can read in the "Mesajlar" tab.

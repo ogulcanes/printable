@@ -308,6 +308,75 @@ document.addEventListener("click", (event) => {
   searchToggle.setAttribute("aria-expanded", "false");
 });
 
+/* Mobil menü. Masaüstünde buton gizli olduğu için bu kod hiç devreye girmez. */
+const navToggle = document.querySelector("#nav-toggle");
+const mainLinks = document.querySelector("#main-links");
+
+if (navToggle && mainLinks) {
+  const setNav = (open) => {
+    mainLinks.classList.toggle("open", open);
+    navToggle.classList.toggle("is-open", open);
+    navToggle.setAttribute("aria-expanded", String(open));
+    navToggle.setAttribute("aria-label", open ? "Menüyü kapat" : "Menüyü aç");
+  };
+
+  navToggle.addEventListener("click", () => setNav(!mainLinks.classList.contains("open")));
+
+  // Bir bağlantıya basınca menü kapanmalı, yoksa yeni sayfada açık kalmış gibi görünür.
+  mainLinks.addEventListener("click", (event) => {
+    if (event.target.closest("a")) setNav(false);
+  });
+
+  // Dışarı tıklama ve Escape ile kapat.
+  document.addEventListener("click", (event) => {
+    if (!mainLinks.classList.contains("open")) return;
+    if (event.target.closest("#main-links") || event.target.closest("#nav-toggle")) return;
+    setNav(false);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") setNav(false);
+  });
+}
+
+/* Bülten formu. Daha önce hiçbir yere bağlı değildi: gönderilince sayfa
+   yenileniyor ve e-posta kayboluyordu. */
+const newsletterForm = document.querySelector("#newsletter-form");
+
+if (newsletterForm) {
+  const msg = document.querySelector("#newsletter-msg");
+  const show = (text, ok) => {
+    if (!msg) return;
+    msg.textContent = text;
+    msg.hidden = false;
+    msg.classList.toggle("newsletter__msg--ok", ok === true);
+    msg.classList.toggle("newsletter__msg--err", ok === false);
+  };
+
+  newsletterForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const email = newsletterForm.elements.email.value.trim();
+    const button = newsletterForm.querySelector("button");
+    button.disabled = true;
+    show("Kaydediliyor…", null);
+    try {
+      const response = await fetch("/api/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Kayıt yapılamadı.");
+      newsletterForm.reset();
+      show("Teşekkürler! Bültenimize kaydınız alındı.", true);
+    } catch (error) {
+      show(error.message, false);
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
 document.querySelectorAll("[data-carousel]").forEach((button) => {
   button.addEventListener("click", () => {
     if (!storeProducts) return;

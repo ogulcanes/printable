@@ -4463,3 +4463,274 @@ body {
   .hero__copy h1 { font-size: 23px; }
   .hero__copy > span { font-size: 14px; }
 }
+
+/* ==========================================================================
+   MOBİL: HAMBURGER MENÜ, KARÜSEL, KATEGORİLER, BÜLTEN
+   ========================================================================== */
+
+/* Hamburger butonu — masaüstünde gizli. */
+.nav-toggle {
+  display: none;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid #ffe0d2;
+  border-radius: 12px;
+  background: #fff8f3;
+  cursor: pointer;
+}
+
+.nav-toggle span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  margin: 3px auto;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: transform .22s ease, opacity .18s ease;
+}
+
+/* Açıkken çarpıya dönüşür. */
+.nav-toggle.is-open span:nth-child(1) { transform: translateY(5px) rotate(45deg); }
+.nav-toggle.is-open span:nth-child(2) { opacity: 0; }
+.nav-toggle.is-open span:nth-child(3) { transform: translateY(-5px) rotate(-45deg); }
+
+.newsletter__msg {
+  margin: 12px auto 0;
+  max-width: 420px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.newsletter__msg--ok { color: #1f9d55; }
+.newsletter__msg--err { color: var(--accent); }
+
+@media (max-width: 1050px) {
+  /* Menü artık yatay kaydırmalı şerit değil, açılır panel.
+     Kaydırmalı şeritte menünün sağı ekran dışında kalıyor ve fark edilmiyordu. */
+  .nav-toggle {
+    display: block;
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    margin-left: 4px;
+  }
+
+  .header-actions {
+    grid-column: 2;
+    grid-row: 1;
+    margin-right: 48px;   /* hamburgere yer bırak */
+  }
+
+  .main-links {
+    display: none;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    overflow: visible;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 14px 30px rgba(31,33,40,.1);
+  }
+
+  .main-links.open { display: flex; }
+
+  .main-links a {
+    padding: 12px 14px;
+    border-radius: 10px;
+    text-align: left;
+  }
+
+  .main-links a.active { background: #fff3ee; }
+
+  /* Kategoriler: mobilde büyük kartlar sayfayı uzatıyordu.
+     Küçük, iki sütunlu ve yatay dizilimli hale getiriliyor. */
+  .category-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .category-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-radius: 12px;
+  }
+
+  .category-card__media {
+    flex: 0 0 56px;
+    aspect-ratio: 1;
+    border-radius: 10px;
+  }
+
+  .category-card__body { padding: 0 10px 0 0; }
+  .category-card__body strong { font-size: 13px; line-height: 1.2; }
+  .category-card__body small { font-size: 11px; }
+}
+
+@media (max-width: 720px) {
+  /* Karüsel yerine ızgara: parmakla yatay kaydırma mobilde güvenilir çalışmıyor
+     (scroll-behavior: smooth ile çakışıyor) ve okları da gizliydi — 16 üründen
+     yalnızca ikisi görülebiliyordu. İlk dört ürün ızgarada, gerisi "Tümünü gör". */
+  .products--carousel {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    overflow: visible;
+    scroll-snap-type: none;
+    scroll-behavior: auto;
+    padding: 0;
+  }
+
+  .products--carousel .product-card { flex: initial; }
+  .products--carousel .product-card:nth-child(n + 5) { display: none; }
+
+  /* Diğer ürün satırları da mobilde dörtle sınırlı: sayfa yarı yarıya kısalıyor. */
+  .products--ranked .product-card:nth-child(n + 5),
+  .js-featured .product-card:nth-child(n + 5) { display: none; }
+
+  /* Bülten: buton input'un altında ve tam genişlikte, dokunma hedefi büyük. */
+  .newsletter form {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .newsletter input,
+  .newsletter button {
+    width: 100%;
+    min-height: 48px;
+  }
+
+  .newsletter button { font-size: 15px; }
+}
+
+@media (max-width: 460px) {
+  /* Küçük telefonda kategoriler tek sütun ama yine yatay dizilimli. */
+  .category-grid { grid-template-columns: 1fr; }
+}
+
+/* ---- Mobilde sayfa uzunluğu ----
+   460px altında ürün ızgaraları tek sütuna düşüyordu: kartlar 520px boyuna
+   ulaşıyor, ana sayfa 13 ekran sürüyordu. 390px'lik bir telefonda iki sütun
+   rahatça sığıyor ve sayfa yarıya iniyor. */
+@media (max-width: 460px) {
+  .products,
+  .products--four,
+  .products--grid,
+  .products--carousel,
+  .products--ranked,
+  .products--quad {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .product-card { padding: 10px; }
+  .product-card h3 { font-size: 13px; line-height: 1.3; }
+  .product-card p { font-size: 13px; }
+  .product-card button { min-height: 36px; font-size: 12px; padding: 0 10px; }
+
+  /* Hizmet ve "neden biz" şeritleri: tek sütun yerine ikili. */
+  .service-grid,
+  .why__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .service-grid div { border-bottom: 0; }
+
+  /* Footer sütunları ikili; alt alta beş blok gereksiz uzuyordu. */
+  .footer__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+}
+
+@media (max-width: 720px) {
+  /* Bölüm boşlukları mobilde daha sıkı. */
+  .product-section { padding: 22px 0; }
+  .featured-split { padding: 20px 0; gap: 16px; }
+  .sale-band { padding: 24px 0 28px; }
+  .recommend-band { padding: 24px 0 28px; }
+  .categories { padding: 20px 0; }
+  .cyber .container { padding: 26px 0; }
+  .why .container { padding: 26px 0; }
+
+  .section-title { margin-bottom: 14px; }
+  .section-title h2 { font-size: clamp(20px, 5.5vw, 26px); }
+
+  /* İndirim ve öneri bölümlerinde de dört ürün yeterli. */
+  .js-sale .product-card:nth-child(n + 5),
+  .js-recommended .product-card:nth-child(n + 5) { display: none; }
+}
+
+@media (max-width: 720px) {
+  /* "Haftanın seçimi" paneli mobilde kare görselle ~400px alıyordu;
+     yatay görsel yeterli. */
+  .feature-panel__media { aspect-ratio: 16 / 10; }
+  .feature-panel__body { padding: 14px 16px 16px; }
+  .feature-panel__body h3 { font-size: 17px; }
+  .feature-panel__price { margin: 6px 0 12px; font-size: 19px; }
+
+  /* Ana sayfadaki STL tanıtımının demo görüntüleyicisi mobilde gereksiz uzun. */
+  .stl-quote:not(.stl-quote--page) .stl-viewer { height: 200px; }
+  .stl-quote:not(.stl-quote--page) .stl-results { margin: 8px 0; }
+  .stl-quote__grid { gap: 18px; }
+}
+
+@media (max-width: 720px) {
+  /* Küp bloğu için masaüstünde sabitlenen 210px'lik görsel yüksekliği dar
+     ekranda kartı orantısız uzatıyordu; oran tabanlıya dönüyor. */
+  .products--quad .product-card img {
+    height: auto;
+    aspect-ratio: 1 / 1;
+  }
+}
+
+@media (max-width: 720px) {
+  /* Hero görselleri kapsayıcıyı birkaç piksel aşıp sayfayı yatay
+     kaydırılabilir yapıyordu. */
+  .hero__slide {
+    width: 100%;
+    max-width: 100%;
+    object-fit: cover;
+  }
+}
+
+@media (max-width: 460px) {
+  /* İki sütunlu dar kartta "299.00 TL 349.00 TL + KDV" tek satıra sığmıyor
+     ve taşıyordu; alt satıra inebilsin. */
+  .product-card p {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 2px 5px;
+    min-width: 0;
+  }
+
+  .product-card p s { font-size: 12px; }
+  .price-tax { white-space: normal; }
+}
+
+@media (max-width: 1050px) {
+  /* Hero görselinde transform: scale(1.015) var; düzen genişliği doğru olsa da
+     boyanan kutu birkaç piksel taşıp sayfayı yatay kaydırılabilir yapıyordu.
+     Efekti korumak için taşan kısmı kırpıyoruz. */
+  .hero__slides { overflow: hidden; }
+}
+
+@media (max-width: 460px) {
+  /* Kompakt liste satırında fiyata nowrap verilmişti; indirimli üründe
+     "249.00 TL 299.00 TL + KDV" tek satıra sığmayıp sayfayı yatay
+     kaydırılabilir yapıyordu. (Bu seçici .product-card p'den daha özgül
+     olduğu için genel mobil kuralı onu ezemiyordu.) */
+  .products--list .product-card p {
+    white-space: normal;
+    flex: 0 1 auto;
+    min-width: 0;
+    font-size: 13px;
+    text-align: right;
+  }
+}
