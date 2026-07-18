@@ -1284,8 +1284,54 @@ const ratingOfProduct = db.prepare(`
   FROM reviews WHERE product_id = ? AND is_approved = 1
 `);
 
-// One decorate step so /api/products, POST and PUT all return the same shape:
-// the product row plus its colours, categories and rating.
+/* Liste için toplu sürüm. withColors ürün BAŞINA 3 sorgu yapıyor; 16 ürünlük
+   katalogda bu 49 sorgu demek. Uzak bir veritabanında (Supabase) ve küçük bir
+   bağlantı havuzunda sorgular sıraya girip zaman aşımına uğruyordu — tarayıcı
+   aynı anda birkaç uç noktayı çağırdığında 500 dönüyordu.
+   Burada tüm ilişkiler 3 sorguda çekilip bellekte eşleştiriliyor. */
+async function decorateProducts(products) {
+  if (!products.length) return [];
+  const ids = products.map((p) => p.id);
+  const list = `(${ids.map(() => "?").join(",")})`;
+
+  const [colorRows, categoryRows, ratingRows] = await Promise.all([
+    db.prepare(`
+      SELECT pc.product_id, c.* FROM colors c
+      JOIN product_colors pc ON pc.color_id = c.id
+      WHERE pc.product_id IN ${list}
+      ORDER BY c.sort_order ASC, c.id ASC
+    `).all(...ids),
+    db.prepare(`
+      SELECT pc.product_id, cat.id, cat.name FROM categories cat
+      JOIN product_categories pc ON pc.category_id = cat.id
+      WHERE pc.product_id IN ${list}
+      ORDER BY cat.sort_order ASC, cat.id ASC
+    `).all(...ids),
+    db.prepare(`
+      SELECT product_id, ROUND(AVG(rating)::numeric, 1) AS average, COUNT(*) AS count
+      FROM reviews WHERE is_approved = 1 AND product_id IN ${list}
+      GROUP BY product_id
+    `).all(...ids)
+  ]);
+
+  const bucket = (rows) => rows.reduce((map, row) => {
+    const { product_id, ...rest } = row;
+    (map[product_id] ||= []).push(rest);
+    return map;
+  }, {});
+  const colors = bucket(colorRows);
+  const categories = bucket(categoryRows);
+  const ratings = Object.fromEntries(ratingRows.map((r) => [r.product_id, { average: r.average, count: r.count }]));
+
+  return products.map((product) => ({
+    ...product,
+    rating: ratings[product.id] || { average: null, count: 0 },
+    colors: colors[product.id] || [],
+    categories: categories[product.id] || []
+  }));
+}
+
+// Tek ürün için: POST/PUT sonrası dönen kayıtta kullanılır.
 const withColors = async (product) => ({
   ...product,
   rating: (await ratingOfProduct.get(product.id)) || { average: null, count: 0 },
@@ -1329,7 +1375,7 @@ app.get("/api/products", async (req, res) => {
   // id breaks the tie: the seed inserts every product in the same second, so
   // created_at alone leaves "en yeni" in arbitrary order.
   const products = await db.prepare("SELECT * FROM products ORDER BY created_at DESC, id DESC").all();
-  res.json(await Promise.all(products.map(withColors)));
+  res.json(await decorateProducts(products));
 });
 
 app.get("/api/products/:id", async (req, res) => {

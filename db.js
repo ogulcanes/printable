@@ -38,7 +38,9 @@ async function connect() {
     const pool = new pg.Pool({
       connectionString: CONNECTION,
       ssl: { rejectUnauthorized: false },
-      max: 3,
+      // 3 fazla dardı: es zamanli istekler siraya girip baglanti zaman asimina
+      // ugruyordu. Supabase pooler istemci basina 200 baglantiya izin veriyor.
+      max: 10,
       idleTimeoutMillis: 10_000,
       connectionTimeoutMillis: 8_000,
       statement_timeout: 15_000,
