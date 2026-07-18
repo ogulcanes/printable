@@ -4312,3 +4312,154 @@ body {
   font-weight: 600;
   line-height: 1.45;
 }
+
+/* ==========================================================================
+   MOBİL VE TABLET DÜZENİ
+   Önceki katmanlarda header, logo / menü / aksiyonlar diye ayrı satırlara
+   bölünüyordu: 375px'lik bir telefonda 302px, tablette 216px yer kaplıyor,
+   içerik başlamadan ekranın yarısı gidiyordu. Burada header iki satıra
+   indiriliyor ve hero okunabilir hale getiriliyor.
+   ========================================================================== */
+
+/* ---- Tablet ve altı: header = [logo | aksiyonlar] + [menü] ---- */
+@media (max-width: 1050px) {
+  .header-main {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    min-height: 0;
+    padding: 10px 0;
+  }
+
+  .logo {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: start;
+  }
+
+  /* Aksiyonlar logonun yanında kalır; sarmalanıp ikinci satıra düşmez. */
+  .header-actions {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    padding: 0;
+  }
+
+  /* Menü tam genişlikte kendi satırında, yatay kaydırmalı. */
+  .main-links {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    position: static;
+    transform: none;
+    justify-self: stretch;
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .main-links::-webkit-scrollbar { display: none; }
+  .main-links a { white-space: nowrap; }
+
+  /* Hero: fotoğrafın üstündeki beyaz yazı tablette okunmuyordu.
+     Telefonda olduğu gibi görselin altına, koyu zemine alınıyor. */
+  .hero__slider {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    min-height: 0;
+  }
+
+  .hero__slider::before,
+  .hero__slider::after { display: none; }
+
+  .hero__slides {
+    position: relative;
+    height: clamp(220px, 34vw, 320px);
+  }
+
+  .hero__slide { border-radius: 0; }
+
+  .hero__copy {
+    position: static;
+    width: auto;
+    padding: 22px 20px 26px;
+    background: #1f2128;
+  }
+
+  .hero__copy h1 { font-size: clamp(24px, 4.4vw, 34px); }
+  .hero__copy > span { font-size: 15px; }
+
+  /* Katalog: sabit 260px'lik filtre paneli tablette ürünlere ~430px bırakıyor,
+     ürünler tek dev sütuna düşüyordu. Telefondaki açılır panel tablette de
+     kullanılıyor, ızgara tam genişliği alıyor. */
+  .catalog { grid-template-columns: 1fr; }
+  .catalog__filter-toggle { display: block; }
+
+  .catalog__filters {
+    position: static;
+    display: none;
+  }
+
+  .catalog__filters.open { display: block; }
+
+  .products--grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+}
+
+/* ---- Telefon ---- */
+@media (max-width: 720px) {
+  /* Tek sütuna düşürmüyoruz: logo ve aksiyonlar aynı satırda kalmalı. */
+  .header-main {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 8px 0;
+  }
+
+  /* Menüde zaten "3D Baskı Teklifi" var; header'daki büyük buton
+     telefonda yer kaplamaktan başka bir işe yaramıyor. */
+  .header-quote { display: none; }
+
+  .logo span { font-size: 20px; }
+  .logo img { height: 28px; }
+
+  /* Telefonda 180px'lik minimum tek sütuna düşürüyordu; 150px ile iki sütun
+     kalıyor. (Yukarıdaki tablet kuralı bu satır olmadan burayı da eziyor.) */
+  .products--grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+
+  .icon-button {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+  }
+
+  /* Dar ekranda iki buton alt alta ve eşit genişlikte.
+     .btn'de width: fit-content var; grid onu tek başına esnetemiyor. */
+  .hero-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .hero-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ---- Küçük telefon ---- */
+@media (max-width: 460px) {
+  .logo span { font-size: 18px; }
+
+  /* Arama ve hesap ikonu daralan alanda taşmasın; sepet kalır. */
+  .search-toggle,
+  .admin-link { display: none; }
+
+  .hero__copy { padding: 18px 16px 22px; }
+  .hero__copy h1 { font-size: 23px; }
+  .hero__copy > span { font-size: 14px; }
+}
