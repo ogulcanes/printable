@@ -9,6 +9,24 @@ const db = require("./db.js");
 const storage = require("./storage.js");
 
 const app = express();
+
+/* Express 4, async bir route handler reddedildiğinde isteği yanıtsız bırakır:
+   istemci hata almaz, sonsuza kadar bekler. Route'ların tamamı async olduğu için
+   tek bir beklenmedik hata sayfayı süresiz askıda bırakabiliyordu. Her handler'ı
+   sarmalayıp reddi hata middleware'ine yönlendiriyoruz.
+   (fn.length >= 4 → zaten hata middleware'i, dokunma.) */
+["get", "post", "put", "patch", "delete"].forEach((method) => {
+  const original = app[method].bind(app);
+  app[method] = (path, ...handlers) => original(path, ...handlers.map((fn) =>
+    (typeof fn !== "function" || fn.length >= 4)
+      ? fn
+      : (req, res, next) => {
+        try { return Promise.resolve(fn(req, res, next)).catch(next); }
+        catch (error) { return next(error); }
+      }
+  ));
+});
+
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
 // Vercel'de proje klasörü salt-okunurdur; yazılabilen tek yer /tmp. Yalnızca
@@ -2528,6 +2546,18 @@ app.delete("/api/messages/:id", requireAdmin, async (req, res) => {
 });
 
 app.get("/admin", requireAdmin, async (req, res) => res.sendFile(path.join(ROOT, "admin.html")));
+
+/* Son durak: yukarıdaki sarmalayıcının yakaladığı her hata buraya düşer.
+   Sessiz bir askıda kalma yerine log'a yazılıp 500 dönülür. */
+app.use((error, req, res, next) => {
+  console.error("İSTEK HATASI:", req.method, req.originalUrl, "→", error.message);
+  if (res.headersSent) return next(error);
+  const wantsJson = req.originalUrl.startsWith("/api/");
+  res.status(500);
+  return wantsJson
+    ? res.json({ error: "Beklenmeyen bir sunucu hatası oluştu." })
+    : res.type("html").send("<h1>Bir hata oluştu</h1><p>Lütfen birazdan tekrar deneyin.</p>");
+});
 
 if (require.main === module) {
   const server = app.listen(PORT, () => {
