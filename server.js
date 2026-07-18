@@ -1609,8 +1609,13 @@ app.post("/api/quote-price", async (req, res) => {
 /* Supabase yapılandırılmışsa dosyalar tarayıcıdan doğrudan Storage'a yüklenmiş
    olur ve burada yalnızca anahtarları gelir; multer devreye girmez. Yerel
    geliştirmede eski davranış (diske yükleme) korunur. */
+/* Depolama açıkken dosyalar zaten yüklenmiş olur, ama form hâlâ multipart olarak
+   gelir. Multer'ı tamamen atlarsak hiçbir şey multipart'ı çözmez ve req.body boş
+   kalır — "Ad soyad zorunludur" hatası buradan çıkıyordu. .none() dosya kabul
+   etmez ama metin alanlarını ayrıştırır. */
+const textFieldsOnly = multer().none();
 const modelUploadMiddleware = (req, res, next) =>
-  (storage.enabled ? next() : uploadModel(req, res, next));
+  (storage.enabled ? textFieldsOnly(req, res, next) : uploadModel(req, res, next));
 
 app.post("/api/quotes", modelUploadMiddleware, async (req, res) => {
   const body = req.body;
