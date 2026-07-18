@@ -8,6 +8,8 @@ const state = {
   materials: [],
   quotes: [],
   messages: [],
+  reviews: [],
+  campaigns: [],
   pricing: {},
   seo: { pages: [], site: {} }
 };
@@ -60,6 +62,33 @@ async function api(path, options = {}) {
   return response.json();
 }
 
+/* Görseli sunucudan geçirmek yerine doğrudan depoya yükler.
+   Sunucusuz platformun istek gövdesi sınırı ~4.5 MB; telefonla çekilmiş bir ürün
+   fotoğrafı bunu rahatlıkla aşar. Sunucudan imzalı bir adres alıp dosyayı oraya
+   yüklüyor, forma yalnızca anahtarı koyuyoruz.
+
+   Depolama yapılandırılmamışsa (yerel geliştirme) dosya formda bırakılır ve
+   sunucu eskisi gibi diske yazar. */
+async function hoistImageUpload(formData) {
+  const file = formData.get("image");
+  if (!(file instanceof File) || !file.size) return;
+
+  const signRes = await fetch("/api/uploads/sign", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "image", filename: file.name })
+  });
+  if (signRes.status === 503) return;            // depolama kapalı → eski yol
+  const signed = await signRes.json();
+  if (!signRes.ok) throw new Error(signed.error || "Yükleme adresi alınamadı.");
+
+  const put = await fetch(signed.signedUrl, { method: "PUT", body: file });
+  if (!put.ok) throw new Error("Görsel yüklenemedi.");
+
+  formData.delete("image");
+  formData.set("image_key", signed.path);
+}
+
 function showTab(name) {
   qsa(".tab").forEach((button) => button.classList.toggle("active", button.dataset.tab === name));
   qsa(".panel").forEach((panel) => panel.classList.toggle("active", panel.id === name));
@@ -79,6 +108,8 @@ function renderProducts() {
           <span class="badge ${product.stock > 0 ? "green" : "orange"}">Stok ${product.stock}</span>
           <span class="badge blue">${money(product.sale_price || product.price)}${product.sale_price ? ` / <s>${money(product.price)}</s>` : ""}</span>
           ${product.sale_price ? `<span class="badge orange">%${Math.round((1 - product.sale_price / product.price) * 100)} indirim</span>` : ""}
+          ${product.rating?.count ? `<span class="badge">${product.rating.average} ★ (${product.rating.count} yorum)</span>` : ""}
+          <span class="badge">Eklendi: ${formatDateTime(product.created_at)}</span>
         </div>
         <div class="price-history" data-history-for="${product.id}" hidden></div>
       </div>
@@ -266,7 +297,7 @@ function renderCategories() {
 }
 
 const SEO_PAGE_FIELDS = ["title", "description", "canonical", "og_title", "og_description", "og_image", "robots"];
-const SEO_SITE_FIELDS = ["site_name", "site_url", "description", "logo_path", "default_og_image", "phone", "email", "contact_address", "working_hours", "social_links"];
+const SEO_SITE_FIELDS = ["site_name", "site_url", "description", "logo_path", "default_og_image", "phone", "email", "whatsapp", "contact_address", "working_hours", "social_links"];
 
 function fillSeoPageForm(slug) {
   const page = state.seo.pages.find((item) => item.slug === slug);
@@ -290,7 +321,10 @@ function renderSeo() {
 
   const siteForm = qs("#seo-site-form");
   SEO_SITE_FIELDS.forEach((key) => {
-    siteForm.elements[key].value = state.seo.site[key] ?? "";
+    // Guarded: a browser holding a cached admin.html without a field this list
+    // knows about would otherwise throw here and take the whole SEO tab down.
+    const field = siteForm.elements[key];
+    if (field) field.value = state.seo.site[key] ?? "";
   });
 }
 
@@ -377,8 +411,113 @@ function renderMessages() {
   `).join("") || "<p>Henüz mesaj yok.</p>";
 }
 
+// Yıldızlar metin olarak — puan 1-5 tam sayı, yarım yıldız yok.
+const starsHtml = (rating) =>
+  `<span class="stars" aria-label="5 üzerinden ${rating}">${"★".repeat(rating)}${"☆".repeat(5 - rating)}</span>`;
+
+function renderReviews() {
+  const pending = state.reviews.filter((r) => !r.is_approved).length;
+  qs("#review-count").textContent =
+    `${state.reviews.length} yorum${pending ? ` · ${pending} onay bekliyor` : ""}`;
+  // author_name ve comment herkese açık girdidir — escapeHtml zorunlu.
+  qs("#review-list").innerHTML = state.reviews.map((r) => `
+    <article class="row ${r.is_approved ? "" : "row--unread"}">
+      <span class="brand-mark">${r.rating}★</span>
+      <div>
+        <h3>${escapeHtml(r.author_name)} — ${escapeHtml(r.product_name) || "Silinmiş ürün"}
+          ${r.is_approved ? '<span class="badge green">Yayında</span>' : '<span class="badge orange">Onay bekliyor</span>'}
+        </h3>
+        <p>${escapeHtml(r.comment) || "<em>Yorum yazılmamış, sadece puan verilmiş.</em>"}</p>
+        <div class="meta-line">
+          <span class="badge">${starsHtml(r.rating)}</span>
+          <span class="badge">${formatDateTime(r.created_at)}</span>
+        </div>
+      </div>
+      <div class="row-actions">
+        <button data-toggle-review="${r.id}" data-approved="${r.is_approved ? 1 : 0}">
+          ${r.is_approved ? "Yayından kaldır" : "Onayla"}
+        </button>
+        <button class="danger" data-delete-review="${r.id}">Sil</button>
+      </div>
+    </article>
+  `).join("") || "<p>Henüz yorum yok.</p>";
+}
+
+/* ---------- kampanyalar ---------- */
+
+const campaignRule = (c) => {
+  const parts = [];
+  parts.push(c.code ? `Kod: ${escapeHtml(c.code)}` : "Otomatik uygulanır");
+  parts.push(c.kind === "gift"
+    ? `Hediye: ${escapeHtml(state.products.find((p) => p.id === c.gift_product_id)?.name || "ürün silinmiş")} x${c.gift_quantity}`
+    : c.discount_type === "percent" ? `%${c.discount_value} indirim` : `${money(c.discount_value)} indirim`);
+  parts.push({ all: "Tüm ürünler", products: "Seçili ürünler", categories: "Seçili kategoriler" }[c.scope]);
+  if (c.min_quantity) parts.push(`en az ${c.min_quantity} adet`);
+  if (c.min_order_total) parts.push(`en az ${money(c.min_order_total)}`);
+  return parts.join(" · ");
+};
+
+function renderCampaigns() {
+  const active = state.campaigns.filter((c) => c.is_active).length;
+  qs("#campaign-count").textContent = `${state.campaigns.length} kampanya${active ? ` · ${active} aktif` : ""}`;
+  qs("#campaign-list").innerHTML = state.campaigns.map((c) => {
+    const limitText = c.usage_limit ? `${c.used_count}/${c.usage_limit} kullanıldı` : `${c.used_count} kez kullanıldı`;
+    const dates = [c.starts_at, c.ends_at].filter(Boolean).join(" → ");
+    return `
+      <article class="row ${c.is_active ? "" : "row--unread"}">
+        <span class="brand-mark">${c.kind === "gift" ? "🎁" : "%"}</span>
+        <div>
+          <h3>${escapeHtml(c.name)}
+            ${c.is_active ? '<span class="badge green">Aktif</span>' : '<span class="badge orange">Pasif</span>'}
+            ${c.code ? '<span class="badge blue">Kodlu</span>' : '<span class="badge">Otomatik</span>'}
+          </h3>
+          <p>${campaignRule(c)}</p>
+          <div class="meta-line">
+            <span class="badge">${limitText}</span>
+            ${dates ? `<span class="badge">${dates}</span>` : ""}
+          </div>
+        </div>
+        <div class="row-actions">
+          <button data-edit-campaign="${c.id}">Düzenle</button>
+          <button data-toggle-campaign="${c.id}" data-active="${c.is_active ? 1 : 0}">${c.is_active ? "Pasife al" : "Aktifleştir"}</button>
+          <button class="danger" data-delete-campaign="${c.id}">Sil</button>
+        </div>
+      </article>`;
+  }).join("") || "<p>Henüz kampanya yok.</p>";
+}
+
+// Kapsam ve tür seçimine göre ilgili alanları göster; gizli alanlar formu kirletmesin.
+function syncCampaignFields() {
+  const form = qs("#campaign-form");
+  const kind = form.elements.kind.value;
+  const scope = form.elements.scope.value;
+  qs("[data-campaign-discount]").hidden = kind !== "discount";
+  qs("[data-campaign-gift]").hidden = kind !== "gift";
+  qs("[data-campaign-products]").hidden = scope !== "products";
+  qs("[data-campaign-categories]").hidden = scope !== "categories";
+  form.elements.discount_value.required = kind === "discount";
+}
+
+function renderCampaignOptions(campaign) {
+  const productIds = new Set(campaign?.product_ids || []);
+  const categoryIds = new Set(campaign?.category_ids || []);
+  qs("#campaign-products").innerHTML = state.products.map((p) => `
+    <label class="color-option">
+      <input type="checkbox" name="product_ids" value="${p.id}" ${productIds.has(p.id) ? "checked" : ""}>
+      ${escapeHtml(p.name)}
+    </label>`).join("") || "<p>Ürün yok.</p>";
+  qs("#campaign-categories").innerHTML = state.categories.map((c) => `
+    <label class="color-option">
+      <input type="checkbox" name="category_ids" value="${c.id}" ${categoryIds.has(c.id) ? "checked" : ""}>
+      ${escapeHtml(c.name)}
+    </label>`).join("") || "<p>Kategori yok.</p>";
+  qs("#campaign-gift-product").innerHTML = state.products.map((p) =>
+    `<option value="${p.id}" ${campaign?.gift_product_id === p.id ? "selected" : ""}>${escapeHtml(p.name)}</option>`
+  ).join("");
+}
+
 async function refresh() {
-  const [stats, products, customers, orders, slides, categories, colors, materials, quotes, pricing, seo, messages] = await Promise.all([
+  const [stats, products, customers, orders, slides, categories, colors, materials, quotes, pricing, seo, messages, reviews, campaigns] = await Promise.all([
     api("/api/stats"),
     api("/api/products"),
     api("/api/customers"),
@@ -390,7 +529,9 @@ async function refresh() {
     api("/api/quotes"),
     api("/api/pricing"),
     api("/api/seo"),
-    api("/api/messages")
+    api("/api/messages"),
+    api("/api/reviews"),
+    api("/api/campaigns")
   ]);
   state.products = products;
   state.customers = customers;
@@ -403,6 +544,8 @@ async function refresh() {
   state.pricing = pricing;
   state.seo = seo;
   state.messages = messages;
+  state.reviews = reviews;
+  state.campaigns = campaigns;
   qs("#stat-products").textContent = stats.products;
   qs("#stat-customers").textContent = stats.customers;
   qs("#stat-orders").textContent = stats.orders;
@@ -417,6 +560,11 @@ async function refresh() {
   renderMaterials();
   renderQuotes();
   renderMessages();
+  renderReviews();
+  renderCampaigns();
+  // Yalnızca düzenlenmiyorken sıfırla — düzenleme sırasındaki seçimler kaybolmasın.
+  if (!qs('#campaign-form input[name="id"]').value) renderCampaignOptions(null);
+  syncCampaignFields();
   renderProductColorOptions(currentProductColorIds());
   renderProductCategoryOptions(currentProductCategoryIds());
   renderSeo();
@@ -436,6 +584,105 @@ qs("#message-list").addEventListener("click", async (event) => {
   }
   if (deleteId && confirm("Bu mesaj silinsin mi?")) {
     await api(`/api/messages/${deleteId}`, { method: "DELETE" });
+    await refresh();
+  }
+});
+
+qs("#review-list").addEventListener("click", async (event) => {
+  const toggleId = event.target.dataset.toggleReview;
+  const deleteId = event.target.dataset.deleteReview;
+  if (toggleId) {
+    const wasApproved = event.target.dataset.approved === "1";
+    await api(`/api/reviews/${toggleId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_approved: !wasApproved })
+    });
+    await refresh();
+  }
+  if (deleteId && confirm("Bu yorum silinsin mi?")) {
+    await api(`/api/reviews/${deleteId}`, { method: "DELETE" });
+    await refresh();
+  }
+});
+
+/* ---------- kampanya formu ---------- */
+
+qs("#campaign-kind").addEventListener("change", syncCampaignFields);
+qs("#campaign-scope").addEventListener("change", syncCampaignFields);
+
+function resetCampaignForm() {
+  const form = qs("#campaign-form");
+  form.reset();
+  form.elements.id.value = "";
+  renderCampaignOptions(null);
+  syncCampaignFields();
+}
+
+qs("#campaign-reset").addEventListener("click", resetCampaignForm);
+
+qs("#campaign-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.target;
+  const data = Object.fromEntries(new FormData(form).entries());
+  // Checkbox'lar tekrarlı isimle gelir; FormData.getAll ile diziye çevrilmeli.
+  data.product_ids = qsa('#campaign-products input:checked').map((i) => i.value);
+  data.category_ids = qsa('#campaign-categories input:checked').map((i) => i.value);
+  data.is_active = data.is_active === "true";
+
+  const id = data.id;
+  delete data.id;
+  await api(id ? `/api/campaigns/${id}` : "/api/campaigns", {
+    method: id ? "PUT" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data)
+  });
+  resetCampaignForm();
+  await refresh();
+});
+
+qs("#campaign-list").addEventListener("click", async (event) => {
+  const editId = event.target.dataset.editCampaign;
+  const toggleId = event.target.dataset.toggleCampaign;
+  const deleteId = event.target.dataset.deleteCampaign;
+
+  if (editId) {
+    const campaign = state.campaigns.find((c) => c.id === Number(editId));
+    if (!campaign) return;
+    const form = qs("#campaign-form");
+    form.elements.id.value = campaign.id;
+    form.elements.name.value = campaign.name;
+    form.elements.code.value = campaign.code || "";
+    form.elements.kind.value = campaign.kind;
+    form.elements.scope.value = campaign.scope;
+    form.elements.discount_type.value = campaign.discount_type;
+    form.elements.discount_value.value = campaign.discount_value || "";
+    form.elements.gift_quantity.value = campaign.gift_quantity || 1;
+    form.elements.min_quantity.value = campaign.min_quantity || 0;
+    form.elements.min_order_total.value = campaign.min_order_total || 0;
+    form.elements.starts_at.value = campaign.starts_at || "";
+    form.elements.ends_at.value = campaign.ends_at || "";
+    form.elements.usage_limit.value = campaign.usage_limit || "";
+    form.elements.is_active.value = campaign.is_active ? "true" : "false";
+    renderCampaignOptions(campaign);
+    syncCampaignFields();
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  if (toggleId) {
+    const campaign = state.campaigns.find((c) => c.id === Number(toggleId));
+    if (!campaign) return;
+    // PUT tam kayıt bekliyor; mevcut kampanyayı olduğu gibi geri gönder.
+    await api(`/api/campaigns/${toggleId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...campaign, is_active: !campaign.is_active })
+    });
+    await refresh();
+  }
+
+  if (deleteId && confirm("Bu kampanya silinsin mi?")) {
+    await api(`/api/campaigns/${deleteId}`, { method: "DELETE" });
     await refresh();
   }
 });
@@ -475,6 +722,7 @@ qs("#product-form").addEventListener("submit", async (event) => {
   const form = event.currentTarget;
   const formData = new FormData(form);
   formData.set("is_active", form.is_active.checked ? "1" : "0");
+  await hoistImageUpload(formData);
   const id = formData.get("id");
   await api(id ? `/api/products/${id}` : "/api/products", {
     method: id ? "PUT" : "POST",
@@ -527,7 +775,13 @@ qs("#product-list").addEventListener("click", async (event) => {
 
 // SQLite stores changed_at as UTC "YYYY-MM-DD HH:MM:SS"; render it in local Turkish format.
 function formatDateTime(value) {
-  const date = new Date(String(value).replace(" ", "T") + "Z");
+  if (!value) return "";
+  const text = String(value);
+  // İki biçim de gelebilir: Postgres ISO ("…T19:10:27.641Z") ve saat dilimsiz
+  // "YYYY-MM-DD HH:MM:SS". İkincisi UTC kabul edilip Z ekleniyor; birincisine
+  // Z eklemek "…ZZ" yapıp tarihi geçersiz kılar.
+  const hasZone = /[TZ]|[+-]\d{2}:?\d{2}$/.test(text);
+  const date = new Date(hasZone ? text : `${text.replace(" ", "T")}Z`);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString("tr-TR", { dateStyle: "medium", timeStyle: "short" });
 }
 
@@ -685,6 +939,7 @@ qs("#category-form").addEventListener("submit", async (event) => {
   const form = event.currentTarget;
   const formData = new FormData(form);
   formData.set("is_active", form.is_active.checked ? "1" : "0");
+  await hoistImageUpload(formData);
   const id = formData.get("id");
   await api(id ? `/api/categories/${id}` : "/api/categories", {
     method: id ? "PUT" : "POST",
@@ -754,6 +1009,7 @@ qs("#slide-form").addEventListener("submit", async (event) => {
   const form = event.currentTarget;
   const formData = new FormData(form);
   formData.set("is_active", form.is_active.checked ? "1" : "0");
+  await hoistImageUpload(formData);
   const id = formData.get("id");
   await api(id ? `/api/hero-slides/${id}` : "/api/hero-slides", {
     method: id ? "PUT" : "POST",

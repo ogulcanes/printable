@@ -5,6 +5,8 @@
   if (!steps) return;
 
   const qs = (s) => document.querySelector(s);
+  const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+  const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ESC[c]);
   const panels = [...document.querySelectorAll(".checkout-panel")];
   const stepItems = [...document.querySelectorAll("#checkout-steps li")];
   let step = 1;
@@ -49,16 +51,64 @@
 
   let taxRate = 20; // KDV hariç fiyatların üstüne eklenir; oran /api/site-info'dan gelir.
 
+  // Campaigns are computed server-side; this holds the last preview so the
+  // summary can show it. The server recomputes everything on submit anyway.
+  let campaigns = { discount: 0, gifts: [], applied: [], incentives: [] };
+
   function renderSummary() {
     const subtotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
-    const tax = subtotal * taxRate / 100;
+    const discount = Math.min(campaigns.discount || 0, subtotal);
+    const net = subtotal - discount;
+    const tax = net * taxRate / 100;
     qs("#summary-items").innerHTML = cart.map((i) =>
       `<div class="summary-item"><span>${i.quantity} × ${i.name}</span><span>${money(i.price * i.quantity)}</span></div>`
     ).join("") || `<p class="summary-empty">Sepet boş</p>`;
+
+    const rows = [
+      ...(campaigns.applied || []).filter((c) => c.kind !== "gift").map((c) =>
+        `<div class="summary-line summary-line--discount"><span>${escapeHtml(c.label)}</span><span>-${money(c.amount)}</span></div>`),
+      ...(campaigns.gifts || []).map((g) =>
+        `<div class="summary-line summary-line--gift"><span>🎁 ${escapeHtml(g.product_name)} ×${g.quantity}</span><span>Hediye</span></div>`),
+      ...(campaigns.incentives || []).map((i) =>
+        `<p class="summary-incentive">${escapeHtml(i.text)}</p>`)
+    ].join("");
+    qs("#summary-campaigns").innerHTML = rows;
+
     qs("#summary-tax-rate").textContent = `%${taxRate}`;
     qs("#summary-subtotal").textContent = money(subtotal);
     qs("#summary-tax").textContent = money(tax);
-    qs("#summary-total").textContent = money(subtotal + tax);
+    qs("#summary-total").textContent = money(net + tax);
+  }
+
+  // Ask the server what applies to this cart. Never computed in the browser.
+  async function refreshCampaigns() {
+    if (!cart.length) {
+      campaigns = { discount: 0, gifts: [], applied: [], incentives: [] };
+      renderSummary();
+      return;
+    }
+    try {
+      const res = await fetch("/api/campaigns/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: qs("#coupon-code")?.value || "",
+          items: cart.map((i) => ({ product_id: i.id, quantity: i.quantity }))
+        })
+      });
+      campaigns = await res.json();
+      const msg = qs("#coupon-message");
+      if (msg) {
+        const applied = (campaigns.applied || []).find((c) => c.code);
+        msg.hidden = !campaigns.error && !applied;
+        msg.textContent = campaigns.error || (applied ? `"${applied.code}" uygulandı.` : "");
+        msg.classList.toggle("coupon-box__msg--err", Boolean(campaigns.error));
+        msg.classList.toggle("coupon-box__msg--ok", !campaigns.error && Boolean(applied));
+      }
+    } catch {
+      campaigns = { discount: 0, gifts: [], applied: [], incentives: [] };
+    }
+    renderSummary();
   }
 
   // Pull the admin-set KDV rate so the summary matches the server's calculation.
@@ -69,8 +119,17 @@
   function refreshCartViews() {
     renderCheckoutCart();
     renderSummary();
+    // Cart changed → the qualifying campaigns may have changed with it.
+    refreshCampaigns();
     if (typeof renderCart === "function") renderCart(); // keep the header drawer + count in sync
   }
+
+  qs("#coupon-apply")?.addEventListener("click", refreshCampaigns);
+  qs("#coupon-code")?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();   // inside a form this would submit the checkout
+    refreshCampaigns();
+  });
 
   function showStep(n) {
     step = Math.min(LAST, Math.max(1, n));
@@ -187,6 +246,8 @@
         billing_address: sameAddress ? "" : inv.billing_address.value.trim()
       },
       payment_method: qs('input[name="payment_method"]:checked').value,
+      // Only the code travels — the server prices the campaign itself.
+      coupon_code: qs("#coupon-code")?.value.trim() || "",
       items: cart.map((i) => ({ product_id: i.id, quantity: i.quantity }))
     };
 

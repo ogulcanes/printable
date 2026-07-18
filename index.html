@@ -45,7 +45,7 @@
       <section class="promise-bar">
         <div class="container promise-bar__grid">
           <div>Hızlı üretim ve teslimat</div>
-          <div>Net fiyat garantisi</div>
+          <div>Kendi modelinize özel üretim</div>
           <div>Sipariş takip desteği</div>
         </div>
       </section>
@@ -109,29 +109,52 @@
           <div class="cyber__offers">
             <p><strong>Ek %10 indirim</strong><br>seçili 3D baskı ürünlerinde</p>
             <p><strong>Toplu sipariş avantajı</strong><br>çoklu alımlarda özel fiyat</p>
+            <p><strong>Ücretsiz model kontrolü</strong><br>baskı öncesi ölçü ve hata kontrolü</p>
           </div>
+          <!-- Filled from the live catalogue by script.js — these numbers move on
+               their own as products are added, so the band never goes stale. -->
+          <dl class="cyber__live" id="cyber-live" hidden></dl>
         </div>
       </section>
 
-      <section class="container product-section" id="sale-section" hidden>
-        <div class="section-title">
-          <div>
-            <p class="section-kicker">Fırsatlar</p>
-            <h2>İndirimdeki Ürünler</h2>
+      <section class="sale-band" id="sale-section" hidden>
+        <div class="container">
+          <div class="sale-band__head">
+            <div>
+              <p class="section-kicker">Sınırlı fırsat</p>
+              <h2>İndirimdeki Ürünler</h2>
+              <p class="sale-band__lead" id="sale-lead"></p>
+            </div>
+            <a class="sale-band__all" href="/urunler?indirim=1">Tüm indirimliler</a>
           </div>
-          <a href="/urunler?indirim=1">Tümünü gör</a>
+          <div class="products products--sale js-sale"></div>
         </div>
-        <div class="products js-sale"></div>
       </section>
 
       <section class="container categories">
-        <h2>Kategorilere Göre Alışveriş</h2>
+        <div class="section-title centered">
+          <div>
+            <p class="section-kicker">Kategoriler</p>
+            <h2>Kategorilere Göre Alışveriş</h2>
+          </div>
+        </div>
         <div class="category-grid" id="category-grid"></div>
       </section>
 
-      <section class="container product-section">
-        <div class="section-title"><h2>Öne Çıkan Ürünler</h2><a href="/urunler">Tümünü gör</a></div>
-        <div class="products js-featured"></div>
+      <!-- Feature panel + 2x2 quad. Deliberately not another 5-across row: the
+           homepage was four identical grids in a column. -->
+      <section class="container featured-split">
+        <article class="feature-panel" id="feature-panel" hidden></article>
+        <div class="featured-split__main">
+          <div class="section-title">
+            <div>
+              <p class="section-kicker">Seçkimiz</p>
+              <h2>Öne Çıkan Ürünler</h2>
+            </div>
+            <a href="/urunler">Tümünü gör</a>
+          </div>
+          <div class="products products--quad js-featured"></div>
+        </div>
       </section>
 
       <section class="service-row">
@@ -144,14 +167,31 @@
         </div>
       </section>
 
+      <!-- Ranked: "çok satan" implies an order, so show it instead of stating it. -->
       <section class="container product-section">
-        <div class="section-title"><h2>Çok Satan Ürünler</h2><a href="/urunler">Tümünü gör</a></div>
-        <div class="products js-popular"></div>
+        <div class="section-title">
+          <div>
+            <p class="section-kicker">Sıralama</p>
+            <h2>Çok Satan Ürünler</h2>
+          </div>
+          <a href="/urunler">Tümünü gör</a>
+        </div>
+        <div class="products products--ranked js-popular"></div>
       </section>
 
-      <section class="container product-section">
-        <div class="section-title centered"><h2>Sizin İçin Önerilenler</h2></div>
-        <div class="products js-recommended"></div>
+      <!-- Compact rows, not cards — a third grid of the same tiles would read as
+           filler this far down the page. -->
+      <section class="recommend-band">
+        <div class="container">
+          <div class="section-title">
+            <div>
+              <p class="section-kicker">Size özel</p>
+              <h2>Sizin İçin Önerilenler</h2>
+            </div>
+            <a href="/urunler">Tümünü gör</a>
+          </div>
+          <div class="products products--list js-recommended"></div>
+        </div>
       </section>
 
       <section class="why">
@@ -171,7 +211,7 @@
 
     <!--footer-->
 
-    <button class="chat" type="button">?</button>
+    <!--chat-->
     <script src="script.js"></script>
   </body>
 </html>

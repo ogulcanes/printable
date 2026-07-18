@@ -99,7 +99,17 @@
           <aside class="checkout-summary" aria-label="Sipariş özeti">
             <h2>Sipariş özeti</h2>
             <div id="summary-items" class="summary-items"></div>
+            <div class="coupon-box">
+              <label for="coupon-code">Kampanya kodu</label>
+              <div class="coupon-box__row">
+                <input id="coupon-code" name="coupon_code" placeholder="Kodunuz varsa girin" autocomplete="off">
+                <button type="button" id="coupon-apply">Uygula</button>
+              </div>
+              <p class="coupon-box__msg" id="coupon-message" role="status" hidden></p>
+            </div>
+
             <div class="summary-line"><span>Ara toplam (KDV hariç)</span><strong id="summary-subtotal">0.00 TL</strong></div>
+            <div id="summary-campaigns" class="summary-campaigns"></div>
             <div class="summary-line summary-line--muted"><span>KDV (<span id="summary-tax-rate">%20</span>)</span><span id="summary-tax">0.00 TL</span></div>
             <div class="summary-line summary-line--muted"><span>Kargo</span><span class="summary-shipping">Alıcı ödemeli</span></div>
             <div class="summary-line summary-total"><span>Genel toplam</span><strong id="summary-total">0.00 TL</strong></div>
@@ -114,7 +124,7 @@
 
     <!--footer-->
 
-    <button class="chat" type="button">?</button>
+    <!--chat-->
     <script src="/script.js"></script>
     <script src="/odeme.js"></script>
   </body>

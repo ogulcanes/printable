@@ -26,6 +26,7 @@
   --muted: #6c7180;
   --line: #e8eaf0;
   --soft: #f6f7fb;
+  --whatsapp: #25d366;
   font-family: "Manrope", "DM Sans", Arial, sans-serif;
 }
 
@@ -425,11 +426,12 @@ img { display: block; max-width: 100%; }
 }
 .cyber .container { padding: 36px 0; }
 .cyber h2 { margin: 0 0 22px; font-size: 28px; }
+/* auto-fit so a third promise sits on the same row instead of stranding itself. */
 .cyber__offers {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 20px;
-  max-width: 720px;
+  max-width: 940px;
   margin: 0 auto;
 }
 .cyber__offers p {
@@ -440,28 +442,49 @@ img { display: block; max-width: 100%; }
 }
 .cyber strong { color: var(--accent); text-transform: uppercase; }
 
-.categories { padding: 28px 0; text-align: center; }
+.categories { padding: 28px 0; }
+/* auto-fit, not a fixed 6: five categories then fill the row evenly instead of
+   leaving a gap, and a sixth wraps on its own. */
 .category-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 18px;
   margin-top: 26px;
 }
-.category-grid a {
+.category-card {
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fff;
+  text-align: left;
+  transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease;
+}
+.category-card:hover {
+  transform: translateY(-4px);
+  border-color: #f0c3ae;
+  box-shadow: 0 16px 32px rgba(31,33,40,.1);
+}
+.category-card__media {
+  display: block;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: #fff8f3;
+}
+.category-card__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform .35s ease;
+}
+.category-card:hover .category-card__media img { transform: scale(1.06); }
+.category-card__body {
   display: grid;
-  justify-items: center;
-  gap: 12px;
-  font-weight: 700;
-  font-size: 13px;
+  gap: 3px;
+  padding: 14px 16px 16px;
 }
-.category-grid img {
-  width: 112px;
-  height: 112px;
-  object-fit: contain;
-  border-radius: 50%;
-  background: var(--soft);
-  padding: 18px;
-}
+.category-card__body strong { font-size: 15px; color: var(--text); }
+.category-card__body small { color: var(--muted); font-size: 12px; font-weight: 600; }
 
 .split-products {
   display: grid;
@@ -614,18 +637,77 @@ img { display: block; max-width: 100%; }
   font-size: 24px;
   color: var(--blue);
 }
+/* Phone / WhatsApp / e-mail lines under the footer wordmark. Declared after
+   `.footer a` above, which would otherwise force block layout and grey text. */
+.footer-contact {
+  margin: 0 0 16px;
+}
+.footer-contact__line {
+  display: block;
+  margin: 0 0 6px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+}
+.footer-contact__line:hover {
+  color: var(--accent);
+}
+.footer-social {
+  display: flex;
+  gap: 10px;
+}
+.footer-social a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--text);
+  transition: background .2s ease, color .2s ease, transform .2s ease;
+}
+.footer-social a:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  transform: translateY(-2px);
+}
+.footer-social svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+/* Floating WhatsApp button — an <a>, not the old inert "?" <button>. */
 .chat {
   position: fixed;
   right: 18px;
   bottom: 18px;
-  width: 48px;
-  height: 48px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
   border: 0;
   border-radius: 50%;
-  background: var(--blue-2);
+  background: var(--whatsapp);
   color: #fff;
   font-weight: 800;
   box-shadow: 0 12px 30px rgba(0,0,0,.24);
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+.chat:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 34px rgba(37,211,102,.4);
+}
+.chat svg {
+  width: 30px;
+  height: 30px;
+  fill: currentColor;
 }
 
 @media (max-width: 1050px) {
@@ -1334,9 +1416,10 @@ body {
   background: #fff8f3;
 }
 
-.category-grid img {
+/* The tint lives on .category-card__media now; a border here would draw a second
+   frame inside the card. Kept as the media backdrop only. */
+.category-grid .category-card__media {
   background: #fff8f3;
-  border: 1px solid #ffe0d2;
 }
 
 /* Slide only — fading opacity here washed the banner out against the light
@@ -2308,6 +2391,183 @@ body {
   color: #6b6660;
 }
 
+/* ---- Step 1 dropzone. New component: `.stl-upload` above is the storefront's
+   CTA link and is re-declared across three layers, so the wizard gets its own. ---- */
+.stl-drop {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  max-width: 460px;
+  padding: 26px 22px;
+  border: 2px dashed #f0c3ae;
+  border-radius: 18px;
+  background: #fffaf7;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s ease, background .2s ease, transform .2s ease;
+}
+
+.stl-drop input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.stl-drop:hover,
+.stl-drop:focus-within {
+  border-color: var(--accent);
+  background: #fff5f0;
+}
+
+/* Dragging over it: the whole card lifts, so the drop target is unmistakable. */
+.stl-drop.is-dragging {
+  border-color: var(--accent);
+  background: #ffece4;
+  transform: translateY(-2px);
+}
+
+.stl-drop__icon {
+  width: 34px;
+  height: 34px;
+  margin-bottom: 2px;
+  stroke: var(--accent);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+.stl-drop strong { font-size: 17px; color: #1f2128; }
+.stl-drop__hint { font-size: 14px; color: #6b6660; }
+.stl-drop__hint b { color: var(--accent); text-decoration: underline; }
+
+.stl-drop__formats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.stl-drop__formats i {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid #f2ddd1;
+  color: #8a8078;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+/* Once a file is loaded the dropzone steps back — the summary card is the
+   thing to read, and re-uploading is the rarer action. */
+.stl-drop.has-file {
+  padding: 14px 18px;
+  gap: 2px;
+}
+.stl-drop.has-file .stl-drop__icon,
+.stl-drop.has-file .stl-drop__formats { display: none; }
+.stl-drop.has-file strong { font-size: 14px; }
+
+/* display:flex would otherwise beat the hidden attribute and show an empty card. */
+.stl-file-card[hidden] { display: none; }
+
+.stl-file-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 460px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid #cdeadb;
+  border-radius: 14px;
+  background: #f3fbf7;
+  cursor: pointer;
+}
+
+.stl-file-card__tick {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #1f9d55;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.stl-file-card__body { min-width: 0; }
+
+.stl-file-card__body strong {
+  display: block;
+  font-size: 14px;
+  color: #1f2128;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stl-file-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 2px;
+  color: #5f7a6c;
+  font-size: 12px;
+}
+.stl-file-card__meta i { font-style: normal; }
+
+.stl-file-card__change {
+  flex: none;
+  margin-left: auto;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: underline;
+}
+
+/* The error state has no icon or action, just two stacked lines — the flex row
+   above would sit them side by side. */
+.stl-file-card--error {
+  display: block;
+  border-color: #f3c6ba;
+  background: #fff3ef;
+}
+.stl-file-card--error .stl-file-card__tick,
+.stl-file-card--error .stl-file-card__change { display: none; }
+.stl-file-card--error strong { display: block; font-size: 14px; color: #1f2128; }
+.stl-file-card--error span { color: #8a5a4a; font-size: 12px; }
+
+.stl-assurances {
+  display: grid;
+  gap: 5px;
+  max-width: 460px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stl-assurances li {
+  position: relative;
+  padding-left: 20px;
+  color: #6b6660;
+  font-size: 13px;
+}
+
+.stl-assurances li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  color: #1f9d55;
+  font-weight: 800;
+}
+
 .stl-options {
   display: grid;
   gap: 8px;
@@ -2361,6 +2621,17 @@ body {
   margin-bottom: 12px;
   padding-right: 4px;
   overflow-y: auto;
+  /* A 21-part model fills this box six times over and the last row was cut
+     mid-card, reading as broken rather than scrollable. Fade the bottom edge. */
+  -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 20px), transparent);
+  mask-image: linear-gradient(180deg, #000 calc(100% - 20px), transparent);
+}
+
+/* Nothing to scroll, nothing to fade — otherwise a two-part model gets its last
+   card washed out for no reason. */
+.stl-parts:not(.is-scrollable) {
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 
 .stl-part {
@@ -2526,14 +2797,15 @@ body {
   line-height: 1.5;
 }
 
-/* STL quote page: fit the whole thing in one viewport, no page scroll.
+/* STL quote page: aim to fit the whole wizard in one viewport.
    The header height is never hardcoded — the body is a flex column and the
-   section simply takes whatever is left, so a taller header cannot break it. */
+   section simply takes whatever is left, so a taller header cannot break it.
+   min-height, not height, and no overflow:hidden: a step taller than the
+   viewport (or a short window) must scroll, not get silently clipped. */
 .stl-page {
-  height: 100dvh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 .stl-page main {
@@ -2552,30 +2824,47 @@ body {
   border-bottom: 0;
 }
 
-/* The card must stretch to the full row height, otherwise it stays content-sized
-   and the viewer's flex:1 has no slack to absorb — it collapses to its min. */
+/* The wizard's own content caps out around 460px, so anything past that is dead
+   space — give the rest of the row to the model. Slightly wider than the header's
+   container: this page is a workbench, not an article. */
 .stl-page .stl-quote__grid {
+  width: min(1460px, calc(100% - 40px));
+  grid-template-columns: minmax(0, 460px) minmax(0, 1fr);
+  gap: 32px;
   min-height: 0;
-  align-items: stretch;
+  align-items: center;
+}
+
+/* Width-only, and out-specifies the 720px `1fr` rule above, which this page's
+   own selector would otherwise beat and leave two columns on a phone. Not folded
+   into the (max-width:900px),(max-height:620px) block below: a short *wide*
+   window still wants the model beside the wizard, not under it. */
+@media (max-width: 900px) {
+  .stl-page .stl-quote__grid {
+    width: min(100% - 22px, 1180px);
+    grid-template-columns: 1fr;
+  }
 }
 
 .stl-page .stl-quote__copy {
   align-self: center;
 }
 
-/* The card is the thing that must shrink: the viewer absorbs the slack, the
-   results row and CTA keep their natural height. */
+/* The viewer sets its own height now, so the card just wraps it — a max-height
+   here would clip the results row instead of shrinking anything. */
 .stl-page .stl-viewer-card {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  max-height: 100%;
 }
 
+/* Sized off the viewport, never off the row. Step 3's parts list makes the left
+   column much taller than the others, and a flex:1 viewer grew with it — the
+   model area visibly jumped between steps. Now every step shows the same frame. */
 .stl-page .stl-quote--page .stl-viewer {
-  flex: 1;
-  height: auto;
-  min-height: 180px;
+  flex: none;
+  height: clamp(340px, 58dvh, 660px);
+  min-height: 0;
 }
 
 .stl-page .stl-results {
@@ -3304,7 +3593,9 @@ body {
 .page-prose h2 { font-size: 22px; margin: 30px 0 12px; }
 .page-prose p { line-height: 1.7; margin-bottom: 14px; }
 .page-prose ul { margin: 0 0 18px; padding-left: 20px; line-height: 1.8; }
-.page-prose a { color: var(--accent); }
+/* Not a bare `a`: this selector outranks `.btn-solid` (0,1,1 vs 0,1,0) and was
+   painting the CTA's label accent-on-accent, i.e. an orange button with no text. */
+.page-prose a:not(.btn-solid):not(.btn-outline) { color: var(--accent); }
 .placeholder {
   padding: 12px 16px;
   border: 1px dashed var(--accent);
@@ -3340,23 +3631,120 @@ body {
 
 .contact-grid {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
-  gap: 40px;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 32px;
   align-items: start;
   padding: 24px 0 60px;
 }
-.contact-info { display: grid; gap: 18px; }
-.contact-item h3 { font-size: 15px; margin-bottom: 4px; }
-.contact-item p { color: var(--text); margin: 0; }
+.contact-info { display: grid; gap: 12px; }
+
+/* iletisim.js hides a card whose value is unset — without this the flex
+   display below would win over the hidden attribute and show it anyway. */
+.contact-item[hidden] { display: none; }
+
+.contact-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+.contact-card:hover {
+  border-color: #f0c3ae;
+  box-shadow: 0 10px 24px rgba(31,33,40,.07);
+  transform: translateY(-1px);
+}
+.contact-card__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: #fff3ee;
+  color: var(--accent);
+}
+.contact-card__icon svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+.contact-card__body { min-width: 0; }
+.contact-card__body small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.contact-item h3 { font-size: 13px; margin: 0 0 3px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.contact-item p { color: var(--text); margin: 0; font-size: 15px; font-weight: 700; word-break: break-word; }
+
+/* Stretch the injected link over the whole card so the entire tile is the
+   click target. Excluded on the social card, which injects several links. */
+.contact-card:not(.contact-card--social) p a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+/* WhatsApp is the channel we want people to use, so it leads in its own colour. */
+.contact-card--wa {
+  border-color: rgba(37,211,102,.4);
+  background: linear-gradient(180deg, rgba(37,211,102,.07), rgba(37,211,102,.02));
+}
+.contact-card--wa:hover { border-color: var(--whatsapp); }
+.contact-card--wa .contact-card__icon {
+  background: var(--whatsapp);
+  color: #fff;
+}
+.contact-card--wa .contact-card__icon svg { fill: currentColor; stroke: none; }
+.contact-card--wa p a { color: #16794a !important; }
+
+.contact-card--social p a { font-weight: 700; }
+
+.contact-aside {
+  display: block;
+  margin-top: 4px;
+  padding: 16px;
+  border: 1px dashed #f0c3ae;
+  border-radius: 14px;
+  background: #fffaf7;
+}
+.contact-aside:hover { background: #fff3ee; }
+.contact-aside strong { display: block; margin-bottom: 4px; color: var(--accent); font-size: 14px; }
+.contact-aside span { color: var(--muted); font-size: 13px; line-height: 1.5; }
+
 .contact-form {
   display: grid;
   gap: 14px;
   border: 1px solid var(--line);
   border-radius: 16px;
-  padding: 26px;
+  padding: 28px;
   background: #fff;
 }
-.contact-form h2 { font-size: 20px; margin-bottom: 4px; }
+.contact-form h2 { font-size: 22px; margin-bottom: 0; }
+.contact-form__lead {
+  margin: -8px 0 4px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.contact-form__lead a { color: var(--accent); font-weight: 700; }
+.contact-form input:focus,
+.contact-form textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255,101,66,.14);
+}
+.contact-form button:hover:not(:disabled) { box-shadow: 0 14px 28px rgba(255,101,66,.26); }
 .contact-form label { display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
 .contact-form input,
 .contact-form textarea {
@@ -3422,3 +3810,505 @@ body {
 .faq-item summary:hover { color: var(--accent); }
 .faq-answer { padding: 0 18px 18px; color: var(--muted); line-height: 1.7; }
 .faq-answer a { color: var(--accent); }
+
+/* ---- Live stats strip in the offers band (real catalogue numbers) ---- */
+.cyber__live {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px;
+  max-width: 720px;
+  margin: 22px auto 0;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255,255,255,.28);
+}
+.cyber__live div { text-align: center; }
+.cyber__live dt {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: #fff;
+}
+.cyber__live dd {
+  margin: 4px 0 0;
+  font-size: 12px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,.85);
+}
+
+/* ---- Sale band — its own full-width section so discounts read as an event ---- */
+.sale-band {
+  margin: 28px 0;
+  padding: 38px 0 44px;
+  /* Soft falloff, not a hard-edged circle — a stop pair reads as a stray blob. */
+  background:
+    radial-gradient(60% 90% at 6% 0%, rgba(255,101,66,.14), transparent 70%),
+    linear-gradient(180deg, #fff4ee, #fffaf6);
+  border-block: 1px solid #ffe0d2;
+}
+.sale-band__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.sale-band__head h2 {
+  margin: 4px 0 6px;
+  font-size: clamp(26px, 3vw, 38px);
+  line-height: 1.1;
+}
+.sale-band__lead {
+  margin: 0;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 15px;
+}
+.sale-band__all {
+  padding: 11px 22px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.sale-band__all:hover { box-shadow: 0 14px 28px rgba(255,101,66,.3); }
+
+/* Sale cards sit on a tinted band, so they get a solid card + a louder badge. */
+.products--sale .product-card {
+  border-color: #ffd4c2;
+  box-shadow: 0 10px 26px rgba(255,101,66,.1);
+}
+.products--sale .discount-badge {
+  transform: scale(1.12);
+  transform-origin: left top;
+  box-shadow: 0 6px 14px rgba(255,101,66,.35);
+}
+
+/* ---- Star ratings ---- */
+.stars {
+  color: #f5a623;
+  letter-spacing: 1px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.card-rating {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 2px;
+  font-size: 13px;
+}
+.card-rating small { color: var(--muted); font-size: 11px; }
+
+.product-detail__rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.product-detail__rating:hover span { color: var(--accent); }
+.product-detail__rating--empty .stars { color: #d9d5d0; }
+
+/* ---- Reviews ---- */
+.reviews-section { padding: 20px 0 10px; }
+.reviews-grid {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+.reviews-summary {
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  text-align: center;
+}
+.reviews-summary__score {
+  display: block;
+  font-size: 46px;
+  line-height: 1;
+  color: var(--text);
+}
+.reviews-summary .stars { display: block; margin: 8px 0 4px; font-size: 18px; }
+.reviews-summary__count { color: var(--muted); font-size: 13px; }
+.reviews-summary__cta { margin: 10px 0 0; color: var(--accent); font-size: 13px; font-weight: 700; }
+.reviews-bars { display: grid; gap: 6px; margin-top: 16px; }
+.reviews-bar {
+  display: grid;
+  grid-template-columns: 26px 1fr 20px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.reviews-bar__track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--soft);
+  overflow: hidden;
+}
+.reviews-bar__track i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #f5a623;
+}
+.reviews-bar__n { text-align: right; }
+
+.review-list { display: grid; gap: 14px; margin-bottom: 26px; }
+.review {
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+}
+.review__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.review__head strong { font-size: 15px; }
+.review__date { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
+.review p { margin: 8px 0 0; line-height: 1.6; }
+
+.review-form {
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+.review-form h3 { margin: 0; font-size: 18px; }
+.review-form__note { margin: -6px 0 2px; color: var(--muted); font-size: 13px; }
+.review-form label { display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
+.review-form input,
+.review-form textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  font: inherit;
+  color: var(--text);
+}
+.review-form input:focus,
+.review-form textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255,101,66,.14);
+}
+.review-form button {
+  justify-self: start;
+  padding: 13px 30px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.review-form button:hover:not(:disabled) { box-shadow: 0 14px 28px rgba(255,101,66,.26); }
+.review-form button:disabled { background: var(--muted); cursor: not-allowed; }
+
+/* Star picker. The inputs are laid out 5→1 so the CSS sibling combinator can
+   light up the hovered star and every one before it. */
+.star-input {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.star-input legend {
+  margin-bottom: 6px;
+  padding: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+/* The row, not the fieldset, is the flex container: a legend inside a flex box
+   becomes a flex item and row-reverse throws it to the end of the stars. */
+.star-input__row {
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+  gap: 2px;
+}
+/* pointer-events:none is load-bearing: these sit under the labels and would
+   otherwise swallow the click, selecting whichever star happens to overlap. */
+.star-input input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.star-input label {
+  cursor: pointer;
+  font-size: 30px;
+  line-height: 1;
+  color: #ddd8d2;
+  transition: color .15s ease, transform .15s ease;
+}
+.star-input label:hover,
+.star-input label:hover ~ label,
+.star-input input:checked ~ label {
+  color: #f5a623;
+}
+.star-input label:hover { transform: scale(1.12); }
+.star-input input:focus-visible + label {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (max-width: 820px) {
+  .reviews-grid { grid-template-columns: 1fr; }
+}
+
+/* ---- Homepage rhythm: three different product treatments ----
+   The page used to be four identical 5-across grids stacked on each other. */
+
+/* 1. Feature panel + 2x2 quad */
+/* Centred, not stretched: stretching made the panel's photo a 350x620 portrait
+   crop, and top-aligning left it a stub against a much taller quad. */
+.featured-split {
+  display: grid;
+  grid-template-columns: minmax(0, 350px) minmax(0, 1fr);
+  gap: 28px;
+  align-items: center;
+  padding: 34px 0;
+}
+.feature-panel {
+  overflow: hidden;
+  border: 1px solid #ffdccd;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #fff6f1, #fff);
+  box-shadow: 0 16px 34px rgba(255,101,66,.1);
+}
+.feature-panel__media {
+  position: relative;
+  display: block;
+  aspect-ratio: 1 / 1;
+  background: #fff8f3;
+}
+.feature-panel__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform .35s ease;
+}
+.feature-panel:hover .feature-panel__media img { transform: scale(1.04); }
+.feature-panel__body { padding: 18px 20px 22px; }
+.feature-panel__body h3 {
+  margin: 6px 0 8px;
+  font-size: 20px;
+  line-height: 1.25;
+}
+.feature-panel__body h3 a { color: var(--text); }
+.feature-panel__body h3 a:hover { color: var(--accent); }
+.feature-panel__price {
+  margin: 10px 0 16px;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--accent);
+}
+.feature-panel__price s {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+}
+.feature-panel__body button {
+  width: 100%;
+  min-height: 46px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  transition: box-shadow .2s ease, transform .2s ease;
+}
+.feature-panel__body button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(255,101,66,.3);
+}
+
+/* Two up, two down — the "küp" block. At two-across each card is ~420px wide, so
+   the stock card aspect ratio made the block twice the panel's height; a fixed
+   image height keeps the section compact. */
+.products--quad { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.products--quad .product-card img {
+  height: 210px;
+  aspect-ratio: auto;
+  object-fit: cover;
+}
+
+/* 2. Ranked row — the position is the point, so number it. */
+.products--ranked { counter-reset: rank; }
+.products--ranked .product-card { counter-increment: rank; }
+.products--ranked .product-card::before {
+  content: counter(rank);
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #1f2128;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  box-shadow: 0 6px 14px rgba(31,33,40,.28);
+}
+/* Top three lead in the accent colour; the rest stay neutral. */
+.products--ranked .product-card:nth-child(-n+3)::before { background: var(--accent); }
+
+/* 3. Compact list rows on a tinted band */
+.recommend-band {
+  margin-top: 10px;
+  padding: 36px 0 42px;
+  background: #fff8f3;
+  border-block: 1px solid #ffe6da;
+}
+.products--list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.products--list .product-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  text-align: left;
+}
+.products--list .product-card:hover { border-color: #f0c3ae; }
+.products--list .product-card__link {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+}
+.products--list .product-card img {
+  flex: none;
+  width: 68px;
+  height: 68px;
+  aspect-ratio: auto;
+  border-radius: 10px;
+  object-fit: cover;
+}
+.products--list .product-card h3 {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.products--list .product-card p {
+  flex: none;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+/* Swatches and the star row would push the row to two lines for no gain here. */
+.products--list .swatches,
+.products--list .card-rating { display: none; }
+.products--list .product-card button {
+  flex: none;
+  min-height: 38px;
+  padding: 0 16px;
+  font-size: 13px;
+}
+.products--list .discount-badge { display: none; }
+
+@media (max-width: 1050px) {
+  .featured-split { grid-template-columns: 1fr; }
+  .feature-panel__media { aspect-ratio: 16 / 9; }
+}
+
+@media (max-width: 720px) {
+  .products--list { grid-template-columns: 1fr; }
+  .products--quad { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 460px) {
+  .products--list .product-card { flex-wrap: wrap; }
+  .products--list .product-card button { width: 100%; }
+}
+
+/* ---- Checkout campaigns: coupon box, discount/gift lines, incentive nudge ---- */
+.coupon-box {
+  margin: 14px 0 4px;
+  padding: 14px;
+  border: 1px dashed #f0c3ae;
+  border-radius: 12px;
+  background: #fffaf7;
+}
+.coupon-box label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.coupon-box__row { display: flex; gap: 8px; }
+.coupon-box__row input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 10px 12px;
+  font: inherit;
+  text-transform: uppercase;
+}
+.coupon-box__row input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255,101,66,.14);
+}
+.coupon-box__row button {
+  flex: none;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 9px;
+  background: #1f2128;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.coupon-box__row button:hover { background: var(--accent); }
+.coupon-box__msg { margin: 8px 0 0; font-size: 13px; font-weight: 600; }
+.coupon-box__msg--ok { color: #1f9d55; }
+.coupon-box__msg--err { color: var(--accent); }
+
+.summary-campaigns:empty { display: none; }
+.summary-line--discount { color: #1f9d55; font-weight: 700; }
+.summary-line--discount span { color: #1f9d55; }
+.summary-line--gift { color: var(--accent); font-weight: 700; }
+.summary-line--gift span { color: var(--accent); }
+
+/* The nudge that turns a near-miss into a bigger basket. */
+.summary-incentive {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff3ee;
+  color: #a3502f;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+}

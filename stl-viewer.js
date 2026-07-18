@@ -6,6 +6,7 @@ import { unzipSync, strFromU8 } from "three/addons/libs/fflate.module.js";
 
 const viewer = document.querySelector("#stl-viewer");
 const input = document.querySelector("#stl-file");
+const dropZone = document.querySelector("#stl-drop");
 const fileNameEl = document.querySelector("#stl-file-name");
 const dimensionsEl = document.querySelector("#stl-dimensions");
 const volumeEl = document.querySelector("#stl-volume");
@@ -36,6 +37,18 @@ const MAX_TRIANGLES_TO_SPLIT = 400000;
 const LAST_STEP = 5;
 
 const money = (value) => `${Number(value || 0).toFixed(2)} TL`;
+const escapeHtml = (value) => String(value).replace(/[&<>"]/g, (char) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[char]));
+
+// The upload step's feedback card. Hidden until there is something to say, so an
+// untouched step 1 shows the dropzone alone instead of an empty grey box.
+function setFileNote(html, isError) {
+  if (!fileNameEl) return;
+  fileNameEl.hidden = false;
+  fileNameEl.innerHTML = html;
+  fileNameEl.classList.toggle("stl-file-card--error", Boolean(isError));
+  dropZone?.classList.toggle("has-file", !isError);
+}
 
 const quote = {
   file: null,
@@ -433,12 +446,12 @@ function loadModel(file) {
         pieces = splitIntoParts(whole).map((geometry) => ({ geometry, name: null, fileColor: null }));
       }
     } catch (error) {
-      fileNameEl.textContent = `Dosya okunamadı: ${error.message}`;
+      setFileNote(`<strong>Dosya okunamadı</strong><span>${escapeHtml(error.message)}</span>`, true);
       return;
     }
 
     if (!pieces.length) {
-      fileNameEl.textContent = "Dosyada model bulunamadı.";
+      setFileNote("<strong>Dosyada model bulunamadı</strong><span>Başka bir STL veya 3MF deneyin.</span>", true);
       return;
     }
 
@@ -524,9 +537,18 @@ function loadModel(file) {
     quote.volumeCm3 = quote.parts.reduce((sum, part) => sum + part.volumeCm3, 0);
 
     const count = quote.parts.length;
-    const partNote = count > 1 ? ` - ${count} parça bulundu` : " - tek parça";
+    const partNote = count > 1 ? `${count} parça` : "Tek parça";
     const dims = `${size.x.toFixed(1)} x ${size.z.toFixed(1)} x ${size.y.toFixed(1)} mm`;
-    fileNameEl.textContent = `${file.name} - ${dims}${partNote}`;
+    const sizeMb = file.size / (1024 * 1024);
+    setFileNote(`
+      <span class="stl-file-card__tick" aria-hidden="true">✓</span>
+      <span class="stl-file-card__body">
+        <strong>${escapeHtml(file.name)}</strong>
+        <span class="stl-file-card__meta">
+          <i>${dims}</i><i>${partNote}</i><i>${sizeMb < 0.1 ? "<0.1" : sizeMb.toFixed(1)} MB</i>
+        </span>
+      </span>
+      <span class="stl-file-card__change">Değiştir</span>`);
     dimensionsEl.textContent = dims;
     volumeEl.textContent = `${quote.volumeCm3.toFixed(2)} cm3`;
 
@@ -572,6 +594,8 @@ function renderParts() {
       </span>
     </button>
   `).join("");
+
+  updatePartsFade();
 
   // Highlight by making the selected part glow, not by fading the rest — with 40+
   // parts, dimming everything else washes the whole model out.
@@ -620,6 +644,13 @@ applyAllButton.addEventListener("click", () => {
 
 /* ---------- wizard ---------- */
 
+// Drives the parts list's bottom fade: only a list that actually scrolls gets one.
+// Must run while the panel is visible — a display:none panel measures 0 x 0.
+function updatePartsFade() {
+  if (!partsEl) return;
+  partsEl.classList.toggle("is-scrollable", partsEl.scrollHeight > partsEl.clientHeight);
+}
+
 function showStep(next) {
   step = Math.min(LAST_STEP, Math.max(1, next));
   panels.forEach((panel) => panel.classList.toggle("is-active", Number(panel.dataset.step) === step));
@@ -629,6 +660,7 @@ function showStep(next) {
     item.classList.toggle("is-done", itemStep < step);
   });
   updateNav();
+  updatePartsFade();
 }
 
 function canLeaveStep(current) {
@@ -658,16 +690,43 @@ stepsEl.addEventListener("click", (event) => {
   showStep(target);
 });
 
-input?.addEventListener("change", (event) => {
-  const file = event.target.files?.[0];
+// One entry point for both the file picker and a drag-and-drop, so the extension
+// check can never be bypassed by dropping instead of clicking.
+function acceptFile(file) {
   if (!file) return;
   if (!/\.(stl|3mf)$/i.test(file.name)) {
-    alert("Lütfen .stl veya .3mf uzantılı bir dosya seçin.");
-    input.value = "";
+    setFileNote("<strong>Bu dosya türü desteklenmiyor</strong><span>Yalnızca .stl ve .3mf dosyaları yüklenebilir.</span>", true);
+    if (input) input.value = "";
     return;
   }
   loadModel(file);
-});
+}
+
+input?.addEventListener("change", (event) => acceptFile(event.target.files?.[0]));
+
+// A drop never populates input.files, but nothing downstream reads it — the
+// submit sends quote.file, which loadModel() sets either way.
+if (dropZone) {
+  ["dragenter", "dragover"].forEach((type) => dropZone.addEventListener(type, (event) => {
+    event.preventDefault();
+    dropZone.classList.add("is-dragging");
+  }));
+  ["dragleave", "dragend"].forEach((type) => dropZone.addEventListener(type, () => {
+    dropZone.classList.remove("is-dragging");
+  }));
+  dropZone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    dropZone.classList.remove("is-dragging");
+    acceptFile(event.dataTransfer?.files?.[0]);
+  });
+  // The card sits outside the <label>, so "Değiştir" has to open the picker itself.
+  fileNameEl?.addEventListener("click", () => input?.click());
+}
+
+// Dropping a file anywhere else must not make the browser navigate to it.
+["dragover", "drop"].forEach((type) => window.addEventListener(type, (event) => {
+  if (!event.target.closest?.("#stl-drop")) event.preventDefault();
+}));
 
 /* ---------- admin-managed options ---------- */
 
@@ -845,12 +904,11 @@ quoteForm.addEventListener("submit", async (event) => {
   // three's Y-up space, but slicers expect Z-up like the original file — so undo
   // that rotation on the way out, or every exported part lands on its side.
   const yUpToZUp = new THREE.Matrix4().makeRotationX(Math.PI / 2);
-  quote.parts.forEach((part) => {
+  const partFiles = quote.parts.map((part) => {
     const geometry = part.mesh.geometry.clone().applyMatrix4(yUpToZUp);
     const stl = toBinaryStl(geometry);
     const label = slug(part.colorName) || "renk-yok";
-    const fileName = `parca-${part.index + 1}-${label}.stl`;
-    data.append("part_files", new File([stl], fileName, { type: "model/stl" }));
+    return new File([stl], `parca-${part.index + 1}-${label}.stl`, { type: "model/stl" });
   });
 
   const submit = document.querySelector("#stl-submit");
@@ -858,6 +916,21 @@ quoteForm.addEventListener("submit", async (event) => {
   formMessage.textContent = "Gönderiliyor...";
 
   try {
+    /* Dosyalar sunucudan geçemez: bir model 10-100 MB, sunucusuz platformun
+       istek sınırı ise ~4.5 MB. Sunucudan imzalı bir adres alıp dosyayı
+       doğrudan depoya yüklüyoruz; sunucuya yalnızca anahtarı gidiyor.
+       Depolama yapılandırılmamışsa (yerel geliştirme) eski yol kullanılır. */
+    const uploaded = await uploadDirect([quote.file, ...partFiles]);
+    if (uploaded) {
+      data.delete("model");
+      data.set("model_path", uploaded[0]);
+      data.set("model_name", quote.file.name);
+      data.set("part_paths", JSON.stringify(uploaded.slice(1)));
+    } else {
+      data.set("model", quote.file, quote.file.name);
+      partFiles.forEach((file) => data.append("part_files", file));
+    }
+
     const response = await fetch("/api/quotes", { method: "POST", body: data });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Teklif gönderilemedi.");
@@ -869,6 +942,29 @@ quoteForm.addEventListener("submit", async (event) => {
     submit.disabled = false;
   }
 });
+
+/* Her dosya için imzalı adres alıp doğrudan depoya yükler ve anahtarları
+   sırayla döndürür. Depolama kapalıysa null döner — çağıran eski yola düşer. */
+async function uploadDirect(files) {
+  const keys = [];
+  for (const [index, file] of files.entries()) {
+    const signRes = await fetch("/api/uploads/sign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "model", filename: file.name })
+    });
+    if (signRes.status === 503) return null;          // depolama yapılandırılmamış
+    const signed = await signRes.json();
+    if (!signRes.ok) throw new Error(signed.error || "Yükleme adresi alınamadı.");
+
+    formMessage.textContent = `Dosyalar yükleniyor… (${index + 1}/${files.length})`;
+    const put = await fetch(signed.signedUrl, { method: "PUT", body: file });
+    if (!put.ok) throw new Error("Dosya yüklenemedi, bağlantınızı kontrol edin.");
+    keys.push(signed.path);
+  }
+  formMessage.textContent = "Gönderiliyor...";
+  return keys;
+}
 
 loadOptions();
 showStep(1);

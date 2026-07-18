@@ -12,6 +12,25 @@
 
   if (!id) { detail.innerHTML = notFound(); return; }
 
+  // Reviews are public, unauthenticated input — never interpolate them raw.
+  const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+  const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ESC[char]);
+
+  const stars = (rating) => {
+    const rounded = Math.round(Number(rating) || 0);
+    return `<span class="stars" aria-label="5 üzerinden ${rating}">${"★".repeat(rounded)}${"☆".repeat(5 - rounded)}</span>`;
+  };
+
+  const reviewDate = (value) => {
+    if (!value) return "";
+    // Postgres ISO ("…T19:10:27.641Z") ve saat dilimsiz "YYYY-MM-DD HH:MM:SS"
+    // biçimlerinin ikisini de kabul et; ISO'ya Z eklemek tarihi geçersiz kılar.
+    const text = String(value);
+    const hasZone = /[TZ]|[+-]\d{2}:?\d{2}$/.test(text);
+    const date = new Date(hasZone ? text : `${text.replace(" ", "T")}Z`);
+    return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" });
+  };
+
   function render(product) {
     const price = product.sale_price || product.price;
     const inStock = product.stock > 0;
@@ -35,6 +54,11 @@
         <div class="product-detail__info">
           ${cats ? `<div class="product-detail__cats">${cats}</div>` : ""}
           <h1>${product.name}</h1>
+          ${product.rating?.count
+            ? `<a class="product-detail__rating" href="#reviews-section">${stars(product.rating.average)}
+                 <span>${product.rating.average} · ${product.rating.count} değerlendirme</span></a>`
+            : `<a class="product-detail__rating product-detail__rating--empty" href="#reviews-section">${stars(0)}
+                 <span>Henüz değerlendirilmemiş</span></a>`}
           <p class="product-detail__price">${money(price)} <span class="price-tax">+ KDV</span>${onSale ? ` <s>${money(product.price)}</s> <span class="discount-badge">-%${off}</span>` : ""}</p>
           ${onSale ? `<p class="product-detail__save">${money(product.price - product.sale_price)} tasarruf edin</p>` : ""}
           <p class="product-detail__tax">Fiyata KDV eklenir · Kargo alıcı ödemeli</p>
@@ -63,6 +87,96 @@
     });
   }
 
+  // Score breakdown + list. Rendered from the approved-only public endpoint, so
+  // the count here always matches what the star average was computed from.
+  function renderReviews(reviews) {
+    const section = document.querySelector("#reviews-section");
+    const summary = document.querySelector("#reviews-summary");
+    const list = document.querySelector("#review-list");
+    if (!section) return;
+    section.hidden = false;
+
+    const count = reviews.length;
+    const average = count ? reviews.reduce((sum, r) => sum + r.rating, 0) / count : 0;
+
+    summary.innerHTML = count
+      ? `
+        <strong class="reviews-summary__score">${average.toFixed(1)}</strong>
+        ${stars(average)}
+        <span class="reviews-summary__count">${count} değerlendirme</span>
+        <div class="reviews-bars">
+          ${[5, 4, 3, 2, 1].map((star) => {
+            const n = reviews.filter((r) => r.rating === star).length;
+            return `
+              <div class="reviews-bar">
+                <span>${star}★</span>
+                <div class="reviews-bar__track"><i style="width:${count ? (n / count) * 100 : 0}%"></i></div>
+                <span class="reviews-bar__n">${n}</span>
+              </div>`;
+          }).join("")}
+        </div>`
+      : `<strong class="reviews-summary__score">—</strong>
+         ${stars(0)}
+         <span class="reviews-summary__count">Henüz değerlendirme yok</span>
+         <p class="reviews-summary__cta">İlk yorumu siz yazın.</p>`;
+
+    list.innerHTML = reviews.map((r) => `
+      <article class="review">
+        <div class="review__head">
+          <strong>${escapeHtml(r.author_name)}</strong>
+          ${stars(r.rating)}
+        </div>
+        <span class="review__date">${reviewDate(r.created_at)}</span>
+        ${r.comment ? `<p>${escapeHtml(r.comment)}</p>` : ""}
+      </article>
+    `).join("");
+  }
+
+  async function loadReviews() {
+    try {
+      const reviews = await fetch(`/api/products/${id}/reviews`).then((r) => r.json());
+      renderReviews(Array.isArray(reviews) ? reviews : []);
+    } catch {
+      renderReviews([]);
+    }
+  }
+
+  function wireReviewForm() {
+    const form = document.querySelector("#review-form");
+    if (!form) return;
+    const status = document.querySelector("#review-status");
+    const button = document.querySelector("#review-submit");
+    const setStatus = (message, ok) => {
+      status.textContent = message;
+      status.hidden = !message;
+      status.classList.toggle("contact-status--ok", ok === true);
+      status.classList.toggle("contact-status--err", ok === false);
+    };
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = Object.fromEntries(new FormData(form).entries());
+      if (!data.rating) { setStatus("Lütfen 1-5 arası bir puan seçin.", false); return; }
+      button.disabled = true;
+      setStatus("Gönderiliyor…", null);
+      try {
+        const res = await fetch(`/api/products/${id}/reviews`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data)
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload.error || "Değerlendirme gönderilemedi.");
+        form.reset();
+        setStatus("Teşekkürler! Yorumunuz onaylandıktan sonra yayınlanacak.", true);
+      } catch (error) {
+        setStatus(error.message, false);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+
   function renderRelated(all, product) {
     const catIds = new Set((product.categories || []).map((c) => c.id));
     const related = all.filter((p) =>
@@ -87,6 +201,8 @@
     window.printableProducts = all.length ? all : [product]; // so any data-add-product resolves
     render(product);
     renderRelated(all, product);
+    wireReviewForm();
+    loadReviews();
   }
 
   init();

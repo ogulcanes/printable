@@ -1,22 +1,39 @@
 // Contact form → POST /api/contact. Loaded after script.js (shared header/cart).
 (function () {
-  // Fill the admin-managed contact details; leave the placeholder when a field is empty.
+  // Fill the admin-managed contact details. An unset field has no visitor-facing
+  // value, so hide its whole card rather than showing the "[… eklenecek]" note.
   fetch("/api/site-info").then((r) => r.json()).then((info) => {
-    const linkify = (el, value, href) => {
+    const linkify = (el, value, href, external) => {
       const a = document.createElement("a");
       a.href = href; a.textContent = value; a.style.color = "var(--accent)";
+      if (external) { a.target = "_blank"; a.rel = "noopener"; }
       el.textContent = ""; el.append(a);
     };
     document.querySelectorAll("[data-contact]").forEach((el) => {
       const key = el.dataset.contact;
       const value = (info[key] || "").trim();
-      if (!value) return;
+      if (!value) {
+        const card = el.closest(".contact-item");
+        if (card) card.hidden = true;
+        return;
+      }
       el.classList.remove("placeholder");
       if (key === "phone") linkify(el, value, `tel:${value.replace(/[^0-9+]/g, "")}`);
+      else if (key === "whatsapp") linkify(el, "WhatsApp'tan mesaj gönderin", value, true);
       else if (key === "email") linkify(el, value, `mailto:${value}`);
       else if (key === "social_links") {
+        // Label by platform — a raw profile URL is long and unreadable in the card.
+        const label = (url) => {
+          const host = url.replace(/^https?:\/\//i, "").toLowerCase();
+          if (host.includes("instagram.com")) return "Instagram";
+          if (host.includes("tiktok.com")) return "TikTok";
+          if (host.includes("facebook.com")) return "Facebook";
+          if (host.includes("youtube.com")) return "YouTube";
+          if (host.includes("x.com") || host.includes("twitter.com")) return "X";
+          return url;
+        };
         el.innerHTML = value.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean)
-          .map((url) => `<a href="${url}" target="_blank" rel="noopener" style="color:var(--accent);display:block">${url}</a>`).join("");
+          .map((url) => `<a href="${url}" target="_blank" rel="noopener" style="color:var(--accent);display:block">${label(url)}</a>`).join("");
       } else {
         el.textContent = value;
       }

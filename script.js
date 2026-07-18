@@ -25,6 +25,15 @@ const discountPercent = (product) =>
     ? Math.round((1 - product.sale_price / product.price) * 100)
     : 0;
 
+// Approved-review average, filled in by the API. No reviews yet → no stars at
+// all, rather than an empty 5-star row that reads as a zero score.
+const ratingHTML = (product) => product.rating?.count
+  ? `<span class="card-rating" aria-label="5 üzerinden ${product.rating.average}">
+       <span class="stars">${"★".repeat(Math.round(product.rating.average))}${"☆".repeat(5 - Math.round(product.rating.average))}</span>
+       <small>(${product.rating.count})</small>
+     </span>`
+  : "";
+
 function productCardHTML(product) {
   const off = discountPercent(product);
   return `
@@ -34,6 +43,7 @@ function productCardHTML(product) {
         <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" loading="lazy">
         <h3>${product.name}</h3>
       </a>
+      ${ratingHTML(product)}
       <p>${money(product.sale_price || product.price)}${product.sale_price ? ` <s>${money(product.price)}</s>` : ""} <span class="price-tax">+ KDV</span></p>
       <div class="swatches">${(product.colors || []).map((color) => `<span style="background:${color.hex}" title="${color.name}"></span>`).join("")}</div>
       <button data-add-product="${product.id}">Sepete ekle</button>
@@ -88,13 +98,84 @@ async function loadCategories() {
     if (!Array.isArray(categories) || !categories.length) return;
     window.printableCategories = categories;
     categoryGrid.innerHTML = categories.map((category) => `
-      <a href="/urunler?kategori=${category.id}">
-        <img src="${category.image_path || "/assets/printable-logo.svg"}" alt="${category.image_alt || ""}">${category.name}
+      <a class="category-card" href="/urunler?kategori=${category.id}">
+        <span class="category-card__media">
+          <img src="${category.image_path || "/assets/printable-logo.svg"}" alt="${category.image_alt || ""}" loading="lazy">
+        </span>
+        <span class="category-card__body">
+          <strong>${category.name}</strong>
+          <small data-category-count="${category.id}"></small>
+        </span>
       </a>
     `).join("");
+    fillCategoryCounts();
   } catch {
     /* keep the fallback markup */
   }
+}
+
+// Categories and products load in parallel, so whichever finishes second fills
+// the counts — the tiles just render without a count until then.
+function fillCategoryCounts() {
+  const products = (window.printableProducts || []).filter((p) => p.is_active);
+  if (!products.length) return;
+  document.querySelectorAll("[data-category-count]").forEach((el) => {
+    const id = Number(el.dataset.categoryCount);
+    const n = products.filter((p) => (p.categories || []).some((c) => c.id === id)).length;
+    el.textContent = n ? `${n} ürün` : "Yakında";
+  });
+}
+
+// Real numbers from the live catalogue, so the offers band reflects the shop as
+// it actually is instead of a claim someone has to remember to update.
+function renderLiveStats(active) {
+  const strip = document.querySelector("#cyber-live");
+  if (!strip) return;
+  const onSale = active.filter((p) => p.sale_price && p.price > p.sale_price);
+  const bestOff = onSale.reduce((max, p) => Math.max(max, discountPercent(p)), 0);
+  const rated = active.filter((p) => p.rating?.count);
+  const reviewCount = rated.reduce((sum, p) => sum + p.rating.count, 0);
+  const averageScore = rated.length
+    ? rated.reduce((sum, p) => sum + p.rating.average * p.rating.count, 0) / reviewCount
+    : 0;
+
+  const tiles = [
+    active.length && { value: active.length, label: "hazır ürün" },
+    bestOff && { value: `%${bestOff}`, label: "en yüksek indirim" },
+    reviewCount && { value: averageScore.toFixed(1) + " ★", label: `${reviewCount} değerlendirme` }
+  ].filter(Boolean);
+
+  if (!tiles.length) return;
+  strip.innerHTML = tiles.map((t) => `<div><dt>${t.value}</dt><dd>${t.label}</dd></div>`).join("");
+  strip.hidden = false;
+}
+
+// The one product shown large beside the quad. Its own markup rather than a
+// scaled-up .product-card: the card's centred, compact layout does not survive
+// being stretched to a full column.
+function renderFeaturePanel(product) {
+  const panel = document.querySelector("#feature-panel");
+  if (!panel) return;
+  if (!product) { panel.hidden = true; return; }
+
+  const off = discountPercent(product);
+  const price = product.sale_price || product.price;
+  panel.innerHTML = `
+    <a class="feature-panel__media" href="/urun/${product.id}">
+      ${off ? `<span class="discount-badge">-%${off}</span>` : ""}
+      <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" loading="lazy">
+    </a>
+    <div class="feature-panel__body">
+      <p class="section-kicker">Haftanın seçimi</p>
+      <h3><a href="/urun/${product.id}">${product.name}</a></h3>
+      ${ratingHTML(product)}
+      <p class="feature-panel__price">
+        ${money(price)}${product.sale_price ? ` <s>${money(product.price)}</s>` : ""}
+        <span class="price-tax">+ KDV</span>
+      </p>
+      <button type="button" data-add-product="${product.id}">Sepete ekle</button>
+    </div>`;
+  panel.hidden = false;
 }
 
 // The homepage rows are curated slices of the same catalogue; /urunler owns real filtering.
@@ -104,21 +185,39 @@ async function loadProducts() {
     window.printableProducts = products;
     const active = products.filter((product) => product.is_active);
     fillProductGrid(storeProducts, active);
-    fillProductGrid(".js-featured", [...active].sort((a, b) => (b.sale_price || b.price) - (a.sale_price || a.price)).slice(0, 5));
+
+    // The priciest goes in the feature panel, the next four fill the 2x2 quad —
+    // exactly four, otherwise the block stops being a square.
+    const featured = [...active].sort((a, b) => (b.sale_price || b.price) - (a.sale_price || a.price));
+    renderFeaturePanel(featured[0]);
+    fillProductGrid(".js-featured", featured.slice(1, 5));
+
     fillProductGrid(".js-popular", active.slice(0, 5));
-    fillProductGrid(".js-recommended", [...active].reverse().slice(0, 5));
+    fillProductGrid(".js-recommended", [...active].reverse().slice(0, 4));
 
     // Discounted products get their own section — hidden entirely when nothing is on sale.
     const onSale = active.filter((product) => product.sale_price && product.price > product.sale_price);
     const saleSection = document.querySelector("#sale-section");
     if (saleSection) {
       if (onSale.length) {
-        fillProductGrid(".js-sale", onSale.slice(0, 5));
+        // Deepest discount first — the band exists to show the best deal.
+        const sorted = [...onSale].sort((a, b) => discountPercent(b) - discountPercent(a));
+        fillProductGrid(".js-sale", sorted.slice(0, 5));
+        const lead = document.querySelector("#sale-lead");
+        if (lead) {
+          // No case suffix on the number: "%17'ye" / "%20'ye" / "%30'a" / "%5'e"
+          // all differ, and picking the right one from a digit is not worth it.
+          const best = discountPercent(sorted[0]);
+          lead.textContent = `${onSale.length} ürün indirimde · en yüksek indirim %${best} · stoklarla sınırlı`;
+        }
         saleSection.hidden = false;
       } else {
         saleSection.hidden = true;
       }
     }
+
+    renderLiveStats(active);
+    fillCategoryCounts();
     observeCards();
   } catch {
     window.printableProducts = [];

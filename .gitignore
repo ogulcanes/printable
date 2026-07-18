@@ -1,6 +1,20 @@
 node_modules/
+
+# Gizli anahtarlar — ASLA depoya girmemeli.
+# Supabase service_role anahtarı buradadır; sızarsa veritabanının tamamı okunup
+# yazılabilir hale gelir. Şablon için .env.example dosyasına bakın.
+.env
+.env.local
+.env.*.local
+
+# Yerel veritabanları: SQLite dosyası ve gömülü Postgres (PGlite) veri klasörü.
 data/*.sqlite
 data/*.sqlite-*
+data/pgdata/
+
+# Yerelde diske yazılan yüklemeler (üretimde Supabase Storage kullanılır).
 uploads/*
 !uploads/.gitkeep
+
 npm-debug.log*
+.vercel

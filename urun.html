@@ -17,6 +17,34 @@
         <p class="products-empty">Ürün yükleniyor…</p>
       </section>
 
+      <section class="container reviews-section" id="reviews-section" hidden>
+        <div class="section-title"><h2>Değerlendirmeler</h2></div>
+        <div class="reviews-grid">
+          <div class="reviews-summary" id="reviews-summary"></div>
+          <div class="reviews-main">
+            <div id="review-list" class="review-list"></div>
+            <form class="review-form" id="review-form">
+              <h3>Bu ürünü değerlendirin</h3>
+              <p class="review-form__note">Yorumunuz kontrol edildikten sonra yayınlanır.</p>
+              <fieldset class="star-input">
+                <legend>Puanınız *</legend>
+                <div class="star-input__row">
+                  <input type="radio" name="rating" id="star-5" value="5" required><label for="star-5" title="5 yıldız">★</label>
+                  <input type="radio" name="rating" id="star-4" value="4"><label for="star-4" title="4 yıldız">★</label>
+                  <input type="radio" name="rating" id="star-3" value="3"><label for="star-3" title="3 yıldız">★</label>
+                  <input type="radio" name="rating" id="star-2" value="2"><label for="star-2" title="2 yıldız">★</label>
+                  <input type="radio" name="rating" id="star-1" value="1"><label for="star-1" title="1 yıldız">★</label>
+                </div>
+              </fieldset>
+              <label>Adınız *<input name="author_name" maxlength="60" required autocomplete="name"></label>
+              <label>Yorumunuz<textarea name="comment" rows="4" maxlength="1000" placeholder="Baskı kalitesi, ölçüler, teslimat…"></textarea></label>
+              <button type="submit" id="review-submit">Değerlendirmeyi gönder</button>
+              <p class="contact-status" id="review-status" role="status" hidden></p>
+            </form>
+          </div>
+        </div>
+      </section>
+
       <section class="container product-section" id="related-section" hidden>
         <div class="section-title"><h2>Benzer Ürünler</h2><a href="/urunler">Tümünü gör</a></div>
         <div class="products products--grid" id="related-products"></div>
@@ -27,7 +55,7 @@
 
     <!--footer-->
 
-    <button class="chat" type="button">?</button>
+    <!--chat-->
     <script src="/script.js"></script>
     <script src="/urun.js"></script>
   </body>

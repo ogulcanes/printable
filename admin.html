@@ -26,6 +26,8 @@
         <button class="tab" data-tab="orders"><span>09</span>Siparişler</button>
         <button class="tab" data-tab="customers"><span>10</span>Müşteriler</button>
         <button class="tab" data-tab="messages"><span>11</span>Mesajlar</button>
+        <button class="tab" data-tab="reviews"><span>12</span>Yorumlar</button>
+        <button class="tab" data-tab="campaigns"><span>13</span>Kampanyalar</button>
       </nav>
       <div class="sidebar-note">
         <strong>Vercel notu</strong>
@@ -266,7 +268,8 @@
               <label>Telefon<input name="phone" placeholder="+90 5xx xxx xx xx"></label>
               <label>E-posta<input name="email" type="email" placeholder="info@printable.com.tr"></label>
             </div>
-            <label>Adres<textarea name="contact_address" rows="2" placeholder="Açık adres — /iletisim sayfasında gösterilir"></textarea></label>
+            <label>WhatsApp numarası<input name="whatsapp" placeholder="Boş bırakılırsa telefon numarası kullanılır"></label>
+            <label>Adres<textarea name="contact_address" rows="2" placeholder="Açık adres — boş bırakılırsa /iletisim sayfasında hiç gösterilmez"></textarea></label>
             <label>Çalışma saatleri<input name="working_hours" placeholder="Hafta içi 09:00–18:00"></label>
             <label>Sosyal hesap adresleri (her satıra bir tane)<textarea name="social_links" rows="4" placeholder="https://instagram.com/..."></textarea></label>
             <div class="actions">
@@ -378,6 +381,108 @@
             <span id="message-count" class="count-pill">0 mesaj</span>
           </div>
           <div id="message-list" class="list"></div>
+        </div>
+      </section>
+
+      <section id="reviews" class="panel">
+        <div class="admin-card">
+          <div class="card-title">
+            <h2>Ürün Yorumları</h2>
+            <span id="review-count" class="count-pill">0 yorum</span>
+          </div>
+          <p class="form-note">Müşteri yorumları onaylanana kadar sitede görünmez. Onayladığınız yorumlar ürün sayfasında yayınlanır ve ürünün yıldız ortalamasına katılır.</p>
+          <div id="review-list" class="list"></div>
+        </div>
+      </section>
+
+      <section id="campaigns" class="panel">
+        <div class="admin-card">
+          <div class="card-title">
+            <h2>Kampanya Tanımla</h2>
+          </div>
+          <form id="campaign-form" class="form-card">
+            <input type="hidden" name="id">
+            <div class="form-grid">
+              <label>Kampanya adı *<input name="name" required placeholder="Ör. Yaz İndirimi"></label>
+              <label>Kampanya kodu<input name="code" placeholder="Boş bırakırsanız otomatik uygulanır"></label>
+            </div>
+            <p class="form-note">Kod yazarsanız müşteri ödeme sayfasında o kodu girer. <strong>Boş bırakırsanız</strong> koşulu sağlayan her sepete kendiliğinden uygulanır.</p>
+
+            <div class="form-grid">
+              <label>Kampanya türü
+                <select name="kind" id="campaign-kind">
+                  <option value="discount">İndirim</option>
+                  <option value="gift">Hediye ürün</option>
+                </select>
+              </label>
+              <label>Kapsam
+                <select name="scope" id="campaign-scope">
+                  <option value="all">Tüm ürünler</option>
+                  <option value="products">Seçili ürünler</option>
+                  <option value="categories">Seçili kategoriler</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="form-grid" data-campaign-discount>
+              <label>İndirim tipi
+                <select name="discount_type">
+                  <option value="percent">Yüzde (%)</option>
+                  <option value="fixed">Sabit tutar (TL)</option>
+                </select>
+              </label>
+              <label>İndirim değeri *<input name="discount_value" type="number" step="0.01" min="0" placeholder="10"></label>
+            </div>
+
+            <div class="form-grid" data-campaign-gift hidden>
+              <label>Hediye ürün
+                <select name="gift_product_id" id="campaign-gift-product"></select>
+              </label>
+              <label>Hediye adedi<input name="gift_quantity" type="number" min="1" value="1"></label>
+            </div>
+
+            <div class="form-grid">
+              <label>En az adet<input name="min_quantity" type="number" min="0" value="0" placeholder="Ör. 5 adet alana"></label>
+              <label>En az sepet tutarı (TL)<input name="min_order_total" type="number" step="0.01" min="0" value="0"></label>
+            </div>
+            <p class="form-note">Koşullar <em>kapsamdaki</em> ürünler için sayılır. "5 adet şu üründen alana hediye" için: kapsam = seçili ürünler, en az adet = 5, tür = hediye.</p>
+
+            <div class="form-grid">
+              <label>Başlangıç tarihi<input name="starts_at" type="date"></label>
+              <label>Bitiş tarihi<input name="ends_at" type="date"></label>
+            </div>
+            <div class="form-grid">
+              <label>Toplam kullanım limiti<input name="usage_limit" type="number" min="0" placeholder="Boş = sınırsız"></label>
+              <label>Durum
+                <select name="is_active">
+                  <option value="true">Aktif</option>
+                  <option value="false">Pasif</option>
+                </select>
+              </label>
+            </div>
+
+            <fieldset class="color-picker-field" data-campaign-products hidden>
+              <legend>Kapsamdaki ürünler</legend>
+              <div id="campaign-products" class="color-options"></div>
+            </fieldset>
+            <fieldset class="color-picker-field" data-campaign-categories hidden>
+              <legend>Kapsamdaki kategoriler</legend>
+              <div id="campaign-categories" class="color-options"></div>
+            </fieldset>
+
+            <div class="actions">
+              <button type="submit">Kampanyayı kaydet</button>
+              <button type="button" class="ghost" id="campaign-reset">Formu temizle</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="admin-card">
+          <div class="card-title">
+            <h2>Kampanyalar</h2>
+            <span id="campaign-count" class="count-pill">0 kampanya</span>
+          </div>
+          <div id="campaign-list" class="list"></div>
         </div>
       </section>
     </main>

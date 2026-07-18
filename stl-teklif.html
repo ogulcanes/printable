@@ -35,12 +35,26 @@
 
             <div class="stl-panel" data-step="1">
               <h1>Modelinizi yükleyin</h1>
-              <p>STL veya 3MF yükleyin. 3MF dosyalarındaki ayrı nesneler ve renkleri otomatik okunur — MakerWorld'den indirdiğiniz dosyayı doğrudan yükleyebilirsiniz.</p>
-              <label class="stl-upload">
+              <p>3MF dosyalarındaki ayrı parçalar ve renkler otomatik okunur — MakerWorld'den indirdiğiniz dosyayı olduğu gibi yükleyebilirsiniz.</p>
+
+              <label class="stl-drop" id="stl-drop">
                 <input id="stl-file" type="file" accept=".stl,.3mf,model/stl">
-                <span>STL / 3MF dosyası seç</span>
+                <svg class="stl-drop__icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/>
+                  <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
+                </svg>
+                <strong>Dosyanızı buraya sürükleyin</strong>
+                <span class="stl-drop__hint">ya da <b>bilgisayarınızdan seçin</b></span>
+                <span class="stl-drop__formats"><i>.STL</i><i>.3MF</i><i>MakerWorld / Bambu</i></span>
               </label>
-              <small id="stl-file-name">Henüz dosya seçilmedi.</small>
+
+              <div class="stl-file-card" id="stl-file-name" hidden></div>
+
+              <ul class="stl-assurances">
+                <li>Ölçüler ve parçalar otomatik okunur</li>
+                <li>Fiyatı anında, teklif beklemeden görürsünüz</li>
+                <li>Dosyanız yalnızca sizin siparişiniz için kullanılır</li>
+              </ul>
             </div>
 
             <div class="stl-panel" data-step="2">
@@ -114,6 +128,8 @@
     <!--cart-->
 
     <!--footer-->
+
+    <!--chat-->
 
     <script src="script.js"></script>
     <script type="module" src="stl-viewer.js"></script>

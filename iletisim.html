@@ -21,30 +21,76 @@
 
       <section class="container contact-grid">
         <div class="contact-info">
-          <div class="contact-item">
-            <h3>Telefon</h3>
-            <p class="placeholder" data-contact="phone">[Telefon numarası eklenecek]</p>
+          <div class="contact-item contact-card contact-card--wa">
+            <span class="contact-card__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-8.6 15L2 22l5.2-1.4A10 10 0 1 0 12 2Zm0 1.9a8.1 8.1 0 1 1-4.2 15l-.3-.2-3 .8.8-3-.2-.3A8.1 8.1 0 0 1 12 3.9Zm-3.7 4c-.2 0-.5.1-.7.4-.3.3-.9.9-.9 2.1s.9 2.4 1 2.6c.1.2 1.7 2.7 4.2 3.7 2.1.8 2.5.7 3 .6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.2.2-1.3-.1-.1-.3-.2-.5-.3l-1.8-.9c-.3-.1-.5-.1-.6.1l-.8 1c-.2.2-.3.2-.5.1-.3-.1-1.2-.4-2.2-1.4-.8-.7-1.4-1.6-1.5-1.9-.2-.2 0-.4.1-.5l.4-.5c.1-.2.2-.3.3-.5v-.5c-.1-.1-.6-1.5-.8-2-.2-.5-.4-.4-.6-.5h-.5Z"/></svg>
+            </span>
+            <div class="contact-card__body">
+              <h3>WhatsApp</h3>
+              <p class="placeholder" data-contact="whatsapp">[WhatsApp numarası eklenecek]</p>
+              <small>En hızlı yanıt burada</small>
+            </div>
           </div>
-          <div class="contact-item">
-            <h3>E-posta</h3>
-            <p class="placeholder" data-contact="email">[E-posta adresi eklenecek]</p>
+
+          <div class="contact-item contact-card">
+            <span class="contact-card__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M6.8 3h3l1.5 3.7-1.9 1.4a12 12 0 0 0 5.5 5.5l1.4-1.9L20 13.2v3a1.8 1.8 0 0 1-2 1.8A15.2 15.2 0 0 1 5 5a1.8 1.8 0 0 1 1.8-2Z"/></svg>
+            </span>
+            <div class="contact-card__body">
+              <h3>Telefon</h3>
+              <p class="placeholder" data-contact="phone">[Telefon numarası eklenecek]</p>
+            </div>
           </div>
-          <div class="contact-item">
-            <h3>Adres</h3>
-            <p class="placeholder" data-contact="address">[Açık adres eklenecek]</p>
+
+          <div class="contact-item contact-card">
+            <span class="contact-card__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M3.5 6.5h17v11h-17z"/><path d="m3.5 7 8.5 6 8.5-6"/></svg>
+            </span>
+            <div class="contact-card__body">
+              <h3>E-posta</h3>
+              <p class="placeholder" data-contact="email">[E-posta adresi eklenecek]</p>
+            </div>
           </div>
-          <div class="contact-item">
-            <h3>Çalışma saatleri</h3>
-            <p class="placeholder" data-contact="working_hours">[Çalışma saatleri eklenecek — ör. Hafta içi 09:00–18:00]</p>
+
+          <div class="contact-item contact-card">
+            <span class="contact-card__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 21s6.5-5.6 6.5-10.2A6.5 6.5 0 0 0 5.5 10.8C5.5 15.4 12 21 12 21Z"/><circle cx="12" cy="10.5" r="2.4"/></svg>
+            </span>
+            <div class="contact-card__body">
+              <h3>Adres</h3>
+              <p class="placeholder" data-contact="address">[Açık adres eklenecek]</p>
+            </div>
           </div>
-          <div class="contact-item">
-            <h3>Sosyal medya</h3>
-            <p class="placeholder" data-contact="social_links">[Instagram / diğer hesaplar eklenecek]</p>
+
+          <div class="contact-item contact-card">
+            <span class="contact-card__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5.2l3.2 2"/></svg>
+            </span>
+            <div class="contact-card__body">
+              <h3>Çalışma saatleri</h3>
+              <p class="placeholder" data-contact="working_hours">[Çalışma saatleri eklenecek — ör. Hafta içi 09:00–18:00]</p>
+            </div>
           </div>
+
+          <div class="contact-item contact-card contact-card--social">
+            <span class="contact-card__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5a14 14 0 0 1 0 17 14 14 0 0 1 0-17Z"/></svg>
+            </span>
+            <div class="contact-card__body">
+              <h3>Sosyal medya</h3>
+              <p class="placeholder" data-contact="social_links">[Instagram / diğer hesaplar eklenecek]</p>
+            </div>
+          </div>
+
+          <a class="contact-aside" href="/sss">
+            <strong>Önce S.S.S.'ye bakın</strong>
+            <span>Kargo, iade, e-fatura ve baskı süresi hakkındaki soruların yanıtı hazır.</span>
+          </a>
         </div>
 
         <form id="contact-form" class="contact-form">
           <h2>Mesaj gönderin</h2>
+          <p class="contact-form__lead">Formu doldurun, genellikle aynı gün içinde dönüş yapıyoruz. Özel baskı talebiniz varsa modelinizi <a href="/stl-teklif">teklif sayfasından</a> yükleyebilirsiniz.</p>
           <label>Ad soyad *<input name="name" required autocomplete="name"></label>
           <div class="checkout-form__row">
             <label>E-posta<input name="email" type="email" autocomplete="email"></label>
@@ -61,7 +107,7 @@
     <!--cart-->
     <!--footer-->
 
-    <button class="chat" type="button">?</button>
+    <!--chat-->
     <script src="/script.js"></script>
     <script src="/iletisim.js"></script>
   </body>
