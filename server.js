@@ -29,7 +29,24 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    `dbReady` sözü tutulana kadar hiçbir istek veritabanına dokunamaz (aşağıdaki
    hazırlık kapısına bakın). Vercel'de her soğuk başlatmada tekrar çalışır ama
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
+/* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
+   artırın; bir sonraki açılışta kurulum yeniden çalışır. */
+const SCHEMA_VERSION = "1";
+
 async function initDb() {
+  /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
+     migration'ları ve seed kontrollerini her seferinde yapmak uzak bir
+     veritabanında onlarca gidiş-dönüş demek — istekler zaman aşımına uğruyordu.
+     Kurulum güncelse iki sorguda çıkıyoruz. */
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS app_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+  `);
+  const current = await db.prepare("SELECT value FROM app_meta WHERE key = 'schema_version'").get();
+  if (current?.value === SCHEMA_VERSION) return;
+
   await db.exec(`
   CREATE TABLE IF NOT EXISTS products (
     id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -680,6 +697,12 @@ if (!existingSlides) {
   ];
   for (const slide of slides) await seedSlide.run(slide);
 }
+
+// Kurulum tamam: sonraki soğuk başlatmalar bu satır sayesinde erken çıkacak.
+await db.prepare(`
+  INSERT INTO app_meta (key, value) VALUES ('schema_version', ?)
+  ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+`).run(SCHEMA_VERSION);
 }   // <-- initDb() sonu
 
 /* Şema hazır olana kadar hiçbir istek veritabanına dokunmamalı. initDb() modül

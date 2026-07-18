@@ -122,7 +122,8 @@ function translate(sql, args) {
 
 // id sütunu OLMAYAN tablolar — bunlara RETURNING id eklenemez.
 const NO_ID_TABLES = new Set([
-  "product_colors", "product_categories", "campaign_products", "campaign_categories"
+  "product_colors", "product_categories", "campaign_products", "campaign_categories",
+  "app_meta"
 ]);
 
 // INSERT ise ve çağıran lastInsertRowid bekliyorsa RETURNING id ekle.
