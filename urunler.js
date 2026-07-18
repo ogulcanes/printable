@@ -149,10 +149,28 @@
     apply();
   });
 
-  // Mobile: toggle the filter sidebar.
-  qs("#filter-toggle").addEventListener("click", (event) => {
-    const open = qs("#catalog-filters").classList.toggle("open");
-    event.currentTarget.setAttribute("aria-expanded", String(open));
+  /* Mobil: filtreler tam ekran bir katmanda açılır. Seçimler anında uygulanır
+     (masaüstündeki davranışın aynısı); "Uygula" yalnızca paneli kapatıp
+     sonucu göstermek için var — kullanıcı için beklenen akış bu. */
+  const filterPanel = qs("#catalog-filters");
+  const backdrop = qs("#filter-backdrop");
+  const toggleButton = qs("#filter-toggle");
+
+  const setFilters = (open) => {
+    filterPanel.classList.toggle("open", open);
+    if (backdrop) backdrop.hidden = !open;
+    toggleButton.setAttribute("aria-expanded", String(open));
+    // Panel açıkken arka planın kaymasını engelle.
+    document.body.classList.toggle("filters-open", open);
+  };
+
+  toggleButton.addEventListener("click", () => setFilters(!filterPanel.classList.contains("open")));
+  qs("#apply-filters")?.addEventListener("click", () => setFilters(false));
+  qs("#close-filters")?.addEventListener("click", () => setFilters(false));
+  backdrop?.addEventListener("click", () => setFilters(false));
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && filterPanel.classList.contains("open")) setFilters(false);
   });
 
   async function init() {

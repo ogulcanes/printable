@@ -21,10 +21,13 @@
 
       <section class="container catalog">
         <button class="catalog__filter-toggle" type="button" id="filter-toggle" aria-expanded="false">Filtreler</button>
+        <!-- Mobilde bu panel tam ekran bir katmana dönüşür; masaüstünde yan sütundur. -->
+        <div class="filter-backdrop" id="filter-backdrop" hidden></div>
         <aside class="catalog__filters" id="catalog-filters" aria-label="Ürün filtreleri">
           <div class="filter-head">
             <h2>Filtreler</h2>
             <button type="button" id="clear-filters" class="filter-clear">Temizle</button>
+            <button type="button" id="close-filters" class="filter-close" aria-label="Filtreleri kapat">&times;</button>
           </div>
           <form id="filter-form">
             <fieldset class="filter-group">
@@ -49,6 +52,10 @@
               <label class="filter-check"><input type="checkbox" id="on-sale"> Sadece indirimli ürünler</label>
             </fieldset>
           </form>
+          <!-- Yalnızca mobil katmanda görünür: seçimi onaylayıp paneli kapatır. -->
+          <div class="filter-apply-bar">
+            <button type="button" id="apply-filters" class="filter-apply">Uygula</button>
+          </div>
         </aside>
 
         <div class="catalog__main">
