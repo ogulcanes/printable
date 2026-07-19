@@ -799,11 +799,21 @@ function renderKatlac() {
 /* PDF sürümü. Ekrandaki kartlarda input var; onları yazdırmak boş kutular
    basar. Bu yüzden ayrı, sade bir düzen üretiliyor: 9 kayıt A4'te 2 sayfaya
    sığsın diye 3 sütun ve küçük görsel. */
+/* PDF'e gömülen görsel, kâğıtta 42mm genişliğinde basılıyor; tam çözünürlük
+   (1400px) gereksiz. Tarayıcı görseli PDF'e olduğu gibi gömdüğü için dosya
+   13 MB'a çıkıyordu — paylaşılamayacak kadar büyük. Supabase'in görsel
+   dönüştürme ucundan 700px isteyince ~1.5 MB'a iniyor, baskıda fark yok.
+   Dönüştürme kapalıysa adres yine çalışır, sadece küçültmez. */
+const pdfGorseli = (url) => {
+  if (!url || !url.includes("/storage/v1/object/public/")) return url;
+  return `${url.replace("/object/public/", "/render/image/public/")}?width=700&quality=80`;
+};
+
 function renderKatlacPrint() {
   const liste = state.katlac || [];
   qs("#katlac-print-grid").innerHTML = liste.map((k) => `
     <figure class="katlac-print-item">
-      <img src="${escapeHtml(k.image_path)}" alt="${escapeHtml(k.name)}">
+      <img src="${escapeHtml(pdfGorseli(k.image_path))}" alt="${escapeHtml(k.name)}">
       <figcaption>
         <strong>${escapeHtml(k.name)}</strong>
         <span class="katlac-print-price">${Number(k.price) > 0 ? money(k.price) : "fiyat belirtilmedi"}</span>
