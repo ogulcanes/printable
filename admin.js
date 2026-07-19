@@ -796,6 +796,41 @@ function renderKatlac() {
   `).join("") || "<p>Henüz katlaç eklenmemiş.</p>";
 }
 
+/* PDF sürümü. Ekrandaki kartlarda input var; onları yazdırmak boş kutular
+   basar. Bu yüzden ayrı, sade bir düzen üretiliyor: 9 kayıt A4'te 2 sayfaya
+   sığsın diye 3 sütun ve küçük görsel. */
+function renderKatlacPrint() {
+  const liste = state.katlac || [];
+  qs("#katlac-print-grid").innerHTML = liste.map((k) => `
+    <figure class="katlac-print-item">
+      <img src="${escapeHtml(k.image_path)}" alt="${escapeHtml(k.name)}">
+      <figcaption>
+        <strong>${escapeHtml(k.name)}</strong>
+        <span class="katlac-print-price">${Number(k.price) > 0 ? money(k.price) : "fiyat belirtilmedi"}</span>
+        ${k.note ? `<small>${escapeHtml(k.note)}</small>` : ""}
+      </figcaption>
+    </figure>
+  `).join("");
+  qs("#katlac-print-date").textContent =
+    `${liste.length} ürün · ${new Date().toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" })}`;
+}
+
+/* Yazdırırken panelin geri kalanı gizlensin diye body'ye işaret koyuyoruz:
+   admin.html tek sayfa, doğrudan yazdırmak bütün sekmeleri basardı. */
+qs("#katlac-print").addEventListener("click", () => {
+  renderKatlacPrint();
+  document.body.classList.add("printing-katlac");
+  // Görseller yüklenmeden yazdırmak boş kareler basar.
+  const gorseller = [...document.querySelectorAll("#katlac-print-grid img")];
+  Promise.all(gorseller.map((i) => i.complete ? Promise.resolve() : new Promise((r) => {
+    i.addEventListener("load", r, { once: true });
+    i.addEventListener("error", r, { once: true });
+  }))).then(() => {
+    window.print();
+    document.body.classList.remove("printing-katlac");
+  });
+});
+
 qs("#katlac-grid").addEventListener("click", async (event) => {
   const kaydet = event.target.dataset.katlacSave;
   const sil = event.target.dataset.katlacDelete;

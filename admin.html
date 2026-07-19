@@ -436,10 +436,21 @@
         <div class="admin-card">
           <div class="card-title">
             <h2>Katlaç Kataloğu</h2>
-            <span id="katlac-count" class="count-pill">0 katlaç</span>
+            <div class="card-title__actions">
+              <button type="button" class="small-button" id="katlac-print">PDF / Yazdır</button>
+              <span id="katlac-count" class="count-pill">0 katlaç</span>
+            </div>
           </div>
           <p class="form-note"><strong>Bu liste yalnızca burada görünür.</strong> Mağazaya, katalog sayfasına veya herhangi bir herkese açık adrese düşmez — ürünlerden ayrı bir yerde tutuluyor. Adı ve fiyatı değiştirip <em>Kaydet</em> demen yeterli.</p>
           <div id="katlac-grid" class="katlac-grid"></div>
+        </div>
+
+        <!-- Yalnızca yazdırırken görünür. Ekrandaki düzenleme kartlarını
+             yazdırmak input kutuları basardı; PDF için ayrı, sade bir sürüm. -->
+        <div id="katlac-print-view" class="katlac-print-view">
+          <h1 class="katlac-print-title">Katlaç Kataloğu</h1>
+          <div id="katlac-print-grid" class="katlac-print-grid"></div>
+          <p id="katlac-print-date" class="katlac-print-date"></p>
         </div>
 
         <div class="admin-card">
