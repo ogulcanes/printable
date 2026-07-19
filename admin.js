@@ -10,6 +10,7 @@ const state = {
   messages: [],
   reviews: [],
   campaigns: [],
+  subscribers: [],
   pricing: {},
   seo: { pages: [], site: {} }
 };
@@ -415,6 +416,23 @@ function renderMessages() {
 const starsHtml = (rating) =>
   `<span class="stars" aria-label="5 üzerinden ${rating}">${"★".repeat(rating)}${"☆".repeat(5 - rating)}</span>`;
 
+function renderSubscribers() {
+  qs("#subscriber-count").textContent = `${state.subscribers.length} abone`;
+  // E-posta adresleri herkese açık formdan geliyor — escapeHtml zorunlu.
+  qs("#subscriber-list").innerHTML = state.subscribers.map((s) => `
+    <article class="row">
+      <span class="brand-mark">@</span>
+      <div>
+        <h3>${escapeHtml(s.email)}</h3>
+        <div class="meta-line"><span class="badge">${formatDateTime(s.created_at)}</span></div>
+      </div>
+      <div class="row-actions">
+        <button class="danger" data-delete-subscriber="${s.id}">Sil</button>
+      </div>
+    </article>
+  `).join("") || "<p>Henüz abone yok.</p>";
+}
+
 function renderReviews() {
   const pending = state.reviews.filter((r) => !r.is_approved).length;
   qs("#review-count").textContent =
@@ -517,7 +535,7 @@ function renderCampaignOptions(campaign) {
 }
 
 async function refresh() {
-  const [stats, products, customers, orders, slides, categories, colors, materials, quotes, pricing, seo, messages, reviews, campaigns] = await Promise.all([
+  const [stats, products, customers, orders, slides, categories, colors, materials, quotes, pricing, seo, messages, reviews, campaigns, subscribers] = await Promise.all([
     api("/api/stats"),
     api("/api/products"),
     api("/api/customers"),
@@ -531,7 +549,8 @@ async function refresh() {
     api("/api/seo"),
     api("/api/messages"),
     api("/api/reviews"),
-    api("/api/campaigns")
+    api("/api/campaigns"),
+    api("/api/subscribers")
   ]);
   state.products = products;
   state.customers = customers;
@@ -546,6 +565,7 @@ async function refresh() {
   state.messages = messages;
   state.reviews = reviews;
   state.campaigns = campaigns;
+  state.subscribers = subscribers;
   qs("#stat-products").textContent = stats.products;
   qs("#stat-customers").textContent = stats.customers;
   qs("#stat-orders").textContent = stats.orders;
@@ -562,6 +582,7 @@ async function refresh() {
   renderMessages();
   renderReviews();
   renderCampaigns();
+  renderSubscribers();
   // Yalnızca düzenlenmiyorken sıfırla — düzenleme sırasındaki seçimler kaybolmasın.
   if (!qs('#campaign-form input[name="id"]').value) renderCampaignOptions(null);
   syncCampaignFields();
@@ -584,6 +605,14 @@ qs("#message-list").addEventListener("click", async (event) => {
   }
   if (deleteId && confirm("Bu mesaj silinsin mi?")) {
     await api(`/api/messages/${deleteId}`, { method: "DELETE" });
+    await refresh();
+  }
+});
+
+qs("#subscriber-list").addEventListener("click", async (event) => {
+  const id = event.target.dataset.deleteSubscriber;
+  if (id && confirm("Bu abone silinsin mi?")) {
+    await api(`/api/subscribers/${id}`, { method: "DELETE" });
     await refresh();
   }
 });

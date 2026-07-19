@@ -27,6 +27,12 @@ const app = express();
   ));
 });
 
+/* Vercel/CDN arkasında istek fonksiyona http olarak ulaşır; req.protocol da
+   "http" der. Bu, canonical ve og:url'in http:// olarak yayınlanmasına yol
+   açıyordu — arama motorları http ve https'i ayrı adres sayar. Proxy
+   başlıklarına güvenerek doğru protokolü okuyoruz. */
+app.set("trust proxy", true);
+
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
 // Vercel'de proje klasörü salt-okunurdur; yazılabilen tek yer /tmp. Yalnızca
@@ -1149,8 +1155,16 @@ app.get("/sitemap.xml", async (req, res) => {
     { loc: "/iletisim", priority: "0.5" },
     { loc: "/sss", priority: "0.5" }
   ];
-  await db.prepare("SELECT id, updated_at FROM products WHERE is_active = 1 ORDER BY id").all()
-    .forEach((p) => urls.push({ loc: `/urun/${p.id}`, priority: "0.7", lastmod: String(p.updated_at || "").slice(0, 10) }));
+  // `await x.all().forEach(...)` aslında `await (Promise.forEach(...))` demek:
+  // .forEach Promise üzerinde yok, sitemap bu yüzden hata veriyordu.
+  const activeProducts = await db.prepare(
+    "SELECT id, updated_at FROM products WHERE is_active = 1 ORDER BY id"
+  ).all();
+  activeProducts.forEach((p) => urls.push({
+    loc: `/urun/${p.id}`,
+    priority: "0.7",
+    lastmod: String(p.updated_at instanceof Date ? p.updated_at.toISOString() : p.updated_at || "").slice(0, 10)
+  }));
 
   const body = urls.map((u) => {
     const loc = escapeHtml(absoluteUrl(req, u.loc, site.site_url));
