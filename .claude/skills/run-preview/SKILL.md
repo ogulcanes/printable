@@ -25,7 +25,7 @@ If port 3000 is taken: `PORT=3001 npm start` (Bash) or `$env:PORT=3001; npm star
 | `/login` | Admin login |
 | `/api/products` | Public JSON — quick check that the DB is seeded |
 
-Local admin credentials come from `.env.example` defaults: **admin / printable-admin** (`ADMIN_USER` / `ADMIN_PASSWORD`). The server prints them on boot.
+Admin accounts are rows in `admin_users`, seeded on first boot from `ADMIN_USERS` (default `ogulcan,furkan`) using `ADMIN_PASSWORD`. Log in with one of those usernames and the `ADMIN_PASSWORD` in `.env`. Passwords are scrypt-hashed and are changed from /admin → Yöneticiler, not by editing env.
 
 On first boot the server creates `data/printable.sqlite` and seeds three products. If the storefront grid is empty, the DB is the first thing to check: `curl -s localhost:3000/api/products`.
 
@@ -39,7 +39,7 @@ There are no tests in this repo. The only real verification is exercising the fl
 - **API** — `curl` the endpoint. Admin endpoints need the cookie:
   ```bash
   curl -s -c /tmp/c.txt -X POST localhost:3000/api/login \
-    -H 'Content-Type: application/json' -d '{"username":"admin","password":"printable-admin"}'
+    -H 'Content-Type: application/json' -d '{"username":"ogulcan","password":"<ADMIN_PASSWORD>"}'
   curl -s -b /tmp/c.txt localhost:3000/api/stats
   ```
 

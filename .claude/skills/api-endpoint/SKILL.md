@@ -26,13 +26,14 @@ app.get("/api/products", (req, res) => {
 
 ## Auth
 
-Admin auth is a hand-rolled HMAC-signed cookie (`printable_admin`), not a session library. `requireAdmin` is the gate:
+Admin auth is a hand-rolled HMAC-signed cookie (`printable_admin`), not a session library. `requireAdmin` is the gate, and it is **async** — it awaits a DB lookup, so never call it from a sync context:
 
 ```js
 app.post("/api/thing", requireAdmin, (req, res) => { … });
 ```
 
-- Add `requireAdmin` to **every** write or read that exposes business data. Currently public and intentionally so: `GET /api/products`, `POST /api/customers`, `POST /api/orders` (the storefront checkout needs them unauthenticated). Everything else — stats, customer list, order list, product writes — is admin-only.
+- Add `requireAdmin` to **every** write or read that exposes business data. Currently public and intentionally so: `GET /api/products`, `POST /api/customers`, `POST /api/checkout`, `POST /api/quotes`, `POST /api/reviews`, `POST /api/contact`, `POST /api/subscribe`. Everything else — stats, customer list, order list, product writes — is admin-only.
+- **`POST /api/orders` is admin-only.** It is the panel form for opening an order by hand, and it lets the caller set `unit_price` for off-catalogue work. The storefront never touches it; it goes to `/api/checkout`, which rebuilds the cart from the catalogue and ignores any price the browser sends. Do not make `/api/orders` public to "fix" a checkout bug — that hands everyone their own price list.
 - `requireAdmin` returns JSON `401` for `/api/*` and redirects to `/login` otherwise. `admin.js` turns a `401` into a redirect, so an unprotected-then-protected route change is visible immediately.
 - Secrets come from env with dev fallbacks (`ADMIN_USER`, `ADMIN_PASSWORD`, `SESSION_SECRET`, see `.env.example`). Never commit a real secret; never log `ADMIN_PASSWORD` in code that runs in production.
 

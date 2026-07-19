@@ -14,7 +14,7 @@ api/index.js                          3-line re-export of server.js for Vercel
 data/printable.sqlite                 gitignored, seeded on first boot
 ```
 
-`npm start` → http://localhost:3000. Local admin: `admin` / `printable-admin`.
+`npm start` → http://localhost:3000. Admin accounts live in the `admin_users` table (scrypt-hashed), **not** in env: on an empty table the names in `ADMIN_USERS` (default `ogulcan,furkan`) are seeded with `ADMIN_PASSWORD`. After that, passwords are managed from `/admin` → Yöneticiler, and changing `ADMIN_PASSWORD` no longer affects existing accounts.
 
 ## Conventions
 

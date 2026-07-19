@@ -46,7 +46,7 @@ Because rows are re-created on every `refresh()`, a listener bound to a row is d
 
 ## Tabs and what they manage
 
-`dashboard`, `banner` (hero slides: image, per-slide copy, buttons, order, visibility), `categories` (the storefront category grid), `colors` (the palette), `materials` (3D printing materials **and** the pricing coefficients), `quotes` (incoming 3D print quotes with the uploaded STL), `seo` (per-page meta + site-wide JSON-LD settings — see the `seo` skill), `products`, `orders`, `customers`.
+`dashboard`, `banner` (hero slides: image, per-slide copy, buttons, order, visibility), `categories` (the storefront category grid), `colors` (the palette), `materials` (3D printing materials **and** the pricing coefficients), `quotes` (incoming 3D print quotes with the uploaded STL), `seo` (per-page meta + site-wide JSON-LD settings — see the `seo` skill), `products`, `orders`, `customers`, `messages` (iletişim mesajları + bülten aboneleri), `reviews` (yorum onayı), `campaigns`, `admins` (panel hesapları: ekle, şifre ver, sil, kendi şifreni değiştir).
 
 **Pricing lives on the server.** The STL wizard never computes a price: it POSTs the model's volume/size and the customer's choices to `/api/quote-price` and displays what comes back, and `POST /api/quotes` recomputes the price again from the same engine, ignoring whatever the browser posted. Do not "optimise" this by trusting a client-sent `total` — a forged-price test covers it.
 
@@ -66,4 +66,4 @@ Because rows are re-created on every `refresh()`, a listener bound to a row is d
 
 - `admin.css` uses `.row`, `.row-actions`, `.meta-line`, `.badge` (+ `.green` / `.orange` / `.blue`), `.brand-mark`, `.panel`, `.tab`. Reuse them; the admin CSS is not layered like `styles.css`, so a normal edit behaves normally.
 - All copy is Turkish. Confirmations currently use native `confirm()` / `prompt()` / `alert()` — matching that is fine; replacing it is a UX decision, so ask first.
-- **Template literals interpolate API data directly into `innerHTML`** (product names, customer names, notes). That is an XSS hole for admin-entered content. Do not widen it: for any *new* field, escape it, or say so if the user wants the quick path.
+- **Every value interpolated into `innerHTML` must go through `escapeHtml()`** — including inside `href="…"` and `style="…"`. This is not hypothetical: quote, customer and order rows once interpolated raw, and those fields come from *public* forms (`POST /api/quotes`, `/api/checkout`, `/api/contact`). A `&lt;img onerror&gt;` in a quote note ran with admin privileges the moment the panel was opened. The session cookie is `HttpOnly`, but it rides along on every same-origin `fetch`, so the payload can call any admin route. Escape new fields as you add them.
