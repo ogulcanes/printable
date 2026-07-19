@@ -813,10 +813,10 @@ textarea { resize: vertical; }
   .katlac-print-rows { display: block; }
   .katlac-row {
     display: grid;
-    grid-template-columns: 7mm 30mm 1fr auto;
+    grid-template-columns: 7mm 34mm 1fr auto;
     align-items: center;
     gap: 4mm;
-    padding: 2.4mm 0;
+    padding: 3mm 0;
     border-bottom: 0.2mm solid #ddd8ce;
     page-break-inside: avoid;
     break-inside: avoid;
@@ -829,10 +829,13 @@ textarea { resize: vertical; }
     color: #b4aea4;
     font-variant-numeric: tabular-nums;
   }
+  /* contain + açık zemin: cover kullanınca katlaçların kenarları kırpılıyordu.
+     Katalogda ürünün tamamı görünmeli, yan boşluk kırpmadan iyidir. */
   .katlac-row__img {
-    width: 30mm;
-    height: 20mm;
-    object-fit: cover;
+    width: 34mm;
+    height: 24mm;
+    object-fit: contain;
+    background: #f5f2ec;
     border-radius: 1.6mm;
     display: block;
   }
