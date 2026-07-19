@@ -645,3 +645,59 @@ textarea { resize: vertical; }
   /* Dar ekranda tablo sayfayı taşırmasın. */
   .campaign-uses { overflow-x: auto; }
 }
+
+/* ---------- Ürün galerisi ---------- */
+.gallery-field {
+  border: 1px solid var(--line, #e8eaf0);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.gallery-field legend { font-weight: 700; padding: 0 6px; }
+
+/* Ürün formu dar bir sütun (~420px): 190px'lik kutular tek sıraya düşüp
+   fotoğrafları gereksiz büyütüyordu. 140px ile dar sütunda 2, geniş
+   ekranda daha fazla kart yan yana geliyor. */
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+.gallery-item {
+  margin: 0;
+  border: 1px solid var(--line, #e8eaf0);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+.gallery-item img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  display: block;
+  background: #f6f7fb;
+}
+.gallery-item figcaption { display: grid; gap: 6px; padding: 8px; }
+.gallery-item select,
+.gallery-item input[type="text"] {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--line, #e8eaf0);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+}
+.gallery-item__actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.gallery-item__actions .small-button { padding: 4px 8px; font-size: 12px; }
+.gallery-item__actions .small-button.danger { color: #b4232a; border-color: #f3c2c5; }
+
+.gallery-upload {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding-top: 10px;
+  border-top: 1px solid var(--line, #e8eaf0);
+}
+.gallery-upload input[type="file"] { flex: 1 1 220px; }

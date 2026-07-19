@@ -92,7 +92,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "5";
+const SCHEMA_VERSION = "6";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -366,6 +366,22 @@ async function initDb() {
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     FOREIGN KEY(gift_product_id) REFERENCES products(id) ON DELETE SET NULL
+  );
+
+  /* Ürün galerisi. products.image_path "kapak" olarak kalır — ürün kartları,
+     paylaşım görseli ve arama sonuçları onu kullanır; burası ek fotoğraflar.
+     color_id doluysa fotoğraf o renge aittir: müşteri rengi seçince galeri
+     o rengin fotoğraflarına geçer. Boşsa fotoğraf ürünün geneline aittir. */
+  CREATE TABLE IF NOT EXISTS product_images (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    product_id INTEGER NOT NULL,
+    color_id INTEGER,
+    image_path TEXT NOT NULL,
+    image_alt TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE,
+    FOREIGN KEY(color_id) REFERENCES colors(id) ON DELETE SET NULL
   );
 
   /* Kampanyayı kim, ne zaman, ne kadar indirimle kullandı. used_count'un
@@ -1664,7 +1680,7 @@ async function decorateProducts(products) {
   const ids = products.map((p) => p.id);
   const list = `(${ids.map(() => "?").join(",")})`;
 
-  const [colorRows, categoryRows, ratingRows] = await Promise.all([
+  const [colorRows, categoryRows, ratingRows, imageRows] = await Promise.all([
     db.prepare(`
       SELECT pc.product_id, c.* FROM colors c
       JOIN product_colors pc ON pc.color_id = c.id
@@ -1681,6 +1697,12 @@ async function decorateProducts(products) {
       SELECT product_id, ROUND(AVG(rating)::numeric, 1) AS average, COUNT(*) AS count
       FROM reviews WHERE is_approved = 1 AND product_id IN ${list}
       GROUP BY product_id
+    `).all(...ids),
+    // Galeri de tek sorguda: ürün başına ayrı sorgu N+1 demek olurdu.
+    db.prepare(`
+      SELECT id, product_id, color_id, image_path, image_alt, sort_order
+      FROM product_images WHERE product_id IN ${list}
+      ORDER BY sort_order ASC, id ASC
     `).all(...ids)
   ]);
 
@@ -1692,21 +1714,30 @@ async function decorateProducts(products) {
   const colors = bucket(colorRows);
   const categories = bucket(categoryRows);
   const ratings = Object.fromEntries(ratingRows.map((r) => [r.product_id, { average: r.average, count: r.count }]));
+  const images = bucket(imageRows);
 
   return products.map((product) => ({
     ...product,
     rating: ratings[product.id] || { average: null, count: 0 },
     colors: colors[product.id] || [],
-    categories: categories[product.id] || []
+    categories: categories[product.id] || [],
+    images: images[product.id] || []
   }));
 }
 
 // Tek ürün için: POST/PUT sonrası dönen kayıtta kullanılır.
+const imagesOfProduct = db.prepare(`
+  SELECT id, color_id, image_path, image_alt, sort_order
+  FROM product_images WHERE product_id = ?
+  ORDER BY sort_order ASC, id ASC
+`);
+
 const withColors = async (product) => ({
   ...product,
   rating: (await ratingOfProduct.get(product.id)) || { average: null, count: 0 },
   colors: await colorsOfProduct.all(product.id),
-  categories: await categoriesOfProduct.all(product.id)
+  categories: await categoriesOfProduct.all(product.id),
+  images: await imagesOfProduct.all(product.id)
 });
 
 // A multi-select posts one value per checked box; multer/urlencoded gives a string
@@ -1861,6 +1892,74 @@ app.put("/api/products/:id", requireAdmin, upload.single("image"), async (req, r
     await logPrice(current.id, product.price, product.sale_price);
   }
   res.json(await withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(current.id)));
+});
+
+/* ---------- Ürün galerisi ----------
+   Fotoğraflar ürün formundan ayrı yönetilir: tek bir dev formda 10 dosyayı
+   birlikte göndermek hem Vercel'in istek sınırına takılır hem de tek bir
+   yükleme hatası ürünün tamamının kaydını düşürürdü. Her fotoğraf kendi
+   isteğiyle gelir; biri patlarsa diğerleri kaydedilmiş olur. */
+
+app.post("/api/products/:id/images", requireAdmin, upload.single("image"), async (req, res) => {
+  const product = await db.prepare("SELECT id FROM products WHERE id = ?").get(req.params.id);
+  if (!product) return res.status(404).json({ error: "Ürün bulunamadı." });
+
+  const yol = resolveImagePath({ image_key: req.body.image_key, image_url: req.body.image_url }, req.file);
+  if (!yol) return res.status(400).json({ error: "Fotoğraf dosyası veya adresi gerekli." });
+
+  // Yeni fotoğraf sona eklenir; sıralamayı admin sürükleyerek değil, sıra
+  // numarasıyla değiştiriyor (basit ve dokunmatik ekranda güvenilir).
+  const son = await db.prepare("SELECT COALESCE(MAX(sort_order), 0) AS son FROM product_images WHERE product_id = ?").get(product.id);
+  const renkId = toInt(req.body.color_id) || null;
+
+  const sonuc = await db.prepare(`
+    INSERT INTO product_images (product_id, color_id, image_path, image_alt, sort_order)
+    VALUES (@product_id, @color_id, @image_path, @image_alt, @sort_order)
+  `).run({
+    product_id: product.id,
+    color_id: renkId,
+    image_path: yol,
+    image_alt: req.body.image_alt?.trim() || null,
+    sort_order: Number(son.son) + 1
+  });
+
+  res.status(201).json(await db.prepare("SELECT * FROM product_images WHERE id = ?").get(sonuc.lastInsertRowid));
+});
+
+app.patch("/api/products/:id/images/:imageId", requireAdmin, async (req, res) => {
+  const row = await db.prepare("SELECT * FROM product_images WHERE id = ? AND product_id = ?")
+    .get(req.params.imageId, req.params.id);
+  if (!row) return res.status(404).json({ error: "Fotoğraf bulunamadı." });
+
+  await db.prepare(`
+    UPDATE product_images SET color_id = @color_id, image_alt = @image_alt, sort_order = @sort_order WHERE id = @id
+  `).run({
+    id: row.id,
+    // color_id gönderilmediyse mevcut değeri koru; "" gönderildiyse renk bağını kaldır.
+    color_id: req.body.color_id === undefined ? row.color_id : (toInt(req.body.color_id) || null),
+    image_alt: req.body.image_alt === undefined ? row.image_alt : (req.body.image_alt?.trim() || null),
+    sort_order: req.body.sort_order === undefined ? row.sort_order : toInt(req.body.sort_order)
+  });
+  res.json(await db.prepare("SELECT * FROM product_images WHERE id = ?").get(row.id));
+});
+
+app.delete("/api/products/:id/images/:imageId", requireAdmin, async (req, res) => {
+  const row = await db.prepare("SELECT id FROM product_images WHERE id = ? AND product_id = ?")
+    .get(req.params.imageId, req.params.id);
+  if (!row) return res.status(404).json({ error: "Fotoğraf bulunamadı." });
+  await db.prepare("DELETE FROM product_images WHERE id = ?").run(row.id);
+  res.status(204).end();
+});
+
+/* Galerideki bir fotoğrafı kapak yap. Kapak products.image_path'te durur:
+   ürün kartları, arama sonuçları ve paylaşım görseli onu kullanıyor. */
+app.post("/api/products/:id/images/:imageId/cover", requireAdmin, async (req, res) => {
+  const row = await db.prepare("SELECT image_path, image_alt FROM product_images WHERE id = ? AND product_id = ?")
+    .get(req.params.imageId, req.params.id);
+  if (!row) return res.status(404).json({ error: "Fotoğraf bulunamadı." });
+  await db.prepare("UPDATE products SET image_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+    .run(row.image_path, req.params.id);
+  res.json(await withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(req.params.id)));
 });
 
 app.delete("/api/products/:id", requireAdmin, async (req, res) => {

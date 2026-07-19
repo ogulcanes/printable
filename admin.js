@@ -713,6 +713,56 @@ qs("#subscriber-list").addEventListener("click", async (event) => {
 /* İki kart tek forma bağlı: hangi butona basılırsa basılsın ayarların tamamı
    birlikte kaydedilir. Ayrı ayrı PUT etmek, ikinci kaydın birincinin
    alanlarını sıfırlamasına yol açardı. */
+/* ---------- Ürün galerisi ----------
+   Galeri yalnızca KAYITLI bir ürün için anlamlı: fotoğraf product_id'ye
+   bağlanıyor, dolayısıyla yeni ürün formunda gizli tutuluyor. */
+let galeriUrunId = null;
+
+function renderGallery(product) {
+  galeriUrunId = product?.id || null;
+  const alan = qs("#product-gallery-field");
+  const ipucu = qs("#product-gallery-hint");
+  alan.hidden = !galeriUrunId;
+  ipucu.hidden = Boolean(galeriUrunId);
+  if (!galeriUrunId) return;
+
+  // Renk atama listesi: yalnızca bu ürüne tanımlı renkler.
+  const urunRenkleri = product.colors || [];
+  qs("#gallery-color").innerHTML = '<option value="">Renk atama (isteğe bağlı)</option>'
+    + urunRenkleri.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
+
+  const renkAdi = (id) => urunRenkleri.find((c) => c.id === id)?.name || "";
+  const foto = product.images || [];
+
+  qs("#product-gallery").innerHTML = foto.map((g, i) => `
+    <figure class="gallery-item">
+      <img src="${escapeHtml(g.image_path)}" alt="${escapeHtml(g.image_alt) || ""}">
+      <figcaption>
+        <select data-gallery-color="${g.id}">
+          <option value="">Renk yok</option>
+          ${urunRenkleri.map((c) => `<option value="${c.id}" ${c.id === g.color_id ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}
+        </select>
+        ${g.color_id && !renkAdi(g.color_id) ? '<span class="badge orange">Renk silinmiş</span>' : ""}
+        <input type="text" data-gallery-alt="${g.id}" value="${escapeHtml(g.image_alt) || ""}" placeholder="Alt metin (SEO)">
+        <div class="gallery-item__actions">
+          <button type="button" class="small-button" data-gallery-up="${g.id}" ${i === 0 ? "disabled" : ""}>↑</button>
+          <button type="button" class="small-button" data-gallery-down="${g.id}" ${i === foto.length - 1 ? "disabled" : ""}>↓</button>
+          <button type="button" class="small-button" data-gallery-cover="${g.id}">Kapak yap</button>
+          <button type="button" class="small-button danger" data-gallery-delete="${g.id}">Sil</button>
+        </div>
+      </figcaption>
+    </figure>
+  `).join("") || "<p class='field-note'>Henüz galeri fotoğrafı yok.</p>";
+}
+
+// Düzenlenen ürünü state'ten tazeleyip galeriyi yeniden çizer.
+async function galeriyiTazele() {
+  if (!galeriUrunId) return;
+  await refresh();
+  const guncel = state.products.find((p) => p.id === galeriUrunId);
+  if (guncel) renderGallery(guncel);
+}
+
 function renderCampaignUses(veri) {
   const { campaign, uses, total_discount: toplam } = veri;
   const kontenjan = campaign.usage_limit
@@ -738,6 +788,91 @@ function renderCampaignUses(veri) {
       </tbody>
     </table>`;
 }
+
+/* Galeri yüklemesi: her dosya KENDİ isteğiyle gider. Tek bir dev istekte
+   göndermek Vercel'in ~4.5 MB gövde sınırına takılır ve tek bir hata bütün
+   yüklemeyi düşürürdü; böyle olunca 5 fotoğraftan biri patlasa diğer 4'ü
+   kaydedilmiş oluyor. Depolama açıksa dosya doğrudan Storage'a gidiyor. */
+qs("#gallery-upload-btn").addEventListener("click", async () => {
+  const secici = qs("#gallery-files");
+  const dosyalar = [...secici.files];
+  if (!galeriUrunId) return alert("Önce ürünü kaydedin.");
+  if (!dosyalar.length) return alert("Yüklenecek fotoğraf seçin.");
+
+  const renkId = qs("#gallery-color").value;
+  const durum = qs("#gallery-status");
+  durum.hidden = false;
+  const hatalar = [];
+  let yuklenen = 0;
+
+  for (const [i, dosya] of dosyalar.entries()) {
+    durum.textContent = `Yükleniyor ${i + 1}/${dosyalar.length}: ${dosya.name}`;
+    try {
+      const govde = new FormData();
+      govde.set("image", dosya);
+      if (renkId) govde.set("color_id", renkId);
+      await hoistImageUpload(govde);          // depolama açıksa image_key'e çevirir
+      await api(`/api/products/${galeriUrunId}/images`, { method: "POST", body: govde });
+      yuklenen += 1;
+    } catch (error) {
+      hatalar.push(`${dosya.name}: ${error.message}`);
+    }
+  }
+
+  secici.value = "";
+  durum.textContent = hatalar.length
+    ? `${yuklenen} fotoğraf yüklendi, ${hatalar.length} tanesi başarısız: ${hatalar.join(" | ")}`
+    : `${yuklenen} fotoğraf yüklendi.`;
+  await galeriyiTazele();
+});
+
+qs("#product-gallery").addEventListener("click", async (event) => {
+  const t = event.target;
+  const sil = t.dataset.galleryDelete;
+  const kapak = t.dataset.galleryCover;
+  const yukari = t.dataset.galleryUp;
+  const asagi = t.dataset.galleryDown;
+
+  if (sil) {
+    if (!confirm("Bu fotoğraf silinsin mi?")) return;
+    await api(`/api/products/${galeriUrunId}/images/${sil}`, { method: "DELETE" });
+    await galeriyiTazele();
+  } else if (kapak) {
+    await api(`/api/products/${galeriUrunId}/images/${kapak}/cover`, { method: "POST" });
+    await galeriyiTazele();
+    alert("Kapak fotoğrafı güncellendi.");
+  } else if (yukari || asagi) {
+    /* Sıralama yer değiştirmeyle: iki fotoğrafın sort_order'ını takas et.
+       Tek bir fotoğrafın numarasını değiştirmek eşitlik durumunda sırayı
+       belirsiz bırakırdı (aynı sort_order → id'ye düşer). */
+    const urun = state.products.find((p) => p.id === galeriUrunId);
+    const liste = urun?.images || [];
+    const indeks = liste.findIndex((g) => String(g.id) === (yukari || asagi));
+    const hedef = yukari ? indeks - 1 : indeks + 1;
+    if (indeks < 0 || hedef < 0 || hedef >= liste.length) return;
+    await api(`/api/products/${galeriUrunId}/images/${liste[indeks].id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sort_order: liste[hedef].sort_order })
+    });
+    await api(`/api/products/${galeriUrunId}/images/${liste[hedef].id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sort_order: liste[indeks].sort_order })
+    });
+    await galeriyiTazele();
+  }
+});
+
+// Renk ve alt metin: değişince kaydet (change, input değil — her harfte istek gitmesin).
+qs("#product-gallery").addEventListener("change", async (event) => {
+  const renk = event.target.dataset.galleryColor;
+  const alt = event.target.dataset.galleryAlt;
+  if (!renk && !alt) return;
+  const govde = renk ? { color_id: event.target.value } : { image_alt: event.target.value };
+  await api(`/api/products/${galeriUrunId}/images/${renk || alt}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(govde)
+  });
+  await galeriyiTazele();
+});
 
 /* Ürün arama/filtre. Sadece renderProducts() çağrılıyor — sunucuya gitmeye
    gerek yok, ürünler zaten state'te. Filtre kutuları listenin dışında
@@ -1025,6 +1160,7 @@ qs("#reset-product").addEventListener("click", () => {
   qs('#product-form input[name="id"]').value = "";
   renderProductColorOptions([]);
   renderProductCategoryOptions([]);
+  renderGallery(null);   // yeni ürüne geçildi: galeri bölümü gizlensin
 });
 
 qs("#product-list").addEventListener("click", async (event) => {
@@ -1039,6 +1175,7 @@ qs("#product-list").addEventListener("click", async (event) => {
     form.is_active.checked = Boolean(product.is_active);
     renderProductColorOptions((product.colors || []).map((color) => color.id));
     renderProductCategoryOptions((product.categories || []).map((category) => category.id));
+    renderGallery(product);
     form.scrollIntoView({ behavior: "smooth", block: "start" });
   }
   if (deleteId && confirm("Bu ürünü silmek istiyor musunuz?")) {

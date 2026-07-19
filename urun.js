@@ -33,6 +33,51 @@
 
   let stokGoster = true;   // /api/site-info doldurur
 
+  /* Galeride gösterilecek kareler.
+
+     Renk seçili DEĞİLKEN: kapak başta, sonra tüm galeri. Ürün kartında görülen
+     fotoğrafın sayfada da ilk açılması bekleniyor.
+
+     Renk seçiliyken: önce O RENGİN fotoğrafları, sonra renksiz olanlar. Sıra
+     önemli — ana görsel her zaman ilk kare olduğu için, kırmızıyı seçen
+     müşteriye mavi kapak fotoğrafını göstermemek gerekiyor. Renksizler
+     listeden atılmıyor çünkü çoğu ürünün renkten bağımsız çekimleri de var
+     (ölçek, ambalaj, kullanım); onları gizlemek bilgi kaybı olurdu. */
+  let seciliRenkId = null;
+
+  function galeriKareleri(product) {
+    const kapak = product.image_path
+      ? [{ src: product.image_path, alt: product.image_alt || product.name, colorId: null }]
+      : [];
+    // Kapak zaten listede: aynı dosya iki kez görünmesin.
+    const ekler = (product.images || [])
+      .filter((g) => g.image_path !== product.image_path)
+      .map((g) => ({ src: g.image_path, alt: g.image_alt || product.name, colorId: g.color_id }));
+
+    if (!seciliRenkId) return [...kapak, ...ekler];
+
+    const tumu = [...kapak, ...ekler];
+    return [
+      ...tumu.filter((k) => k.colorId === seciliRenkId),
+      ...tumu.filter((k) => k.colorId !== seciliRenkId)
+    ];
+  }
+
+  function galeriyiBagla(product) {
+    const thumbs = document.querySelector("#gallery-thumbs");
+    const ana = document.querySelector("#gallery-main-image");
+    if (!thumbs || !ana) return;
+    thumbs.addEventListener("click", (event) => {
+      const buton = event.target.closest("[data-gallery-index]");
+      if (!buton) return;
+      const kare = galeriKareleri(product)[Number(buton.dataset.galleryIndex)];
+      if (!kare) return;
+      ana.src = kare.src;
+      ana.alt = kare.alt;
+      thumbs.querySelectorAll(".gallery-thumb").forEach((b) => b.classList.toggle("active", b === buton));
+    });
+  }
+
   function render(product) {
     const price = product.sale_price || product.price;
     const inStock = product.stock > 0;
@@ -40,8 +85,13 @@
     const off = onSale ? Math.round((1 - product.sale_price / product.price) * 100) : 0;
     const cats = (product.categories || [])
       .map((c) => `<a class="chip" href="/urunler?kategori=${c.id}">${c.name}</a>`).join("");
+    // Rengin kendi fotoğrafı varsa nokta tıklanabilir olur; yoksa sade kalır
+    // — tıklayınca hiçbir şey olmayan bir düğme kullanıcıyı yanıltır.
+    const renkliFotoVar = (renkId) => (product.images || []).some((g) => g.color_id === renkId);
     const swatches = (product.colors || [])
-      .map((c) => `<span class="color-dot" style="background:${c.hex}" title="${c.name}"></span>`).join("");
+      .map((c) => renkliFotoVar(c.id)
+        ? `<button type="button" class="color-dot color-dot--action ${seciliRenkId === c.id ? "active" : ""}" style="background:${c.hex}" title="${c.name} fotoğraflarını göster" aria-label="${c.name} fotoğraflarını göster" data-color-pick="${c.id}"></button>`
+        : `<span class="color-dot" style="background:${c.hex}" title="${c.name}"></span>`).join("");
 
     detail.innerHTML = `
       <nav class="breadcrumb" aria-label="Sayfa yolu">
@@ -51,7 +101,18 @@
       </nav>
       <div class="product-detail__grid">
         <div class="product-detail__media">
-          <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}">
+          <div class="gallery-main">
+            <img id="gallery-main-image" src="${galeriKareleri(product)[0]?.src || "/assets/printable-logo.svg"}"
+                 alt="${galeriKareleri(product)[0]?.alt || product.image_alt || product.name}">
+          </div>
+          ${galeriKareleri(product).length > 1 ? `
+            <div class="gallery-thumbs" id="gallery-thumbs">
+              ${galeriKareleri(product).map((k, i) => `
+                <button type="button" class="gallery-thumb ${i === 0 ? "active" : ""}" data-gallery-index="${i}"
+                        aria-label="${i + 1}. fotoğrafı göster">
+                  <img src="${k.src}" alt="">
+                </button>`).join("")}
+            </div>` : ""}
         </div>
         <div class="product-detail__info">
           ${cats ? `<div class="product-detail__cats">${cats}</div>` : ""}
@@ -83,6 +144,18 @@
         </div>
       </div>
     `;
+
+    galeriyiBagla(product);
+
+    /* Renk noktasına basınca galeri o rengin fotoğraflarına geçer. Aynı renge
+       tekrar basmak seçimi kaldırır — kullanıcı "hepsini göster"e dönebilsin. */
+    detail.querySelectorAll("[data-color-pick]").forEach((nokta) => {
+      nokta.addEventListener("click", () => {
+        const secilen = Number(nokta.dataset.colorPick);
+        seciliRenkId = seciliRenkId === secilen ? null : secilen;
+        render(product);   // galeri ve nokta durumları yeniden çizilir
+      });
+    });
 
     document.querySelector("#detail-add")?.addEventListener("click", () => {
       const qty = Math.max(1, parseInt(document.querySelector("#detail-qty").value, 10) || 1);
