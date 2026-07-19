@@ -799,14 +799,15 @@ function renderKatlac() {
 /* PDF sürümü. Ekrandaki kartlarda input var; onları yazdırmak boş kutular
    basar. Bu yüzden ayrı, sade bir düzen üretiliyor: 9 kayıt A4'te 2 sayfaya
    sığsın diye 3 sütun ve küçük görsel. */
-/* PDF'e gömülen görsel, kâğıtta 42mm genişliğinde basılıyor; tam çözünürlük
-   (1400px) gereksiz. Tarayıcı görseli PDF'e olduğu gibi gömdüğü için dosya
-   13 MB'a çıkıyordu — paylaşılamayacak kadar büyük. Supabase'in görsel
-   dönüştürme ucundan 700px isteyince ~1.5 MB'a iniyor, baskıda fark yok.
-   Dönüştürme kapalıysa adres yine çalışır, sadece küçültmez. */
+/* PDF'e gömülen görsel kâğıtta ~42mm basılıyor; 1400px'lik aslı gereksiz ve
+   dosyayı 13 MB'a çıkarıyordu (Chrome görseli PDF'e yeniden kodluyor).
+   500px, 42mm'de 300 DPI eder — baskı için doğru çözünürlük, altına inmek
+   kaliteyi düşürür, üstü boşa yer kaplar. Ölçüm: 700px→7.2MB, 500px→5.1MB,
+   400px→4.1MB; hepsi tek sayfa.
+   Dönüştürme kapalı bir kurulumda adres yine çalışır, sadece küçültmez. */
 const pdfGorseli = (url) => {
   if (!url || !url.includes("/storage/v1/object/public/")) return url;
-  return `${url.replace("/object/public/", "/render/image/public/")}?width=700&quality=80`;
+  return `${url.replace("/object/public/", "/render/image/public/")}?width=500&quality=80`;
 };
 
 function renderKatlacPrint() {
