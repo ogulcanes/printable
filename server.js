@@ -1121,7 +1121,10 @@ app.get("/urun/:id", async (req, res) => {
   const product = await db.prepare("SELECT * FROM products WHERE id = ? AND is_active = 1").get(req.params.id);
   if (!product) return res.redirect(302, "/urunler");
   const html = fs.readFileSync(path.join(ROOT, "urun.html"), "utf8");
-  res.type("html").send(await injectShell(html.replace("<!--seo-->", await productMetaTags(req, withColors(product))), "urunler"));
+  // withColors await edilmezse productMetaTags'e ürün yerine Promise gider ve
+  // başlık "undefined | Printable" olur.
+  const decorated = await withColors(product);
+  res.type("html").send(await injectShell(html.replace("<!--seo-->", await productMetaTags(req, decorated)), "urunler"));
 });
 
 // Checkout flow — noindex (a transactional page crawlers should not list).
@@ -1488,10 +1491,12 @@ app.post("/api/products", requireAdmin, upload.single("image"), async (req, res)
     VALUES (@name, @sku, @category, @description, @color, @price, @sale_price, @width, @height, @depth, @weight, @stock, @image_path, @image_alt, @meta_title, @meta_description, @meta_keywords, @is_active)
   `).run(product);
 
-  setProductColors(result.lastInsertRowid, req.body.color_ids);
-  setProductCategories(result.lastInsertRowid, req.body.category_ids);
+  // await şart: beklenmezse renk/kategori bağlantıları yanıt gönderildikten
+  // sonra tamamlanır (ya da hiç tamamlanmaz) ve hata sessizce yutulur.
+  await setProductColors(result.lastInsertRowid, req.body.color_ids);
+  await setProductCategories(result.lastInsertRowid, req.body.category_ids);
   await logPrice(result.lastInsertRowid, product.price, product.sale_price);
-  res.status(201).json(withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(result.lastInsertRowid)));
+  res.status(201).json(await withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(result.lastInsertRowid)));
 });
 
 app.put("/api/products/:id", requireAdmin, upload.single("image"), async (req, res) => {
@@ -1510,12 +1515,12 @@ app.put("/api/products/:id", requireAdmin, upload.single("image"), async (req, r
     WHERE id=@id
   `).run(product);
 
-  setProductColors(current.id, req.body.color_ids);
-  setProductCategories(current.id, req.body.category_ids);
+  await setProductColors(current.id, req.body.color_ids);
+  await setProductCategories(current.id, req.body.category_ids);
   if (priceChanged(current, product.price, product.sale_price)) {
     await logPrice(current.id, product.price, product.sale_price);
   }
-  res.json(withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(current.id)));
+  res.json(await withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(current.id)));
 });
 
 app.delete("/api/products/:id", requireAdmin, async (req, res) => {
