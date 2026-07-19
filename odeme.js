@@ -302,6 +302,58 @@
     }
   });
 
+  /* Sepetteki fiyat, ürün sepete atıldığı ANDA tarayıcıya kopyalanıyor ve orada
+     kalıyor. Sepet günlerce bekleyebildiği için aradaki zam/indirim müşteriye
+     yansımıyordu: ekranda eski tutarı görüp sunucunun hesapladığı yeni tutarı
+     ödüyordu. Ödeme sayfası açılırken fiyatları katalogdan tazeliyor, değişen
+     varsa açıkça söylüyoruz. Katalogdan kalkan ürün de burada ayıklanıyor —
+     sunucu onu zaten reddederdi, müşteri en son adımda öğrenmesin. */
+  async function fiyatlariTazele() {
+    if (!cart.length) return;
+    let katalog;
+    try {
+      katalog = await fetch("/api/products").then((r) => r.json());
+    } catch {
+      return;   // katalog okunamadıysa sepete dokunma; sunucu yine doğru fiyattan hesaplar
+    }
+    if (!Array.isArray(katalog)) return;
+
+    const degisenler = [];
+    const kalkanlar = [];
+    for (let i = cart.length - 1; i >= 0; i -= 1) {
+      const satir = cart[i];
+      const urun = katalog.find((p) => p.id === satir.id && p.is_active);
+      if (!urun) {
+        kalkanlar.push(satir.name);
+        cart.splice(i, 1);
+        continue;
+      }
+      const guncel = Number(urun.sale_price || urun.price);
+      if (Number.isFinite(guncel) && guncel !== Number(satir.price)) {
+        degisenler.push({ ad: urun.name, eski: Number(satir.price), yeni: guncel });
+        satir.price = guncel;
+      }
+      satir.name = urun.name;   // ad da değişmiş olabilir
+    }
+
+    if (!degisenler.length && !kalkanlar.length) return;
+    if (typeof saveCart === "function") saveCart();
+
+    const kutu = qs("#cart-notice");
+    if (kutu) {
+      kutu.innerHTML = [
+        ...degisenler.map((d) =>
+          `<span><strong>${escapeHtml(d.ad)}</strong> fiyatı güncellendi: ${money(d.eski)} → <strong>${money(d.yeni)}</strong></span>`),
+        ...kalkanlar.map((ad) =>
+          `<span><strong>${escapeHtml(ad)}</strong> artık satışta olmadığı için sepetinizden çıkarıldı.</span>`)
+      ].join("");
+      kutu.hidden = false;
+    }
+    refreshCartViews();
+    showStep(step);
+  }
+
   refreshCartViews();
   showStep(1);
+  fiyatlariTazele();
 })();

@@ -609,3 +609,39 @@ textarea { resize: vertical; }
   cursor: pointer;
 }
 .link-button:hover { opacity: 0.8; }
+
+/* ---------- Liste araç çubuğu (ürün arama/filtre) ---------- */
+.list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.list-toolbar input[type="search"] { flex: 1 1 260px; min-width: 200px; }
+.list-toolbar select { flex: 0 1 auto; }
+.list-toolbar input,
+.list-toolbar select {
+  padding: 9px 12px;
+  border: 1px solid var(--line, #e8eaf0);
+  border-radius: 10px;
+  font: inherit;
+  background: #fff;
+}
+.list-toolbar input:focus,
+.list-toolbar select:focus { outline: 2px solid rgba(255, 101, 66, 0.35); outline-offset: 1px; }
+
+/* ---------- Kampanya kullananlar tablosu ---------- */
+.campaign-uses { margin-top: 12px; }
+.uses-summary { font-weight: 600; margin-bottom: 8px; }
+.uses-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.uses-table th,
+.uses-table td { border: 1px solid var(--line, #e8eaf0); padding: 7px 10px; text-align: left; }
+.uses-table thead th { background: #f6f7fb; font-weight: 600; }
+.uses-table small { color: #6c7180; }
+
+@media (max-width: 760px) {
+  .list-toolbar input[type="search"],
+  .list-toolbar select { flex: 1 1 100%; }
+  /* Dar ekranda tablo sayfayı taşırmasın. */
+  .campaign-uses { overflow-x: auto; }
+}

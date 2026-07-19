@@ -108,9 +108,50 @@ function showTab(name) {
   qsa(".panel").forEach((panel) => panel.classList.toggle("active", panel.id === name));
 }
 
+/* Ürün listesi arama/filtre durumu. Liste her refresh()'te sıfırdan
+   çizildiği için filtre DOM'dan değil buradan okunur; aksi halde kaydetme
+   sonrası filtre kendiliğinden sıfırlanırdı. */
+const productFilters = { search: "", category: "", state: "", sort: "new" };
+
+function filteredProducts() {
+  const ara = productFilters.search.trim().toLocaleLowerCase("tr");
+  let liste = state.products.filter((p) => {
+    if (ara) {
+      const havuz = [p.name, p.sku, p.description].filter(Boolean).join(" ").toLocaleLowerCase("tr");
+      if (!havuz.includes(ara)) return false;
+    }
+    if (productFilters.category && !(p.categories || []).some((c) => String(c.id) === productFilters.category)) return false;
+    if (productFilters.state === "active" && !p.is_active) return false;
+    if (productFilters.state === "passive" && p.is_active) return false;
+    if (productFilters.state === "sale" && !(p.sale_price && p.price > p.sale_price)) return false;
+    if (productFilters.state === "nostock" && p.stock > 0) return false;
+    return true;
+  });
+
+  const fiyat = (p) => Number(p.sale_price || p.price) || 0;
+  if (productFilters.sort === "name") liste = [...liste].sort((a, b) => a.name.localeCompare(b.name, "tr"));
+  else if (productFilters.sort === "price-asc") liste = [...liste].sort((a, b) => fiyat(a) - fiyat(b));
+  else if (productFilters.sort === "price-desc") liste = [...liste].sort((a, b) => fiyat(b) - fiyat(a));
+  else if (productFilters.sort === "stock") liste = [...liste].sort((a, b) => b.stock - a.stock);
+  return liste;   // "new" → API zaten en yeniyi başa koyuyor
+}
+
+function renderProductFilterOptions() {
+  const secim = qs("#product-filter-category");
+  const onceki = productFilters.category;
+  secim.innerHTML = '<option value="">Tüm kategoriler</option>'
+    + state.categories.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
+  secim.value = onceki;
+}
+
 function renderProducts() {
-  qs("#product-count").textContent = `${state.products.length} ürün`;
-  qs("#product-list").innerHTML = state.products.map((product) => `
+  renderProductFilterOptions();
+  const gosterilen = filteredProducts();
+  const suzuluyor = gosterilen.length !== state.products.length;
+  qs("#product-count").textContent = suzuluyor
+    ? `${gosterilen.length} / ${state.products.length} ürün`
+    : `${state.products.length} ürün`;
+  qs("#product-list").innerHTML = gosterilen.map((product) => `
     <article class="row">
       <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="">
       <div>
@@ -133,7 +174,9 @@ function renderProducts() {
         <button class="danger" data-delete-product="${product.id}">Sil</button>
       </div>
     </article>
-  `).join("") || "<p>Henüz ürün yok.</p>";
+  `).join("") || (state.products.length
+    ? "<p>Aramanıza uyan ürün yok. <button type='button' class='link-button' id='product-empty-clear'>Filtreleri temizle</button></p>"
+    : "<p>Henüz ürün yok.</p>");
 
   const productSelects = qsa('select[name="product_id"]');
   productSelects.forEach((select) => {
@@ -469,6 +512,7 @@ function renderAdminUsers() {
 function renderSettings() {
   const form = qs("#settings-form");
   form.elements.show_stock.checked = Number(state.settings.show_stock) === 1;
+  form.elements.track_stock.checked = Number(state.settings.track_stock) === 1;
   form.elements.min_cart_total.value = Number(state.settings.min_cart_total) || 0;
   ["company_title", "legal_address", "tax_office", "tax_number", "mersis", "return_address"]
     .forEach((alan) => { form.elements[alan].value = state.settings[alan] || ""; });
@@ -536,8 +580,10 @@ function renderCampaigns() {
             ${dates ? `<span class="badge">${dates}</span>` : ""}
           </div>
         </div>
+        <div class="campaign-uses" data-uses-for="${c.id}" hidden></div>
         <div class="row-actions">
           <button data-edit-campaign="${c.id}">Düzenle</button>
+          <button data-uses-campaign="${c.id}">Kullananlar</button>
           <button data-toggle-campaign="${c.id}" data-active="${c.is_active ? 1 : 0}">${c.is_active ? "Pasife al" : "Aktifleştir"}</button>
           <button class="danger" data-delete-campaign="${c.id}">Sil</button>
         </div>
@@ -667,11 +713,76 @@ qs("#subscriber-list").addEventListener("click", async (event) => {
 /* İki kart tek forma bağlı: hangi butona basılırsa basılsın ayarların tamamı
    birlikte kaydedilir. Ayrı ayrı PUT etmek, ikinci kaydın birincinin
    alanlarını sıfırlamasına yol açardı. */
+function renderCampaignUses(veri) {
+  const { campaign, uses, total_discount: toplam } = veri;
+  const kontenjan = campaign.usage_limit
+    ? `${campaign.used_count}/${campaign.usage_limit} kullanıldı · ${Math.max(0, campaign.usage_limit - campaign.used_count)} hak kaldı`
+    : `${campaign.used_count} kez kullanıldı · limit yok`;
+
+  if (!uses.length) {
+    return `<p class="uses-summary">${kontenjan}</p><p>Bu kampanyayı henüz kimse kullanmadı.</p>`;
+  }
+  return `
+    <p class="uses-summary">${kontenjan} · toplam ${money(toplam)} indirim verildi</p>
+    <table class="uses-table">
+      <thead><tr><th>Müşteri</th><th>İletişim</th><th>Sipariş</th><th>İndirim</th><th>Tarih</th></tr></thead>
+      <tbody>
+        ${uses.map((u) => `
+          <tr>
+            <td>${escapeHtml(u.customer_name) || "-"}</td>
+            <td>${escapeHtml(u.customer_phone) || ""}${u.customer_email ? `<br><small>${escapeHtml(u.customer_email)}</small>` : ""}</td>
+            <td>${escapeHtml(u.order_number) || "-"}</td>
+            <td>${money(u.discount_amount)}</td>
+            <td>${formatDateTime(u.created_at)}</td>
+          </tr>`).join("")}
+      </tbody>
+    </table>`;
+}
+
+/* Ürün arama/filtre. Sadece renderProducts() çağrılıyor — sunucuya gitmeye
+   gerek yok, ürünler zaten state'te. Filtre kutuları listenin dışında
+   olduğu için yeniden çizimde kaybolmuyorlar. */
+const urunFiltreUygula = () => renderProducts();
+
+qs("#product-search").addEventListener("input", (event) => {
+  productFilters.search = event.target.value;
+  urunFiltreUygula();
+});
+qs("#product-filter-category").addEventListener("change", (event) => {
+  productFilters.category = event.target.value;
+  urunFiltreUygula();
+});
+qs("#product-filter-state").addEventListener("change", (event) => {
+  productFilters.state = event.target.value;
+  urunFiltreUygula();
+});
+qs("#product-sort").addEventListener("change", (event) => {
+  productFilters.sort = event.target.value;
+  urunFiltreUygula();
+});
+
+function urunFiltreleriTemizle() {
+  productFilters.search = "";
+  productFilters.category = "";
+  productFilters.state = "";
+  productFilters.sort = "new";
+  qs("#product-search").value = "";
+  qs("#product-filter-state").value = "";
+  qs("#product-sort").value = "new";
+  renderProducts();
+}
+qs("#product-filter-clear").addEventListener("click", urunFiltreleriTemizle);
+// Boş sonuç mesajındaki buton her çizimde yeniden oluşuyor: delege et.
+qs("#product-list").addEventListener("click", (event) => {
+  if (event.target.id === "product-empty-clear") urunFiltreleriTemizle();
+});
+
 qs("#settings-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.target;
   const govde = {
     show_stock: form.elements.show_stock.checked ? 1 : 0,
+    track_stock: form.elements.track_stock.checked ? 1 : 0,
     min_cart_total: form.elements.min_cart_total.value.trim() || 0
   };
   ["company_title", "legal_address", "tax_office", "tax_number", "mersis", "return_address"]
@@ -806,6 +917,17 @@ qs("#campaign-list").addEventListener("click", async (event) => {
   const editId = event.target.dataset.editCampaign;
   const toggleId = event.target.dataset.toggleCampaign;
   const deleteId = event.target.dataset.deleteCampaign;
+  const usesId = event.target.dataset.usesCampaign;
+
+  if (usesId) {
+    const panel = qs(`.campaign-uses[data-uses-for="${usesId}"]`);
+    if (!panel) return;
+    if (!panel.hidden) { panel.hidden = true; return; }
+    panel.hidden = false;
+    panel.innerHTML = "<p>Yükleniyor…</p>";
+    panel.innerHTML = renderCampaignUses(await api(`/api/campaigns/${usesId}/uses`));
+    return;
+  }
 
   if (editId) {
     const campaign = state.campaigns.find((c) => c.id === Number(editId));

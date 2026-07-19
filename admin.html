@@ -325,6 +325,27 @@
               <h2>Ürünler</h2>
               <span id="product-count" class="count-pill">0 ürün</span>
             </div>
+
+            <div class="list-toolbar">
+              <input type="search" id="product-search" placeholder="Ürün adı, SKU veya açıklamada ara..." autocomplete="off">
+              <select id="product-filter-category"><option value="">Tüm kategoriler</option></select>
+              <select id="product-filter-state">
+                <option value="">Tüm durumlar</option>
+                <option value="active">Yayında</option>
+                <option value="passive">Gizli</option>
+                <option value="sale">İndirimli</option>
+                <option value="nostock">Stok 0</option>
+              </select>
+              <select id="product-sort">
+                <option value="new">Önce en yeni</option>
+                <option value="name">İsme göre (A-Z)</option>
+                <option value="price-asc">Fiyat (artan)</option>
+                <option value="price-desc">Fiyat (azalan)</option>
+                <option value="stock">Stok (azalan)</option>
+              </select>
+              <button type="button" id="product-filter-clear" class="small-button">Temizle</button>
+            </div>
+
             <div id="product-list" class="list"></div>
           </div>
         </div>
@@ -405,6 +426,14 @@
               <span>
                 <strong>Stok adedini sitede göster</strong>
                 <small>Kapatırsan ürün sayfasındaki "Stok: 12 adet" satırı gizlenir. Tükenen ürünler yine "Tükendi" olarak işaretlenir ve sepete eklenemez — bu, satamayacağın ürünün sipariş edilmesini engeller.</small>
+              </span>
+            </label>
+
+            <label class="check-row">
+              <input type="checkbox" name="track_stock" value="1">
+              <span>
+                <strong>Stok takibi yap</strong>
+                <small>Açıkken sipariş verildiğinde satılan adet stoktan otomatik düşer ve stoğu yetmeyen sipariş kabul edilmez. Kapalıyken (varsayılan) stok yalnızca bilgi amaçlı bir sayıdır: sipariş stoğu azaltmaz, tükenen ürün satılmaya devam eder.</small>
               </span>
             </label>
 

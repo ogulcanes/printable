@@ -5047,3 +5047,18 @@ body {
   /* Veri tablosu (gizlilik) yatay kaydırılsın, sayfayı taşırmasın. */
   .legal-page .legal-table:not(.legal-table--seller) { display: block; overflow-x: auto; white-space: nowrap; }
 }
+
+/* Sepet bilgilendirmesi — ödeme sayfası açılırken fiyat değiştiyse veya ürün
+   katalogdan kalktıysa çıkar. Hata değil, bu yüzden kırmızı değil sarı. */
+.cart-notice {
+  display: grid;
+  gap: 8px;
+  background: #fff8e6;
+  border: 1px solid #f5dfa8;
+  border-left: 4px solid #e5a83a;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  font-size: 15px;
+  line-height: 1.6;
+}

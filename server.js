@@ -92,7 +92,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "4";
+const SCHEMA_VERSION = "5";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -315,6 +315,7 @@ async function initDb() {
     contact_address TEXT,
     working_hours TEXT,
     show_stock INTEGER NOT NULL DEFAULT 1,
+    track_stock INTEGER NOT NULL DEFAULT 0,
     min_cart_total REAL NOT NULL DEFAULT 0,
     company_title TEXT,
     legal_address TEXT,
@@ -365,6 +366,24 @@ async function initDb() {
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     FOREIGN KEY(gift_product_id) REFERENCES products(id) ON DELETE SET NULL
+  );
+
+  /* Kampanyayı kim, ne zaman, ne kadar indirimle kullandı. used_count'un
+     kendisi tek bir sayı; "kim kullandı" sorusunu ancak bu tablo yanıtlar.
+     Sipariş silinirse kayıt da gider, ama müşteri adı burada kopyalanmış
+     durur ki geçmiş rapor bozulmasın. */
+  CREATE TABLE IF NOT EXISTS campaign_uses (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    campaign_id INTEGER NOT NULL,
+    order_id INTEGER,
+    order_number TEXT,
+    customer_name TEXT,
+    customer_phone TEXT,
+    customer_email TEXT,
+    discount_amount REAL NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    FOREIGN KEY(campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE SET NULL
   );
 
   -- scope='products' / 'categories' iken kampanyanın hangi ürünleri kapsadığı.
@@ -474,6 +493,11 @@ for (const [table, column, type] of [
      KARIŞTIRILMAMALI: o STL teklifinin fiyat tabanı, bu ise sepetin altına
      inemeyeceği tutar. */
   ["site_settings", "show_stock", "INTEGER NOT NULL DEFAULT 1"],
+  /* Stok TAKİBİ, stok GÖSTERİMİnden ayrı: show_stock sadece sayıyı sitede
+     gösterir, track_stock ise siparişte stoğu düşürür ve yetmeyen sepeti
+     reddeder. Varsayılan kapalı — mevcut davranış bu ve açmak iş akışını
+     değiştiren bir karar, sessizce başlatılmamalı. */
+  ["site_settings", "track_stock", "INTEGER NOT NULL DEFAULT 0"],
   ["site_settings", "min_cart_total", "REAL NOT NULL DEFAULT 0"],
   /* Satıcı kimliği — mesafeli satış sözleşmesi ve iade sayfaları bunlardan
      üretilir. Boş bırakılırsa sayfalar eksik olduklarını açıkça yazar. */
@@ -1459,12 +1483,13 @@ app.get("/api/session", async (req, res) => {
    sütunlarını UPDATE eder, satırın tamamını değil. */
 app.get("/api/settings", requireAdmin, async (req, res) => {
   const s = await db.prepare(`
-    SELECT show_stock, min_cart_total, company_title, legal_address,
+    SELECT show_stock, track_stock, min_cart_total, company_title, legal_address,
            tax_office, tax_number, mersis, return_address
     FROM site_settings WHERE id = 1
   `).get() || {};
   res.json({
     show_stock: s.show_stock ?? 1,
+    track_stock: s.track_stock ?? 0,
     min_cart_total: s.min_cart_total ?? 0,
     company_title: s.company_title || "",
     legal_address: s.legal_address || "",
@@ -1484,7 +1509,7 @@ app.put("/api/settings", requireAdmin, async (req, res) => {
 
   await db.prepare(`
     UPDATE site_settings SET
-      show_stock=@show_stock, min_cart_total=@min_cart_total,
+      show_stock=@show_stock, track_stock=@track_stock, min_cart_total=@min_cart_total,
       company_title=@company_title, legal_address=@legal_address,
       tax_office=@tax_office, tax_number=@tax_number, mersis=@mersis,
       return_address=@return_address, updated_at=NOW()
@@ -1492,6 +1517,7 @@ app.put("/api/settings", requireAdmin, async (req, res) => {
   `).run({
     // Checkbox işaretli değilse tarayıcı alanı hiç göndermez; yokluğu "kapalı" demek.
     show_stock: req.body.show_stock === true || req.body.show_stock === "1" || req.body.show_stock === 1 ? 1 : 0,
+    track_stock: req.body.track_stock === true || req.body.track_stock === "1" || req.body.track_stock === 1 ? 1 : 0,
     min_cart_total: minTutar,
     company_title: metin(req.body.company_title),
     legal_address: metin(req.body.legal_address),
@@ -2559,7 +2585,7 @@ async function evaluateCampaigns(items, code) {
     const result = await evaluateOne(campaign, items);
     if (!result) continue;
     discount += result.discount;
-    if (result.gift) gifts.push(result.gift);
+    if (result.gift) gifts.push({ ...result.gift, campaign_id: campaign.id });
     applied.push({ id: campaign.id, name: campaign.name, label: result.label, amount: result.discount, kind: campaign.kind });
   }
 
@@ -2580,7 +2606,7 @@ async function evaluateCampaigns(items, code) {
             : "Bu kod sepetinizdeki ürünler için geçerli değil.";
       } else {
         discount += result.discount;
-        if (result.gift) gifts.push(result.gift);
+        if (result.gift) gifts.push({ ...result.gift, campaign_id: coupon.id });
         applied.push({ id: coupon.id, name: coupon.name, code: coupon.code, label: result.label, amount: result.discount, kind: coupon.kind });
       }
     }
@@ -2709,6 +2735,23 @@ async function setCampaignTargets(campaignId, body) {
   await link("campaign_categories", "category_id", body.category_ids);
 }
 
+/* Bir kampanyayı kimlerin kullandığı. used_count tek bir sayı; "hangi
+   müşteri" sorusunu ancak bu liste yanıtlar. Müşteri adı ve telefonu kayıt
+   anında kopyalandığı için sipariş silinse bile geçmiş bozulmuyor. */
+app.get("/api/campaigns/:id/uses", requireAdmin, async (req, res) => {
+  const campaign = await db.prepare("SELECT id, name, code, usage_limit, used_count FROM campaigns WHERE id = ?").get(req.params.id);
+  if (!campaign) return res.status(404).json({ error: "Kampanya bulunamadı." });
+  const uses = await db.prepare(`
+    SELECT id, order_id, order_number, customer_name, customer_phone, customer_email, discount_amount, created_at
+    FROM campaign_uses WHERE campaign_id = ? ORDER BY created_at DESC
+  `).all(campaign.id);
+  res.json({
+    campaign,
+    total_discount: round2(uses.reduce((toplam, u) => toplam + Number(u.discount_amount || 0), 0)),
+    uses
+  });
+});
+
 app.post("/api/campaigns", requireAdmin, async (req, res) => {
   const payload = campaignPayload(req.body);
   const problem = validateCampaign(payload);
@@ -2804,9 +2847,27 @@ app.post("/api/checkout", async (req, res) => {
      zaten uyarıyor ama o sadece arayüz; isteği doğrudan atan biri sınırı
      aşabilirdi. Kontrol indirim ÖNCESİ ara toplama göre: kupon kullanan
      müşteri minimumun altına düşmüş sayılmasın. */
-  const minCart = Number((await db.prepare("SELECT min_cart_total FROM site_settings WHERE id = 1").get())?.min_cart_total ?? 0);
+  const magaza = await db.prepare("SELECT min_cart_total, track_stock FROM site_settings WHERE id = 1").get() || {};
+  const minCart = Number(magaza.min_cart_total ?? 0);
   if (minCart > 0 && subtotal < minCart) {
     return res.status(400).json({ error: `Minimum sipariş tutarı ${minCart.toFixed(2)} TL. Sepetinize biraz daha ürün ekleyin.` });
+  }
+
+  /* Stok takibi kapalıyken (varsayılan) stok bir bilgi alanıdır: sipariş
+     stoktan düşmez ve yetersiz stok siparişi engellemez. Açıldığında ikisi de
+     devreye girer. Ayar panelden yönetiliyor çünkü bu bir iş akışı kararı. */
+  const stokTakibi = Number(magaza.track_stock ?? 0) === 1;
+  if (stokTakibi) {
+    const yetersiz = [];
+    for (const item of normalized) {
+      const urun = await db.prepare("SELECT name, stock FROM products WHERE id = ?").get(item.product_id);
+      if (!urun || urun.stock < item.quantity) {
+        yetersiz.push(`${urun?.name || "Ürün"} (kalan: ${urun?.stock ?? 0})`);
+      }
+    }
+    if (yetersiz.length) {
+      return res.status(400).json({ error: `Şu ürünlerde yeterli stok kalmadı: ${yetersiz.join(", ")}. Sepetinizi güncelleyip tekrar deneyin.` });
+    }
   }
 
   // Kampanyalar burada yeniden hesaplanır; tarayıcının gönderdiği indirim yok sayılır.
@@ -2819,12 +2880,37 @@ app.post("/api/checkout", async (req, res) => {
   const taxRate = (await pricingSettings())?.tax_rate ?? KDV_RATE;
 
   const orderNumber = await db.transaction(async (tx) => {
+    /* Kontenjan rezervasyonu — sipariş yazılmadan ÖNCE, çünkü kontenjan
+       dolmuşsa indirim de düşmeli. Kontrol ile artırma tek ifadede: kararı
+       veritabanı veriyor, satır güncellenmediyse kontenjan o an dolmuş
+       demektir. Eskiden limit yukarıda okunup burada körlemesine +1
+       yapılıyordu; aynı anda gelen istekler hepsi "yer var" cevabı alıp
+       limiti aşabiliyordu. */
+    const rezerve = tx.prepare(`
+      UPDATE campaigns SET used_count = used_count + 1
+      WHERE id = ? AND (usage_limit IS NULL OR used_count < usage_limit)
+    `);
+    const gecerliKampanyalar = [];
+    for (const c of campaigns.applied) {
+      const sonuc = await rezerve.run(c.id);
+      if (sonuc.changes) gecerliKampanyalar.push(c);
+    }
+    const gecerliIdler = new Set(gecerliKampanyalar.map((c) => c.id));
+    const gecerliHediyeler = campaigns.gifts.filter((g) => !g.campaign_id || gecerliIdler.has(g.campaign_id));
+
+    // Tutarı rezervasyondan SONRA, yalnızca hak edilen indirimlerle hesapla.
+    const uygulananIndirim = Math.min(
+      round2(gecerliKampanyalar.reduce((toplam, c) => toplam + (Number(c.amount) || 0), 0)),
+      subtotal
+    );
+    const uygulananNet = round2(subtotal - uygulananIndirim);
+
     const cust = await tx.prepare("INSERT INTO customers (name, email, phone, address, city) VALUES (?,?,?,?,?)").run(
       customer.name.trim(), customer.email?.trim() || null, customer.phone.trim(), customer.address.trim(), customer.city?.trim() || null
     );
 
-    const taxAmount = round2(netTotal * taxRate / 100);
-    const grandTotal = round2(netTotal + taxAmount);
+    const taxAmount = round2(uygulananNet * taxRate / 100);
+    const grandTotal = round2(uygulananNet + taxAmount);
     // Compose the structured address (mahalle / ilçe / il / posta kodu) into one line.
     const locality = [
       customer.neighborhood?.trim() && `${customer.neighborhood.trim()} Mah.`,
@@ -2849,10 +2935,10 @@ app.post("/api/checkout", async (req, res) => {
       customer_id: cust.lastInsertRowid,
       shipping_address: shippingAddress,
       subtotal,
-      discount,
+      discount: uygulananIndirim,
       // Kampanya sonradan silinse bile siparişte ne uygulandığı okunabilir kalsın.
-      campaign_summary: campaigns.applied.length
-        ? campaigns.applied.map((c) => c.label).join(" · ")
+      campaign_summary: gecerliKampanyalar.length
+        ? gecerliKampanyalar.map((c) => c.label).join(" · ")
         : null,
       total: grandTotal,
       notes: body.notes?.trim() || null,
@@ -2877,7 +2963,7 @@ app.post("/api/checkout", async (req, res) => {
 
     // Hediyeler siparişe 0 TL'lik satır olarak yazılır: atölye ne göndereceğini
     // sipariş kaleminden görür, tutar etkilenmez.
-    for (const gift of campaigns.gifts) {
+    for (const gift of gecerliHediyeler) {
       await insertItem.run({
         order_id: order.lastInsertRowid,
         product_id: gift.product_id,
@@ -2888,8 +2974,32 @@ app.post("/api/checkout", async (req, res) => {
       });
     }
 
-    const bump = tx.prepare("UPDATE campaigns SET used_count = used_count + 1 WHERE id = ?");
-    for (const c of campaigns.applied) await bump.run(c.id);
+    /* Kimin kullandığı burada kayda geçer. Sayaç yukarıda zaten rezerve
+       edildi; burada yalnızca hak edilen kullanımlar yazılıyor, böylece
+       used_count ile bu listenin uzunluğu her zaman aynı kalıyor. */
+    const kullanimKaydi = tx.prepare(`
+      INSERT INTO campaign_uses (campaign_id, order_id, order_number, customer_name, customer_phone, customer_email, discount_amount)
+      VALUES (@campaign_id, @order_id, @order_number, @customer_name, @customer_phone, @customer_email, @discount_amount)
+    `);
+    for (const c of gecerliKampanyalar) {
+      await kullanimKaydi.run({
+        campaign_id: c.id,
+        order_id: order.lastInsertRowid,
+        order_number: generatedNumber,
+        customer_name: customer.name.trim(),
+        customer_phone: customer.phone.trim(),
+        customer_email: customer.email?.trim() || null,
+        discount_amount: Number(c.amount) || 0
+      });
+    }
+
+    // Stok takibi açıksa satılan adet düşülür. Kapalıyken (varsayılan) stok
+    // yalnızca bilgi amaçlı bir sayı olarak kalır.
+    if (stokTakibi) {
+      const dus = tx.prepare("UPDATE products SET stock = GREATEST(0, stock - ?) WHERE id = ?");
+      for (const item of normalized) await dus.run(item.quantity, item.product_id);
+    }
+
     return generatedNumber;
   });
 
