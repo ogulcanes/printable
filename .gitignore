@@ -18,3 +18,7 @@ uploads/*
 
 npm-debug.log*
 .vercel
+
+# Katlaç kaynak görselleri — Supabase Storage'a yüklendi, repoya gerek yok (16 MB)
+katlac/
+taht (1).png

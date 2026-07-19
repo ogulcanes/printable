@@ -701,3 +701,44 @@ textarea { resize: vertical; }
   border-top: 1px solid var(--line, #e8eaf0);
 }
 .gallery-upload input[type="file"] { flex: 1 1 220px; }
+
+/* ---------- Katlaç kataloğu ---------- */
+.katlac-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+.katlac-card {
+  margin: 0;
+  border: 1px solid var(--line, #e8eaf0);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+}
+.katlac-card img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  display: block;
+  background: #f6f7fb;
+}
+.katlac-card__body { display: grid; gap: 8px; padding: 12px; }
+.katlac-card__body label {
+  display: grid;
+  gap: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6c7180;
+}
+.katlac-card__body input {
+  padding: 7px 10px;
+  border: 1px solid var(--line, #e8eaf0);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  color: #171722;
+}
+.katlac-card__actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.katlac-card__actions .small-button.danger { color: #b4232a; border-color: #f3c2c5; }
+.katlac-status { font-size: 12px; color: #1f9254; font-weight: 600; }

@@ -92,7 +92,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "7";
+const SCHEMA_VERSION = "8";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -366,6 +366,26 @@ async function initDb() {
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     FOREIGN KEY(gift_product_id) REFERENCES products(id) ON DELETE SET NULL
+  );
+
+  /* Katlaç kataloğu — YALNIZCA panelde görünen özel liste.
+
+     Bilerek products tablosundan ayrı: products'taki her satır /api/products
+     ile herkese açık dönüyor (gizli olanlar bile), yani oraya koysaydım
+     "sadece ben göreyim" isteği ilk günden kırılırdı. Buradaki hiçbir kayıt
+     hiçbir vitrin ucundan çıkmaz; tüm rotaları requireAdmin arkasında.
+
+     Vitrine taşınmak istendiğinde ürün olarak ayrıca eklenir — bu tablo
+     fiyat çalışması ve iç envanter için. */
+  CREATE TABLE IF NOT EXISTS katlac_items (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name TEXT NOT NULL DEFAULT 'İsimsiz katlaç',
+    price REAL NOT NULL DEFAULT 0,
+    image_path TEXT NOT NULL,
+    note TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
   /* Ürün galerisi. products.image_path "kapak" olarak kalır — ürün kartları,
@@ -1501,6 +1521,60 @@ app.post("/api/logout", async (req, res) => {
 app.get("/api/session", async (req, res) => {
   const admin = await currentAdmin(req);
   res.json({ authed: Boolean(admin), user: admin ? admin.username : null });
+});
+
+/* ---------- Katlaç kataloğu (yalnızca panel) ----------
+   Her rota requireAdmin arkasında; bu listenin herkese açık bir ucu YOK. */
+
+app.get("/api/katlac", requireAdmin, async (req, res) => {
+  res.json(await db.prepare(
+    "SELECT * FROM katlac_items ORDER BY sort_order ASC, id ASC"
+  ).all());
+});
+
+app.post("/api/katlac", requireAdmin, upload.single("image"), async (req, res) => {
+  const yol = resolveImagePath({ image_key: req.body.image_key, image_url: req.body.image_url }, req.file);
+  if (!yol) return res.status(400).json({ error: "Görsel dosyası veya adresi gerekli." });
+  const son = await db.prepare("SELECT COALESCE(MAX(sort_order), 0) AS son FROM katlac_items").get();
+  const sonuc = await db.prepare(`
+    INSERT INTO katlac_items (name, price, image_path, note, sort_order)
+    VALUES (@name, @price, @image_path, @note, @sort_order)
+  `).run({
+    name: req.body.name?.trim() || "İsimsiz katlaç",
+    price: Math.max(0, Number(req.body.price) || 0),
+    image_path: yol,
+    note: req.body.note?.trim() || null,
+    sort_order: Number(son.son) + 1
+  });
+  res.status(201).json(await db.prepare("SELECT * FROM katlac_items WHERE id = ?").get(sonuc.lastInsertRowid));
+});
+
+app.put("/api/katlac/:id", requireAdmin, async (req, res) => {
+  const row = await db.prepare("SELECT * FROM katlac_items WHERE id = ?").get(req.params.id);
+  if (!row) return res.status(404).json({ error: "Katlaç bulunamadı." });
+  const fiyat = Number(req.body.price);
+  if (req.body.price !== undefined && (!Number.isFinite(fiyat) || fiyat < 0)) {
+    return res.status(400).json({ error: "Fiyat 0 veya daha büyük bir sayı olmalı." });
+  }
+  await db.prepare(`
+    UPDATE katlac_items SET name = @name, price = @price, note = @note,
+      sort_order = @sort_order, updated_at = NOW() WHERE id = @id
+  `).run({
+    id: row.id,
+    // Gönderilmeyen alan mevcut değerini korur: panel tek alan da kaydedebilsin.
+    name: req.body.name === undefined ? row.name : (req.body.name.trim() || "İsimsiz katlaç"),
+    price: req.body.price === undefined ? row.price : fiyat,
+    note: req.body.note === undefined ? row.note : (req.body.note?.trim() || null),
+    sort_order: req.body.sort_order === undefined ? row.sort_order : toInt(req.body.sort_order)
+  });
+  res.json(await db.prepare("SELECT * FROM katlac_items WHERE id = ?").get(row.id));
+});
+
+app.delete("/api/katlac/:id", requireAdmin, async (req, res) => {
+  const row = await db.prepare("SELECT id FROM katlac_items WHERE id = ?").get(req.params.id);
+  if (!row) return res.status(404).json({ error: "Katlaç bulunamadı." });
+  await db.prepare("DELETE FROM katlac_items WHERE id = ?").run(row.id);
+  res.status(204).end();
 });
 
 /* Mağaza ayarları: stok görünürlüğü, minimum sepet tutarı ve satıcı kimliği.

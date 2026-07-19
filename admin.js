@@ -13,6 +13,7 @@ const state = {
   subscribers: [],
   adminUsers: [],
   settings: {},
+  katlac: [],
   sessionUser: null,
   pricing: {},
   seo: { pages: [], site: {} }
@@ -622,7 +623,7 @@ function renderCampaignOptions(campaign) {
 }
 
 async function refresh() {
-  const [stats, products, customers, orders, slides, categories, colors, materials, quotes, pricing, seo, messages, reviews, campaigns, subscribers, adminUsers, settings] = await Promise.all([
+  const [stats, products, customers, orders, slides, categories, colors, materials, quotes, pricing, seo, messages, reviews, campaigns, subscribers, adminUsers, settings, katlac] = await Promise.all([
     api("/api/stats"),
     api("/api/products"),
     api("/api/customers"),
@@ -639,7 +640,8 @@ async function refresh() {
     api("/api/campaigns"),
     api("/api/subscribers"),
     api("/api/admin-users"),
-    api("/api/settings")
+    api("/api/settings"),
+    api("/api/katlac")
   ]);
   state.products = products;
   state.customers = customers;
@@ -656,6 +658,7 @@ async function refresh() {
   state.campaigns = campaigns;
   state.adminUsers = adminUsers;
   state.settings = settings;
+  state.katlac = katlac;
   state.subscribers = subscribers;
   qs("#stat-products").textContent = stats.products;
   qs("#stat-customers").textContent = stats.customers;
@@ -676,6 +679,7 @@ async function refresh() {
   renderSubscribers();
   renderAdminUsers();
   renderSettings();
+  renderKatlac();
   // Yalnızca düzenlenmiyorken sıfırla — düzenleme sırasındaki seçimler kaybolmasın.
   if (!qs('#campaign-form input[name="id"]').value) renderCampaignOptions(null);
   syncCampaignFields();
@@ -762,6 +766,79 @@ async function galeriyiTazele() {
   const guncel = state.products.find((p) => p.id === galeriUrunId);
   if (guncel) renderGallery(guncel);
 }
+
+/* ---------- Katlaç kataloğu (yalnızca panel) ----------
+   Her kart kendi başına kaydediliyor: 9 katlaçlık listede tek bir "hepsini
+   kaydet" düğmesi, bir alandaki hatada diğerlerini de belirsiz bırakırdı. */
+function renderKatlac() {
+  const liste = state.katlac || [];
+  qs("#katlac-count").textContent = `${liste.length} katlaç`;
+  qs("#katlac-grid").innerHTML = liste.map((k) => `
+    <article class="katlac-card" data-katlac="${k.id}">
+      <img src="${escapeHtml(k.image_path)}" alt="${escapeHtml(k.name)}" loading="lazy">
+      <div class="katlac-card__body">
+        <label>Ad
+          <input type="text" data-katlac-name="${k.id}" value="${escapeHtml(k.name)}">
+        </label>
+        <label>Fiyat (TL)
+          <input type="number" min="0" step="0.01" data-katlac-price="${k.id}" value="${Number(k.price) || 0}">
+        </label>
+        <label>Not
+          <input type="text" data-katlac-note="${k.id}" value="${escapeHtml(k.note) || ""}" placeholder="İsteğe bağlı">
+        </label>
+        <div class="katlac-card__actions">
+          <button type="button" class="small-button" data-katlac-save="${k.id}">Kaydet</button>
+          <button type="button" class="small-button danger" data-katlac-delete="${k.id}">Sil</button>
+          <span class="katlac-status" data-katlac-status="${k.id}"></span>
+        </div>
+      </div>
+    </article>
+  `).join("") || "<p>Henüz katlaç eklenmemiş.</p>";
+}
+
+qs("#katlac-grid").addEventListener("click", async (event) => {
+  const kaydet = event.target.dataset.katlacSave;
+  const sil = event.target.dataset.katlacDelete;
+
+  if (kaydet) {
+    const durum = qs(`[data-katlac-status="${kaydet}"]`);
+    durum.textContent = "Kaydediliyor…";
+    await api(`/api/katlac/${kaydet}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: qs(`[data-katlac-name="${kaydet}"]`).value,
+        price: qs(`[data-katlac-price="${kaydet}"]`).value,
+        note: qs(`[data-katlac-note="${kaydet}"]`).value
+      })
+    });
+    durum.textContent = "Kaydedildi ✓";
+    // Listeyi yeniden çizmiyoruz: kullanıcı başka bir kartı düzenliyor olabilir,
+    // altından DOM'u değiştirmek yazdığını kaybettirir. State'i elle güncelle.
+    const kayit = state.katlac.find((k) => String(k.id) === kaydet);
+    if (kayit) {
+      kayit.name = qs(`[data-katlac-name="${kaydet}"]`).value;
+      kayit.price = Number(qs(`[data-katlac-price="${kaydet}"]`).value) || 0;
+      kayit.note = qs(`[data-katlac-note="${kaydet}"]`).value;
+    }
+    setTimeout(() => { durum.textContent = ""; }, 2500);
+  } else if (sil) {
+    if (!confirm("Bu katlaç listeden silinsin mi?")) return;
+    await api(`/api/katlac/${sil}`, { method: "DELETE" });
+    state.katlac = state.katlac.filter((k) => String(k.id) !== sil);
+    renderKatlac();
+  }
+});
+
+qs("#katlac-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.target;
+  const govde = new FormData(form);
+  await hoistImageUpload(govde);        // depolama açıksa doğrudan Storage'a
+  await api("/api/katlac", { method: "POST", body: govde });
+  form.reset();
+  await refresh();
+});
 
 function renderCampaignUses(veri) {
   const { campaign, uses, total_discount: toplam } = veri;
