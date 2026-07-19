@@ -5324,13 +5324,15 @@ body.catalog-view-table .catalog-table-view { display: block; overflow-x: auto; 
 .catalog-tcolors { color: var(--muted); font-size: 13px; }
 .catalog-empty { color: #c9ccd6; }
 
-/* ---------- Yazdırma ----------
-   Kâğıtta her zaman TABLO basılır: 16 ürünlük kart düzeni yazdırınca
-   metrelerce sürüyordu. Yatay A4, çünkü adet kademeleri sütun sütun yan
-   yana geliyor. */
+/* ---------- Katalog: yazdırma / PDF ----------
+   Kâğıtta ne kart ne tablo basılıyor; ikisi de kendi yerinde iyi ama biri
+   metrelerce sürüyor, diğeri görselsiz kalıyordu. PDF için satır düzeni:
+   numara → görsel → ad → fiyat, katlaç kataloğuyla aynı dil. */
+.catalog-print-view { display: none; }
+
 @page {
-  size: A4 landscape;
-  margin: 12mm 10mm;
+  size: A4 portrait;
+  margin: 12mm 14mm;
 }
 
 @media print {
@@ -5341,45 +5343,142 @@ body.catalog-view-table .catalog-table-view { display: block; overflow-x: auto; 
   .chat,
   .cart-panel,
   .search-popover,
-  .catalog-body { display: none !important; }
-
-  /* Genel kampanyalar kâğıtta da kalsın — fiyat listesine bakan kişi için
-     "kupon KATALOG10 %10" bilgisi fiyatın parçası. Birkaç satır, uzatmıyor. */
-  .catalog-general {
-    background: none;
-    border: 1px solid #999;
-    padding: 6px 10px;
-    margin-bottom: 8px;
-    font-size: 9px;
-  }
-  .catalog-general h2 { font-size: 11px; margin-bottom: 3px; }
-  .catalog-general ul { line-height: 1.5; }
-
-  body { background: #fff; font-size: 11px; }
-  .page-hero { padding: 0 0 10px; }
-  .catalog-hero h1 { font-size: 20px; margin: 0 0 4px; }
+  .catalog-body,
+  .catalog-table-view,
+  .catalog-general,
   .catalog-hero .section-kicker,
-  .catalog-hero .page-lead { display: none; }
+  .catalog-hero .page-lead,
+  .catalog-hero h1,
+  .catalog-footnote { display: none !important; }
 
-  /* Kart görünümü seçiliyken bile kâğıda tablo gider. */
-  .catalog-table-view { display: block !important; overflow: visible !important; }
+  body { background: #fff; }
+  .page-hero { padding: 0; margin: 0; }
+  .catalog-print-view { display: block !important; }
 
-  .catalog-table { font-size: 10px; }
-  .catalog-table th,
-  .catalog-table td { padding: 4px 6px; border-color: #999; }
-  .catalog-table thead th { background: #eee; position: static; }
-  .catalog-table tbody tr { page-break-inside: avoid; }
-  /* Başlık satırı her sayfada tekrarlansın — çok sayfalı listede şart. */
-  .catalog-table thead { display: table-header-group; }
-  .catalog-tcolors { color: #333; }
-  .catalog-empty { color: #999; }
+  /* --- başlık --- */
+  .print-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 8mm;
+    padding-bottom: 3mm;
+    border-bottom: 0.6mm solid var(--text);
+    margin-bottom: 4mm;
+  }
+  .print-brand { display: flex; align-items: center; gap: 2.5mm; }
+  .print-mark {
+    width: 9mm;
+    height: 9mm;
+    display: grid;
+    place-items: center;
+    /* Panelin ve katlaç kataloğunun marka işaretiyle aynı asimetrik köşe. */
+    border-radius: 2.6mm 2.6mm 4.8mm 2.6mm;
+    background: var(--accent);
+    color: #fff;
+    font-size: 13pt;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .print-name {
+    font-size: 17pt;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+  .print-meta { text-align: right; }
+  .print-meta h1 { margin: 0; font-size: 12pt; font-weight: 700; color: var(--text); }
+  .print-meta p { margin: 1mm 0 0; font-size: 8pt; color: var(--muted); }
 
-  .catalog-footnote { margin-top: 12px; padding-top: 8px; font-size: 9px; border-color: #999; }
+  .print-campaigns {
+    margin-bottom: 3mm;
+    padding: 2mm 3mm;
+    border: 0.2mm solid #bbb;
+    border-radius: 1.5mm;
+    font-size: 8pt;
+    line-height: 1.5;
+  }
+  .print-campaigns[hidden] { display: none; }
+
+  /* --- satırlar --- */
+  .print-row {
+    display: grid;
+    grid-template-columns: 7mm 30mm 1fr auto;
+    align-items: center;
+    gap: 4mm;
+    padding: 2mm 0;
+    border-bottom: 0.2mm solid #ddd;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .print-row__no {
+    font-size: 8pt;
+    font-weight: 700;
+    color: #b5b2ac;
+    font-variant-numeric: tabular-nums;
+  }
+  .print-row__img {
+    width: 30mm;
+    height: 20mm;
+    object-fit: cover;
+    background: var(--soft);
+    border-radius: 1.5mm;
+    display: block;
+  }
+  .print-row__text h2 {
+    margin: 0;
+    font-size: 10.5pt;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .print-row__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2mm;
+    margin: 0.8mm 0 0;
+    font-size: 7.5pt;
+    color: var(--muted);
+  }
+  .print-row__colors { margin: 0.8mm 0 0; font-size: 7.5pt; color: var(--muted); }
+
+  /* Kademeler satırın sağında dikey blok: tabloda sütun olarak vermek
+     34 ürüne yayılınca okunmuyordu. */
+  .print-row__prices { text-align: right; }
+  .print-row__unit {
+    display: block;
+    font-size: 11.5pt;
+    font-weight: 800;
+    color: var(--text);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .print-row__unit s { font-size: 8pt; font-weight: 500; color: var(--muted); }
+  .print-row__tiers {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 1mm 2.5mm;
+    margin-top: 0.8mm;
+  }
+  .print-tier {
+    font-size: 7.5pt;
+    color: #333;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .print-tier em { font-style: normal; font-weight: 700; color: var(--muted); }
+
+  /* --- alt bilgi --- */
+  .print-foot {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4mm;
+    padding-top: 2mm;
+    border-top: 0.2mm solid #ddd;
+    font-size: 7.5pt;
+    color: var(--muted);
+  }
+
   a { text-decoration: none; color: #000; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-}
-
-@media (max-width: 720px) {
-  .catalog-views { width: 100%; }
-  .catalog-views button { flex: 1; }
 }

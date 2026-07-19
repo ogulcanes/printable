@@ -136,6 +136,63 @@
       ${kademeAdetleri.length ? "" : '<p class="catalog-notier">Henüz toplu alım kademesi tanımlı değil.</p>'}`;
   }
 
+  /* PDF'e gömülen görsel kâğıtta ~32mm basılıyor; 1400px'lik aslı gereksiz
+     yer kaplıyor. Supabase'de duran görseller küçültülerek isteniyor.
+     resize=contain ŞART: yalnızca width verilince Supabase oranı korumuyor,
+     görseli hedef genişliğe eziyor. Dış adresler (MakerWorld) olduğu gibi
+     kalır — onları dönüştüremeyiz. */
+  const pdfGorseli = (url) => {
+    if (!url || !url.includes("/storage/v1/object/public/")) return url;
+    return `${url.replace("/object/public/", "/render/image/public/")}?width=500&resize=contain&quality=80`;
+  };
+
+  /* Yazdırma sürümü: katlaç kataloğuyla aynı dil — logo, tarih, numaralı
+     satırlar. Kademeler satırın sağında dikey bir fiyat bloğu olarak
+     duruyor; tabloda sütun olarak vermek 34 ürüne yayılınca okunmuyordu. */
+  function yazdirmaCiz(liste) {
+    document.querySelector("#print-rows").innerHTML = liste.map((p, i) => {
+      const birim = birimFiyat(p);
+      const indirimli = p.sale_price && p.price > p.sale_price;
+      const renkler = (p.colors || []).map((c) => kacir(c.name)).join(", ");
+      const kademeler = (p.tiers || []).map((t) =>
+        `<span class="print-tier"><em>${t.min_quantity}+</em> ${money(t.unit_price)}</span>`).join("");
+
+      return `
+        <article class="print-row">
+          <span class="print-row__no">${String(i + 1).padStart(2, "0")}</span>
+          <img class="print-row__img" src="${kacir(pdfGorseli(p.image_path)) || "/assets/printable-logo.svg"}"
+               alt="${kacir(p.image_alt || p.name)}">
+          <div class="print-row__text">
+            <h2>${kacir(p.name)}</h2>
+            <p class="print-row__meta">
+              ${p.sku ? `<span>${kacir(p.sku)}</span>` : ""}
+              ${(p.categories || []).map((c) => `<span>${kacir(c.name)}</span>`).join("")}
+            </p>
+            ${renkler ? `<p class="print-row__colors">${renkler}</p>` : ""}
+          </div>
+          <div class="print-row__prices">
+            <span class="print-row__unit">${money(birim)}${indirimli ? ` <s>${money(p.price)}</s>` : ""}</span>
+            ${kademeler ? `<span class="print-row__tiers">${kademeler}</span>` : ""}
+          </div>
+        </article>`;
+    }).join("");
+
+    const genel = veri.general_campaigns || [];
+    const kutu = document.querySelector("#print-campaigns");
+    kutu.innerHTML = genel.length
+      ? `<strong>Tüm siparişlerde:</strong> ${genel.map((c) => {
+          const kural = c.kind === "gift" ? "hediye ürün"
+            : c.discount_type === "percent" ? `%${c.discount_value} indirim` : `${money(c.discount_value)} indirim`;
+          return `${kacir(c.name)} — ${kacir(kural)}${c.code ? ` (kod: ${kacir(c.code)})` : ""}`;
+        }).join(" · ")}`
+      : "";
+    kutu.hidden = !genel.length;
+
+    document.querySelector("#print-date").textContent =
+      new Date().toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" });
+    document.querySelector("#print-count").textContent = `${liste.length} ürün`;
+  }
+
   function ciz() {
     const ara = durum.arama.trim().toLocaleLowerCase("tr");
     const liste = veri.products.filter((p) => {
@@ -155,10 +212,12 @@
     govde.innerHTML = liste.map(urunKarti).join("")
       || `<p class="catalog-loading">Aramanıza uyan ürün bulunamadı.</p>`;
 
-    // Tablo her zaman üretilir: ekranda gizli durur, yazdırırken o basılır.
+    // Tablo görünümü ekranda seçilebiliyor; yazdırma sürümü her zaman hazır
+    // tutuluyor ki filtre neyse PDF de onu bassın.
     qs("#catalog-table-view").innerHTML = liste.length
       ? tabloCiz(liste)
       : `<p class="catalog-loading">Aramanıza uyan ürün bulunamadı.</p>`;
+    yazdirmaCiz(liste);
   }
 
   /* Ekranda görünüm seçimi. Yazdırma her hâlükârda tabloyu basar — kâğıtta
@@ -180,7 +239,13 @@
   qs("#catalog-search").addEventListener("input", (e) => { durum.arama = e.target.value; ciz(); });
   qs("#catalog-category").addEventListener("change", (e) => { durum.kategori = e.target.value; ciz(); });
   qs("#catalog-only-bulk").addEventListener("change", (e) => { durum.sadeceToplu = e.target.checked; ciz(); });
-  qs("#catalog-print").addEventListener("click", () => window.print());
+  qs("#catalog-print").addEventListener("click", () => {
+    const gorseller = [...document.querySelectorAll("#print-rows img")];
+    Promise.all(gorseller.map((i) => i.complete ? Promise.resolve() : new Promise((r) => {
+      i.addEventListener("load", r, { once: true });
+      i.addEventListener("error", r, { once: true });
+    }))).then(() => window.print());
+  });
   qs("#view-cards").addEventListener("click", () => gorunumSec(false));
   qs("#view-table").addEventListener("click", () => gorunumSec(true));
 

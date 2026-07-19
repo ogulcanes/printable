@@ -43,8 +43,29 @@
         <div id="catalog-body" class="catalog-body">
           <p class="catalog-loading">Katalog yükleniyor…</p>
         </div>
-        <!-- Ekranda gizli; "Tablo" seçilince veya yazdırırken bu basılır. -->
+        <!-- Ekranda gizli; "Tablo" seçilince basılır. -->
         <div id="catalog-table-view" class="catalog-table-view"></div>
+
+        <!-- Yalnızca yazdırma/PDF için. Ekrandaki kart ve tablo düzenleri
+             kâğıtta ya çok uzun ya çok kuru duruyordu. -->
+        <div id="catalog-print-view" class="catalog-print-view">
+          <header class="print-head">
+            <div class="print-brand">
+              <span class="print-mark">P</span>
+              <span class="print-name">Printable</span>
+            </div>
+            <div class="print-meta">
+              <h1>Ürün Kataloğu</h1>
+              <p id="print-date"></p>
+            </div>
+          </header>
+          <div id="print-campaigns" class="print-campaigns"></div>
+          <div id="print-rows" class="print-rows"></div>
+          <footer class="print-foot">
+            <span>printable-silk.vercel.app</span>
+            <span id="print-count"></span>
+          </footer>
+        </div>
       </section>
 
       <section class="container catalog-footnote">
