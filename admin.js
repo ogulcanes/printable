@@ -12,6 +12,7 @@ const state = {
   campaigns: [],
   subscribers: [],
   adminUsers: [],
+  settings: {},
   sessionUser: null,
   pricing: {},
   seo: { pages: [], site: {} }
@@ -465,6 +466,14 @@ function renderAdminUsers() {
   }).join("") || "<p>Henüz yönetici yok.</p>";
 }
 
+function renderSettings() {
+  const form = qs("#settings-form");
+  form.elements.show_stock.checked = Number(state.settings.show_stock) === 1;
+  form.elements.min_cart_total.value = Number(state.settings.min_cart_total) || 0;
+  ["company_title", "legal_address", "tax_office", "tax_number", "mersis", "return_address"]
+    .forEach((alan) => { form.elements[alan].value = state.settings[alan] || ""; });
+}
+
 function renderReviews() {
   const pending = state.reviews.filter((r) => !r.is_approved).length;
   qs("#review-count").textContent =
@@ -567,7 +576,7 @@ function renderCampaignOptions(campaign) {
 }
 
 async function refresh() {
-  const [stats, products, customers, orders, slides, categories, colors, materials, quotes, pricing, seo, messages, reviews, campaigns, subscribers, adminUsers] = await Promise.all([
+  const [stats, products, customers, orders, slides, categories, colors, materials, quotes, pricing, seo, messages, reviews, campaigns, subscribers, adminUsers, settings] = await Promise.all([
     api("/api/stats"),
     api("/api/products"),
     api("/api/customers"),
@@ -583,7 +592,8 @@ async function refresh() {
     api("/api/reviews"),
     api("/api/campaigns"),
     api("/api/subscribers"),
-    api("/api/admin-users")
+    api("/api/admin-users"),
+    api("/api/settings")
   ]);
   state.products = products;
   state.customers = customers;
@@ -599,6 +609,7 @@ async function refresh() {
   state.reviews = reviews;
   state.campaigns = campaigns;
   state.adminUsers = adminUsers;
+  state.settings = settings;
   state.subscribers = subscribers;
   qs("#stat-products").textContent = stats.products;
   qs("#stat-customers").textContent = stats.customers;
@@ -618,6 +629,7 @@ async function refresh() {
   renderCampaigns();
   renderSubscribers();
   renderAdminUsers();
+  renderSettings();
   // Yalnızca düzenlenmiyorken sıfırla — düzenleme sırasındaki seçimler kaybolmasın.
   if (!qs('#campaign-form input[name="id"]').value) renderCampaignOptions(null);
   syncCampaignFields();
@@ -650,6 +662,28 @@ qs("#subscriber-list").addEventListener("click", async (event) => {
     await api(`/api/subscribers/${id}`, { method: "DELETE" });
     await refresh();
   }
+});
+
+/* İki kart tek forma bağlı: hangi butona basılırsa basılsın ayarların tamamı
+   birlikte kaydedilir. Ayrı ayrı PUT etmek, ikinci kaydın birincinin
+   alanlarını sıfırlamasına yol açardı. */
+qs("#settings-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.target;
+  const govde = {
+    show_stock: form.elements.show_stock.checked ? 1 : 0,
+    min_cart_total: form.elements.min_cart_total.value.trim() || 0
+  };
+  ["company_title", "legal_address", "tax_office", "tax_number", "mersis", "return_address"]
+    .forEach((alan) => { govde[alan] = form.elements[alan].value; });
+
+  await api("/api/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(govde)
+  });
+  await refresh();
+  alert("Ayarlar kaydedildi.");
 });
 
 qs("#admin-list").addEventListener("click", async (event) => {

@@ -31,6 +31,8 @@
     return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" });
   };
 
+  let stokGoster = true;   // /api/site-info doldurur
+
   function render(product) {
     const price = product.sale_price || product.price;
     const inStock = product.stock > 0;
@@ -67,7 +69,9 @@
           <ul class="product-detail__specs">
             ${product.color ? `<li><span>Malzeme</span><strong>${product.color}</strong></li>` : ""}
             ${product.sku ? `<li><span>Ürün kodu</span><strong>${product.sku}</strong></li>` : ""}
-            <li><span>Stok</span><strong class="${inStock ? "spec-in" : "spec-out"}">${inStock ? product.stock + " adet" : "Tükendi"}</strong></li>
+            ${stokGoster || !inStock
+              ? `<li><span>Stok</span><strong class="${inStock ? "spec-in" : "spec-out"}">${inStock ? product.stock + " adet" : "Tükendi"}</strong></li>`
+              : ""}
           </ul>
           <div class="product-detail__actions">
             <label class="qty-field">Adet
@@ -192,10 +196,13 @@
     let product = null;
     let all = [];
     try {
-      [product, all] = await Promise.all([
+      let bilgi;
+      [product, all, bilgi] = await Promise.all([
         fetch(`/api/products/${id}`).then((r) => (r.ok ? r.json() : null)),
-        fetch("/api/products").then((r) => r.json()).catch(() => [])
+        fetch("/api/products").then((r) => r.json()).catch(() => []),
+        fetch("/api/site-info").then((r) => r.json()).catch(() => ({}))
       ]);
+      if (bilgi && bilgi.show_stock !== undefined) stokGoster = Number(bilgi.show_stock) === 1;
     } catch { product = null; }
     if (!product || !product.is_active) { detail.innerHTML = notFound(); return; }
     window.printableProducts = all.length ? all : [product]; // so any data-add-product resolves

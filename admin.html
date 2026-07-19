@@ -29,6 +29,7 @@
         <button class="tab" data-tab="reviews"><span>12</span>Yorumlar</button>
         <button class="tab" data-tab="campaigns"><span>13</span>Kampanyalar</button>
         <button class="tab" data-tab="admins"><span>14</span>Yöneticiler</button>
+        <button class="tab" data-tab="settings"><span>15</span>Ayarlar</button>
       </nav>
       <div class="sidebar-note">
         <strong>Vercel notu</strong>
@@ -392,6 +393,62 @@
           <p class="form-note">Sitenin altındaki "Bültenimize abone olun" formundan kaydolanlar.</p>
           <div id="subscriber-list" class="list"></div>
         </div>
+      </section>
+
+      <section id="settings" class="panel">
+        <form id="settings-form">
+          <div class="admin-card">
+            <div class="card-title"><h2>Mağaza Ayarları</h2></div>
+
+            <label class="check-row">
+              <input type="checkbox" name="show_stock" value="1">
+              <span>
+                <strong>Stok adedini sitede göster</strong>
+                <small>Kapatırsan ürün sayfasındaki "Stok: 12 adet" satırı gizlenir. Tükenen ürünler yine "Tükendi" olarak işaretlenir ve sepete eklenemez — bu, satamayacağın ürünün sipariş edilmesini engeller.</small>
+              </span>
+            </label>
+
+            <label>Minimum sipariş tutarı (TL)
+              <input type="number" name="min_cart_total" min="0" step="0.01" placeholder="0">
+              <small class="field-note">0 yazarsan sınır uygulanmaz. Sınırın altındaki sepetlerde ödeme adımı uyarı verir ve sipariş tamamlanamaz. Kontrol, kupon indirimi uygulanmadan önceki ara toplama göre yapılır.</small>
+            </label>
+
+            <div class="form-actions">
+              <button class="btn-solid" type="submit">Mağaza ayarlarını kaydet</button>
+            </div>
+          </div>
+
+          <div class="admin-card">
+            <div class="card-title"><h2>Satıcı / Yasal Bilgiler</h2></div>
+            <p class="form-note">Bu bilgiler <a href="/mesafeli-satis" target="_blank">Mesafeli Satış Sözleşmesi</a>, <a href="/iade" target="_blank">İade</a> ve <a href="/gizlilik" target="_blank">Gizlilik &amp; KVKK</a> sayfalarında otomatik olarak yayınlanır. <strong>Eksik bırakılan alanlar sayfalarda "Belirtilmemiş" olarak görünür ve sayfanın eksik olduğu uyarısı çıkar</strong> — mesafeli satış sözleşmesinin yasal geçerliliği için doldurulmaları gerekir.</p>
+
+            <label>Unvan (şirket veya şahıs adı)
+              <input name="company_title" placeholder="Örn. Printable 3D Baskı — Oğulcan ...">
+            </label>
+            <label>Yasal adres
+              <textarea name="legal_address" rows="2" placeholder="Mahalle, cadde, no, ilçe/il"></textarea>
+              <small class="field-note">Mesafeli satışta satıcının açık adresi zorunludur; bu adres yalnızca yasal sayfalarda görünür, iletişim sayfasında gösterilmez.</small>
+            </label>
+            <label>Vergi dairesi
+              <input name="tax_office" placeholder="Örn. Kadıköy">
+            </label>
+            <label>Vergi no / TC kimlik no
+              <input name="tax_number" placeholder="Şahıs şirketiyse TC kimlik numarası">
+            </label>
+            <label>MERSİS no (varsa)
+              <input name="mersis" placeholder="Şahıs şirketlerinde genellikle yoktur, boş bırakabilirsin">
+            </label>
+            <label>İade adresi
+              <textarea name="return_address" rows="2" placeholder="Boş bırakılırsa yasal adres kullanılır"></textarea>
+            </label>
+
+            <p class="form-note"><strong>Telefon ve e-posta</strong> da yasal sayfalarda zorunludur ama burada değil, <button type="button" class="link-button" data-open-tab="seo">SEO sekmesindeki</button> "Site Geneli" kartında tutulur. İkisi de dolu değilse yasal sayfalardaki eksik uyarısı geçmez.</p>
+
+            <div class="form-actions">
+              <button class="btn-solid" type="submit">Satıcı bilgilerini kaydet</button>
+            </div>
+          </div>
+        </form>
       </section>
 
       <section id="admins" class="panel">

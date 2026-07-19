@@ -92,7 +92,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "3";
+const SCHEMA_VERSION = "4";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -314,6 +314,14 @@ async function initDb() {
     whatsapp TEXT,
     contact_address TEXT,
     working_hours TEXT,
+    show_stock INTEGER NOT NULL DEFAULT 1,
+    min_cart_total REAL NOT NULL DEFAULT 0,
+    company_title TEXT,
+    legal_address TEXT,
+    tax_office TEXT,
+    tax_number TEXT,
+    mersis TEXT,
+    return_address TEXT,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
@@ -462,6 +470,19 @@ for (const [table, column, type] of [
   ["site_settings", "working_hours", "TEXT"],
   // Ayrı WhatsApp hattı; boşsa telefon numarası kullanılır.
   ["site_settings", "whatsapp", "TEXT"],
+  /* Mağaza ayarları. min_cart_total, pricing_settings.min_order_total ile
+     KARIŞTIRILMAMALI: o STL teklifinin fiyat tabanı, bu ise sepetin altına
+     inemeyeceği tutar. */
+  ["site_settings", "show_stock", "INTEGER NOT NULL DEFAULT 1"],
+  ["site_settings", "min_cart_total", "REAL NOT NULL DEFAULT 0"],
+  /* Satıcı kimliği — mesafeli satış sözleşmesi ve iade sayfaları bunlardan
+     üretilir. Boş bırakılırsa sayfalar eksik olduklarını açıkça yazar. */
+  ["site_settings", "company_title", "TEXT"],
+  ["site_settings", "legal_address", "TEXT"],
+  ["site_settings", "tax_office", "TEXT"],
+  ["site_settings", "tax_number", "TEXT"],
+  ["site_settings", "mersis", "TEXT"],
+  ["site_settings", "return_address", "TEXT"],
   // Siparişe uygulanan kampanyaların anlık görüntüsü (kampanya sonradan silinse
   // bile siparişte ne uygulandığı kaybolmasın diye isimleriyle saklanır).
   ["orders", "campaign_summary", "TEXT"],
@@ -620,6 +641,27 @@ const extraSeoPages = [
     description: "3D baskı ürünleri, kargo, ödeme, e-fatura ve iade hakkında sık sorulan sorular.",
     og_title: "Sıkça Sorulan Sorular | Printable",
     og_description: "3D baskı, kargo, ödeme ve e-fatura hakkında merak edilenler."
+  },
+  {
+    slug: "mesafeli-satis", label: "Mesafeli satış sözleşmesi",
+    title: "Mesafeli Satış Sözleşmesi | Printable",
+    description: "Printable mesafeli satış sözleşmesi: taraflar, teslimat, ödeme, cayma hakkı ve uyuşmazlık çözümü.",
+    og_title: "Mesafeli Satış Sözleşmesi | Printable",
+    og_description: "Sipariş koşullarımız ve yasal haklarınız."
+  },
+  {
+    slug: "iade", label: "İade ve cayma hakkı sayfası",
+    title: "İade, Değişim ve Cayma Hakkı | Printable",
+    description: "14 gün içinde koşulsuz iade. İade süreci, kargo bedeli ve siparişe özel baskılardaki istisna.",
+    og_title: "İade ve Cayma Hakkı | Printable",
+    og_description: "14 gün içinde iade edin; süreci adım adım anlattık."
+  },
+  {
+    slug: "gizlilik", label: "Gizlilik ve KVKK sayfası",
+    title: "Gizlilik Politikası ve KVKK Aydınlatma Metni | Printable",
+    description: "Hangi verilerinizi neden topluyoruz, ne kadar saklıyoruz ve KVKK kapsamındaki haklarınız neler?",
+    og_title: "Gizlilik Politikası ve KVKK | Printable",
+    og_description: "Verilerinizi nasıl işlediğimizi sade bir dille açıkladık."
   }
 ];
 for (const page of extraSeoPages) await addSeoPage.run(page);
@@ -1094,7 +1136,8 @@ async function renderFooter() {
       <div class="container footer__grid">
         <div><h3>Kategoriler</h3><a href="/urunler">Figürler</a><a href="/urunler">Anahtarlıklar</a><a href="/urunler">Fidget & Stres</a><a href="/urunler">Düdükler</a></div>
         <div><h3>Kurumsal</h3><a href="/hakkinda">Hakkımızda</a><a href="/iletisim">İletişim</a><a href="/stl-teklif">Özel 3D baskı</a><a href="/urunler">Tüm ürünler</a></div>
-        <div><h3>Müşteri Desteği</h3><a href="/iletisim">Bize ulaşın</a><a href="/sss">İade & Değişim</a><a href="/sss">Kargo</a><a href="/sss">S.S.S.</a></div>
+        <div><h3>Müşteri Desteği</h3><a href="/iletisim">Bize ulaşın</a><a href="/iade">İade & Değişim</a><a href="/sss">Kargo</a><a href="/sss">S.S.S.</a></div>
+        <div><h3>Yasal</h3><a href="/mesafeli-satis">Mesafeli Satış Sözleşmesi</a><a href="/iade">İade ve Cayma Hakkı</a><a href="/gizlilik">Gizlilik ve KVKK</a></div>
         <div class="footer-logo printable-wordmark">
           <strong>Printable</strong>
           <p>Özel 3D baskı ürünleri ve STL baskı hizmeti.</p>
@@ -1124,9 +1167,68 @@ async function injectShell(html, headActive) {
     .replace("<!--chat-->", await renderChatButton());
 }
 
+/* Satıcı kimliği yasal sayfalarda TEK yerden gelir: /admin → Ayarlar. Metni
+   HTML'e gömmek, unvan ya da adres değiştiğinde üç sayfayı birden güncellemeyi
+   unutmak demekti — mesafeli satış sözleşmesinde yanlış satıcı bilgisi ise
+   sayfayı hükümsüz kılar. Doldurulmamış alanı gizlemiyoruz; eksik olduğunu
+   açıkça yazıyoruz ki yarım bir sözleşme tam görünmesin. */
+async function renderSellerBlock() {
+  const s = await db.prepare("SELECT * FROM site_settings WHERE id = 1").get() || {};
+  // MERSİS her satıcıda olmaz (şahıs şirketinde yok); boşsa satırı hiç gösterme.
+  // Diğerleri yasal zorunluluk: boş olsalar bile satır kalsın ki eksik görünsün.
+  const zorunlu = new Set(["Unvan", "Adres", "Telefon", "E-posta", "Vergi dairesi", "Vergi / TC kimlik no"]);
+  const goster = [
+    ["Unvan", s.company_title],
+    ["Adres", s.legal_address],
+    ["Telefon", s.phone],
+    ["E-posta", s.email],
+    ["Vergi dairesi", s.tax_office],
+    ["Vergi / TC kimlik no", s.tax_number],
+    ["MERSİS no", s.mersis]
+  ].filter(([etiket, deger]) => deger?.trim() || zorunlu.has(etiket));
+  const eksik = goster.filter(([, deger]) => !deger?.trim()).map(([etiket]) => etiket);
+
+  const govde = goster.map(([etiket, deger]) => `
+    <tr><th>${escapeHtml(etiket)}</th><td>${deger?.trim()
+      ? escapeHtml(deger)
+      : '<span class="legal-missing">Belirtilmemiş</span>'}</td></tr>`).join("");
+
+  /* Uyarı hangi alanların eksik olduğunu ve nereden doldurulacağını söylemeli:
+     telefon ile e-posta SEO sekmesinde, diğerleri Ayarlar'da duruyor. Sadece
+     "eksik" demek, Ayarlar'ı eksiksiz doldurup uyarının neden geçmediğini
+     anlamayan bir yöneticiye hiçbir şey anlatmıyordu. */
+  const seoSekmesi = new Set(["Telefon", "E-posta"]);
+  const nerede = eksik.some((e) => seoSekmesi.has(e))
+    ? (eksik.every((e) => seoSekmesi.has(e)) ? "<em>SEO</em>" : "<em>Ayarlar</em> ve <em>SEO</em>")
+    : "<em>Ayarlar</em>";
+
+  const uyari = eksik.length
+    ? `<p class="legal-warning legal-warning--admin"><strong>Bu sayfa henüz eksik.</strong> Şu alanlar doldurulmamış: <strong>${eksik.map(escapeHtml).join(", ")}</strong>. Sayfanın yasal olarak geçerli olması için yönetim panelindeki ${nerede} bölümünden tamamlanmalıdır.</p>`
+    : "";
+
+  return `${uyari}<table class="legal-table legal-table--seller"><tbody>${govde}</tbody></table>`;
+}
+
+async function renderReturnAddress() {
+  const s = await db.prepare("SELECT return_address, legal_address, company_title FROM site_settings WHERE id = 1").get() || {};
+  const adres = s.return_address?.trim() || s.legal_address?.trim();
+  if (!adres) {
+    return '<p class="legal-warning legal-warning--admin"><strong>İade adresi belirtilmemiş.</strong> Yönetim panelindeki <em>Ayarlar</em> bölümünden ekleyin.</p>';
+  }
+  return `<p class="legal-address">${s.company_title?.trim() ? `<strong>${escapeHtml(s.company_title)}</strong><br>` : ""}${escapeHtml(adres).replace(/\n/g, "<br>")}</p>`;
+}
+
+const guncellemeSatiri = () =>
+  `Son güncelleme: ${new Date().toLocaleDateString("tr-TR", { year: "numeric", month: "long", day: "numeric" })}`;
+
 async function sendPage(req, res, file, slug) {
   const html = fs.readFileSync(path.join(ROOT, file), "utf8");
-  res.type("html").send(await injectShell(html.replace("<!--seo-->", await seoHead(req, slug)), slug));
+  let sayfa = html.replace("<!--seo-->", await seoHead(req, slug));
+  // Yasal sayfa yer tutucuları — diğer sayfalarda bunlar zaten yok, replace no-op.
+  if (sayfa.includes("<!--satici-->")) sayfa = sayfa.replaceAll("<!--satici-->", await renderSellerBlock());
+  if (sayfa.includes("<!--iade-adresi-->")) sayfa = sayfa.replace("<!--iade-adresi-->", await renderReturnAddress());
+  if (sayfa.includes("<!--guncelleme-->")) sayfa = sayfa.replace("<!--guncelleme-->", guncellemeSatiri());
+  res.type("html").send(await injectShell(sayfa, slug));
 }
 
 app.get("/", async (req, res) => await sendPage(req, res, "index.html", "home"));
@@ -1135,6 +1237,9 @@ app.get("/stl-teklif", async (req, res) => await sendPage(req, res, "stl-teklif.
 app.get("/hakkinda", async (req, res) => await sendPage(req, res, "hakkinda.html", "hakkinda"));
 app.get("/iletisim", async (req, res) => await sendPage(req, res, "iletisim.html", "iletisim"));
 app.get("/sss", async (req, res) => await sendPage(req, res, "sss.html", "sss"));
+app.get("/mesafeli-satis", async (req, res) => await sendPage(req, res, "mesafeli-satis.html", "mesafeli-satis"));
+app.get("/iade", async (req, res) => await sendPage(req, res, "iade.html", "iade"));
+app.get("/gizlilik", async (req, res) => await sendPage(req, res, "gizlilik.html", "gizlilik"));
 
 // Per-product SEO: crawlers need real title/description/og:image/JSON-LD in the HTML
 // (the visible detail is filled by urun.js, matching the rest of the JS-rendered site).
@@ -1236,6 +1341,9 @@ app.get("/sitemap.xml", async (req, res) => {
     { loc: "/stl-teklif", priority: "0.8" },
     { loc: "/hakkinda", priority: "0.5" },
     { loc: "/iletisim", priority: "0.5" },
+    { loc: "/mesafeli-satis", priority: "0.3" },
+    { loc: "/iade", priority: "0.4" },
+    { loc: "/gizlilik", priority: "0.3" },
     { loc: "/sss", priority: "0.5" }
   ];
   // `await x.all().forEach(...)` aslında `await (Promise.forEach(...))` demek:
@@ -1343,6 +1451,56 @@ app.post("/api/logout", async (req, res) => {
 app.get("/api/session", async (req, res) => {
   const admin = await currentAdmin(req);
   res.json({ authed: Boolean(admin), user: admin ? admin.username : null });
+});
+
+/* Mağaza ayarları: stok görünürlüğü, minimum sepet tutarı ve satıcı kimliği.
+   SEO formuyla aynı tabloyu (site_settings) yazdıkları için birbirlerinin
+   alanlarını ezmemeleri gerekir — bu yüzden ikisi de yalnızca kendi
+   sütunlarını UPDATE eder, satırın tamamını değil. */
+app.get("/api/settings", requireAdmin, async (req, res) => {
+  const s = await db.prepare(`
+    SELECT show_stock, min_cart_total, company_title, legal_address,
+           tax_office, tax_number, mersis, return_address
+    FROM site_settings WHERE id = 1
+  `).get() || {};
+  res.json({
+    show_stock: s.show_stock ?? 1,
+    min_cart_total: s.min_cart_total ?? 0,
+    company_title: s.company_title || "",
+    legal_address: s.legal_address || "",
+    tax_office: s.tax_office || "",
+    tax_number: s.tax_number || "",
+    mersis: s.mersis || "",
+    return_address: s.return_address || ""
+  });
+});
+
+app.put("/api/settings", requireAdmin, async (req, res) => {
+  const minTutar = Number(req.body.min_cart_total);
+  if (!Number.isFinite(minTutar) || minTutar < 0) {
+    return res.status(400).json({ error: "Minimum sepet tutarı 0 veya daha büyük bir sayı olmalı." });
+  }
+  const metin = (deger) => (typeof deger === "string" && deger.trim() ? deger.trim() : null);
+
+  await db.prepare(`
+    UPDATE site_settings SET
+      show_stock=@show_stock, min_cart_total=@min_cart_total,
+      company_title=@company_title, legal_address=@legal_address,
+      tax_office=@tax_office, tax_number=@tax_number, mersis=@mersis,
+      return_address=@return_address, updated_at=NOW()
+    WHERE id = 1
+  `).run({
+    // Checkbox işaretli değilse tarayıcı alanı hiç göndermez; yokluğu "kapalı" demek.
+    show_stock: req.body.show_stock === true || req.body.show_stock === "1" || req.body.show_stock === 1 ? 1 : 0,
+    min_cart_total: minTutar,
+    company_title: metin(req.body.company_title),
+    legal_address: metin(req.body.legal_address),
+    tax_office: metin(req.body.tax_office),
+    tax_number: metin(req.body.tax_number),
+    mersis: metin(req.body.mersis),
+    return_address: metin(req.body.return_address)
+  });
+  res.json({ ok: true });
 });
 
 // Panel yöneticileri. Şifre özeti hiçbir yanıtta dönmez.
@@ -2642,6 +2800,15 @@ app.post("/api/checkout", async (req, res) => {
   if (!normalized.length) return res.status(400).json({ error: "Sepetinizdeki ürünler artık satışta değil. Sepetinizi güncelleyip tekrar deneyin." });
   const subtotal = round2(normalized.reduce((sum, item) => sum + item.line_total, 0));
 
+  /* Minimum sepet tutarı burada da kontrol edilir. Ödeme sayfası kullanıcıyı
+     zaten uyarıyor ama o sadece arayüz; isteği doğrudan atan biri sınırı
+     aşabilirdi. Kontrol indirim ÖNCESİ ara toplama göre: kupon kullanan
+     müşteri minimumun altına düşmüş sayılmasın. */
+  const minCart = Number((await db.prepare("SELECT min_cart_total FROM site_settings WHERE id = 1").get())?.min_cart_total ?? 0);
+  if (minCart > 0 && subtotal < minCart) {
+    return res.status(400).json({ error: `Minimum sipariş tutarı ${minCart.toFixed(2)} TL. Sepetinize biraz daha ürün ekleyin.` });
+  }
+
   // Kampanyalar burada yeniden hesaplanır; tarayıcının gönderdiği indirim yok sayılır.
   const campaigns = await evaluateCampaigns(normalized, body.coupon_code);
   const discount = Math.min(campaigns.discount, subtotal);
@@ -2747,7 +2914,7 @@ app.patch("/api/orders/:id", requireAdmin, async (req, res) => {
 
 // Public site info — KDV oranı + iletişim bilgileri (storefront ve /iletisim kullanır).
 app.get("/api/site-info", async (req, res) => {
-  const site = await db.prepare("SELECT phone, email, contact_address, working_hours, social_links FROM site_settings WHERE id = 1").get() || {};
+  const site = await db.prepare("SELECT phone, email, contact_address, working_hours, social_links, show_stock, min_cart_total FROM site_settings WHERE id = 1").get() || {};
   const pricing = await db.prepare("SELECT tax_rate FROM pricing_settings WHERE id = 1").get() || {};
   const { wa } = await contactInfo();
   res.json({
@@ -2757,7 +2924,9 @@ app.get("/api/site-info", async (req, res) => {
     whatsapp: wa ? `https://wa.me/${wa}` : "",
     address: site.contact_address || "",
     working_hours: site.working_hours || "",
-    social_links: site.social_links || ""
+    social_links: site.social_links || "",
+    show_stock: site.show_stock ?? 1,
+    min_cart_total: Number(site.min_cart_total ?? 0)
   });
 });
 

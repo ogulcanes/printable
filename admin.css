@@ -570,3 +570,42 @@ textarea { resize: vertical; }
 
 /* Unread contact message row */
 .row--unread { border-left: 3px solid #ff6542; }
+
+/* ---------- Ayarlar sekmesi ---------- */
+/* Onay kutusu ile açıklaması yan yana; açıklama tıklanabilir alanın parçası. */
+.check-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border: 1px solid var(--line, #e8eaf0);
+  border-radius: 12px;
+  margin-bottom: 18px;
+  cursor: pointer;
+}
+.check-row:hover { background: #fafbfe; }
+.check-row input[type="checkbox"] { width: 18px; height: 18px; margin-top: 2px; flex: none; cursor: pointer; }
+.check-row strong { display: block; margin-bottom: 4px; }
+.check-row small { display: block; color: #6c7180; line-height: 1.6; }
+
+/* Alan altı açıklama — label içinde, inputtan sonra. */
+.field-note {
+  display: block;
+  margin-top: 6px;
+  color: #6c7180;
+  font-size: 13px;
+  line-height: 1.6;
+  font-weight: 400;
+}
+
+/* Metin içinde sekme değiştiren buton — link gibi görünür, buton gibi davranır. */
+.link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--accent, #ff6542);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.link-button:hover { opacity: 0.8; }

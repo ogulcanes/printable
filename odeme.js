@@ -49,6 +49,7 @@
     `).join("");
   }
 
+  let minSepet = 0;   // panelden gelen minimum sipariş tutarı; 0 = sınır yok
   let taxRate = 20; // KDV hariç fiyatların üstüne eklenir; oran /api/site-info'dan gelir.
 
   // Campaigns are computed server-side; this holds the last preview so the
@@ -113,7 +114,10 @@
 
   // Pull the admin-set KDV rate so the summary matches the server's calculation.
   fetch("/api/site-info").then((r) => r.json()).then((info) => {
-    if (info && Number.isFinite(Number(info.tax_rate))) { taxRate = Number(info.tax_rate); renderSummary(); }
+    if (info && Number.isFinite(Number(info.tax_rate))) taxRate = Number(info.tax_rate);
+    if (info && Number.isFinite(Number(info.min_cart_total))) minSepet = Number(info.min_cart_total);
+    renderSummary();
+    showStep(step);   // minimum sağlanmıyorsa Devam butonu kilitlensin
   }).catch(() => {});
 
   function refreshCartViews() {
@@ -142,7 +146,12 @@
     qs("#co-prev").hidden = step === 1;
     qs("#co-next").hidden = step === LAST;
     qs("#co-submit").hidden = step !== LAST;
-    qs("#co-next").disabled = step === 1 && cart.length === 0;
+    const araToplam = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+    const altinda = minSepet > 0 && araToplam < minSepet;
+    qs("#co-next").disabled = step === 1 && (cart.length === 0 || altinda);
+    if (step === 1 && altinda && cart.length) {
+      setError("#cart-error", `Minimum sipariş tutarı ${money(minSepet)}. Sepetinize ${money(minSepet - araToplam)} daha ekleyin.`);
+    }
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -153,7 +162,16 @@
   };
 
   function validateStep(n) {
-    if (n === 1) return cart.length > 0;
+    if (n === 1) {
+      if (!cart.length) return false;
+      const araToplam = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+      if (minSepet > 0 && araToplam < minSepet) {
+        setError("#cart-error", `Minimum sipariş tutarı ${money(minSepet)}. Sepetinize ${money(minSepet - araToplam)} daha ekleyin.`);
+        return false;
+      }
+      setError("#cart-error", "");
+      return true;
+    }
     if (n === 2) {
       const f = qs("#delivery-form");
       if (!f.name.value.trim() || !f.phone.value.trim()) {
