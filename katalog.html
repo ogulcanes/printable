@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!--seo-->
+    <link rel="preload" href="/assets/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/assets/fonts/manrope-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <!--header-->
+
+    <main>
+      <section class="container page-hero catalog-hero">
+        <p class="section-kicker">Katalog</p>
+        <h1>Ürün Kataloğu ve Toplu Alım Fiyatları</h1>
+        <p class="page-lead">Tüm ürünler, renk seçenekleri ve adede göre inen fiyatlar tek sayfada. Yazdırabilir veya PDF olarak kaydedebilirsiniz.</p>
+        <div class="catalog-actions">
+          <button type="button" class="btn-solid" id="catalog-print">Yazdır / PDF kaydet</button>
+          <a class="btn-outline" href="/iletisim">Toplu alım için teklif isteyin</a>
+        </div>
+      </section>
+
+      <section class="container catalog-toolbar-wrap no-print">
+        <div class="catalog-toolbar">
+          <input type="search" id="catalog-search" placeholder="Ürün adı veya koda göre ara..." autocomplete="off">
+          <select id="catalog-category"><option value="">Tüm kategoriler</option></select>
+          <label class="catalog-check">
+            <input type="checkbox" id="catalog-only-bulk">
+            <span>Sadece toplu alım indirimi olanlar</span>
+          </label>
+        </div>
+        <p id="catalog-count" class="catalog-count"></p>
+      </section>
+
+      <section class="container">
+        <div id="catalog-general" class="catalog-general" hidden></div>
+        <div id="catalog-body" class="catalog-body">
+          <p class="catalog-loading">Katalog yükleniyor…</p>
+        </div>
+      </section>
+
+      <section class="container catalog-footnote">
+        <p><strong>Fiyatlar hakkında:</strong> Listelenen tutarlara KDV dahil değildir; kargo alıcı ödemelidir. Toplu alım kademeleri sipariş sırasında otomatik uygulanır, ayrıca kod girmenize gerek yoktur (kodu belirtilen kampanyalar hariç).</p>
+        <p class="catalog-updated" id="catalog-date"></p>
+      </section>
+    </main>
+
+    <!--footer-->
+    <!--chat-->
+    <script src="/script.js"></script>
+    <script src="/katalog.js"></script>
+  </body>
+</html>

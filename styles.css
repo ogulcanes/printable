@@ -5123,3 +5123,179 @@ body {
 @media (max-width: 720px) {
   .gallery-thumb { width: 62px; height: 62px; }
 }
+
+/* ---------- Katalog ----------
+   Hem ekranda gezilebilir hem de kâğıda/PDF'e düzgün çıkabilmesi gerekiyor:
+   toplu alım yapan müşteri çoğu zaman listeyi indirip birine gönderiyor. */
+.catalog-hero .catalog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.catalog-toolbar-wrap { margin-bottom: 18px; }
+.catalog-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.catalog-toolbar input[type="search"] {
+  flex: 1 1 260px;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font: inherit;
+}
+.catalog-toolbar select {
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font: inherit;
+  background: #fff;
+}
+.catalog-check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.catalog-check input { width: 17px; height: 17px; cursor: pointer; }
+.catalog-count { margin-top: 10px; color: var(--muted); font-size: 14px; }
+
+.catalog-general {
+  background: var(--soft);
+  border-radius: 16px;
+  padding: 20px 24px;
+  margin-bottom: 24px;
+}
+.catalog-general h2 { font-size: 18px; margin-bottom: 10px; }
+.catalog-general ul { margin: 0; padding-left: 20px; line-height: 1.9; }
+
+.catalog-body { display: grid; gap: 18px; }
+.catalog-loading { color: var(--muted); padding: 30px 0; }
+
+.catalog-item {
+  display: grid;
+  grid-template-columns: 190px 1fr;
+  gap: 20px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 18px;
+  background: #fff;
+  break-inside: avoid;          /* yazdırırken ürün ikiye bölünmesin */
+}
+.catalog-item__media img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 12px;
+  background: var(--soft);
+  display: block;
+}
+/* Grid öğelerinin varsayılan min-width:auto değeri, içerideki kademe tablosunun
+   küçülmesini engelliyordu: tablo kendi içinde kayacağına kartı genişletip
+   sayfayı yatay taşırıyordu (mobilde 99px). min-width:0 bu kilidi açar. */
+.catalog-item__media,
+.catalog-item__body { min-width: 0; }
+.catalog-item__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.catalog-item h3 { font-size: 19px; margin: 0 0 6px; }
+.catalog-item h3 a { color: inherit; text-decoration: none; }
+.catalog-item h3 a:hover { color: var(--accent); }
+.catalog-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.catalog-meta span { background: var(--soft); border-radius: 6px; padding: 2px 8px; }
+.catalog-price {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.catalog-price s { font-size: 15px; color: var(--muted); font-weight: 500; margin-left: 6px; }
+.catalog-price small { display: block; font-size: 12px; color: var(--muted); font-weight: 500; }
+.catalog-desc { margin: 10px 0; color: var(--muted); line-height: 1.6; font-size: 15px; }
+
+.catalog-colors { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.catalog-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  background: var(--soft);
+  border-radius: 20px;
+  padding: 4px 12px 4px 6px;
+}
+.catalog-nocolor { font-size: 13px; color: var(--muted); margin: 12px 0; }
+
+.catalog-tiers {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 14px;
+}
+.catalog-tiers th,
+.catalog-tiers td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; }
+.catalog-tiers thead th { background: var(--soft); font-weight: 700; }
+.catalog-num { text-align: right; white-space: nowrap; }
+.catalog-save { color: #1f9254; font-weight: 700; }
+.catalog-code {
+  background: var(--blue);
+  color: #fff;
+  border-radius: 5px;
+  padding: 1px 7px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.catalog-notier { margin-top: 12px; font-size: 14px; color: var(--muted); }
+
+.catalog-footnote {
+  margin-top: 34px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.catalog-updated { margin-top: 8px; font-style: italic; }
+
+@media (max-width: 720px) {
+  .catalog-item { grid-template-columns: 1fr; }
+  .catalog-item__media img { max-width: 220px; }
+  .catalog-price { font-size: 19px; }
+  /* Kademe tablosu dar ekranda sayfayı taşırmasın. */
+  .catalog-tiers { display: block; overflow-x: auto; white-space: nowrap; }
+}
+
+/* Yazdırma: gezinme, arama ve sohbet düğmesi kâğıda basılmaz; renkler
+   yazıcıda kaybolmasın diye tam renk zorlanır. */
+@media print {
+  .site-header,
+  .footer,
+  .no-print,
+  .catalog-actions,
+  .chat-button,
+  .cart-panel,
+  .search-popover { display: none !important; }
+
+  body { background: #fff; }
+  .catalog-item {
+    border-color: #ccc;
+    padding: 12px;
+    page-break-inside: avoid;
+  }
+  .catalog-item__media img { max-width: 150px; }
+  .catalog-price { color: #000; }
+  .catalog-code { background: #000; }
+  .catalog-save { color: #000; }
+  a { text-decoration: none; color: #000; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

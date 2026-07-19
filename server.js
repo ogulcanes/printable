@@ -92,7 +92,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "6";
+const SCHEMA_VERSION = "7";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -683,6 +683,13 @@ const extraSeoPages = [
     og_description: "3D baskı, kargo, ödeme ve e-fatura hakkında merak edilenler."
   },
   {
+    slug: "katalog", label: "Katalog sayfası",
+    title: "Ürün Kataloğu ve Toplu Alım Fiyatları | Printable",
+    description: "Tüm 3D baskı ürünleri, renk seçenekleri ve adede göre inen toplu alım fiyatları tek sayfada.",
+    og_title: "Ürün Kataloğu ve Toplu Alım Fiyatları | Printable",
+    og_description: "Renkleriyle birlikte tüm ürünler ve toplu alım kademeleri."
+  },
+  {
     slug: "mesafeli-satis", label: "Mesafeli satış sözleşmesi",
     title: "Mesafeli Satış Sözleşmesi | Printable",
     description: "Printable mesafeli satış sözleşmesi: taraflar, teslimat, ödeme, cayma hakkı ve uyuşmazlık çözümü.",
@@ -1059,6 +1066,7 @@ async function renderHeader(active) {
         <nav class="main-links" id="main-links" aria-label="Ana menü">
           ${await link("/", "Ana Sayfa", "home")}
           ${await link("/urunler", "Ürünler", "urunler")}
+          ${await link("/katalog", "Katalog", "katalog")}
           ${await link("/stl-teklif", "3D Baskı Teklifi", "stl-teklif")}
           ${await link("/hakkinda", "Hakkımızda", "hakkinda")}
           ${await link("/iletisim", "İletişim", "iletisim")}
@@ -1175,7 +1183,7 @@ async function renderFooter() {
       </div>
       <div class="container footer__grid">
         <div><h3>Kategoriler</h3><a href="/urunler">Figürler</a><a href="/urunler">Anahtarlıklar</a><a href="/urunler">Fidget & Stres</a><a href="/urunler">Düdükler</a></div>
-        <div><h3>Kurumsal</h3><a href="/hakkinda">Hakkımızda</a><a href="/iletisim">İletişim</a><a href="/stl-teklif">Özel 3D baskı</a><a href="/urunler">Tüm ürünler</a></div>
+        <div><h3>Kurumsal</h3><a href="/katalog">Ürün kataloğu</a><a href="/hakkinda">Hakkımızda</a><a href="/iletisim">İletişim</a><a href="/stl-teklif">Özel 3D baskı</a><a href="/urunler">Tüm ürünler</a></div>
         <div><h3>Müşteri Desteği</h3><a href="/iletisim">Bize ulaşın</a><a href="/iade">İade & Değişim</a><a href="/sss">Kargo</a><a href="/sss">S.S.S.</a></div>
         <div><h3>Yasal</h3><a href="/mesafeli-satis">Mesafeli Satış Sözleşmesi</a><a href="/iade">İade ve Cayma Hakkı</a><a href="/gizlilik">Gizlilik ve KVKK</a></div>
         <div class="footer-logo printable-wordmark">
@@ -1280,6 +1288,7 @@ app.get("/sss", async (req, res) => await sendPage(req, res, "sss.html", "sss"))
 app.get("/mesafeli-satis", async (req, res) => await sendPage(req, res, "mesafeli-satis.html", "mesafeli-satis"));
 app.get("/iade", async (req, res) => await sendPage(req, res, "iade.html", "iade"));
 app.get("/gizlilik", async (req, res) => await sendPage(req, res, "gizlilik.html", "gizlilik"));
+app.get("/katalog", async (req, res) => await sendPage(req, res, "katalog.html", "katalog"));
 
 // Per-product SEO: crawlers need real title/description/og:image/JSON-LD in the HTML
 // (the visible detail is filled by urun.js, matching the rest of the JS-rendered site).
@@ -1381,6 +1390,7 @@ app.get("/sitemap.xml", async (req, res) => {
     { loc: "/stl-teklif", priority: "0.8" },
     { loc: "/hakkinda", priority: "0.5" },
     { loc: "/iletisim", priority: "0.5" },
+    { loc: "/katalog", priority: "0.8" },
     { loc: "/mesafeli-satis", priority: "0.3" },
     { loc: "/iade", priority: "0.4" },
     { loc: "/gizlilik", priority: "0.3" },
@@ -1407,7 +1417,7 @@ app.get("/sitemap.xml", async (req, res) => {
   );
 });
 
-["styles.css", "script.js", "stl-viewer.js", "admin.css", "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js"].forEach((file) => {
+["styles.css", "script.js", "stl-viewer.js", "admin.css", "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js", "katalog.js"].forEach((file) => {
   app.get(`/${file}`, async (req, res) => res.sendFile(path.join(ROOT, file)));
 });
 
@@ -2833,6 +2843,76 @@ async function setCampaignTargets(campaignId, body) {
   await link("campaign_products", "product_id", body.product_ids);
   await link("campaign_categories", "category_id", body.category_ids);
 }
+
+/* Katalog: ürünler + renkler + toplu alım kademeleri.
+
+   Kademeler AYRI bir tabloda tutulmuyor, canlı kampanyalardan üretiliyor.
+   Ayrı tutsaydık katalogda "10 adet %15" yazıp ödemede uygulanmama ihtimali
+   doğardı — müşteriye verilmiş yalan bir söz. Böyle olunca katalog her zaman
+   ödemenin gerçekten yapacağı indirimi gösteriyor.
+
+   Yalnızca adet koşulu olan (min_quantity > 0) kampanyalar kademe sayılır;
+   "500 TL üstü kargo bedava" gibi tutar koşullu olanlar ürün satırında
+   anlamsız olurdu. */
+app.get("/api/catalog", async (req, res) => {
+  const urunler = await decorateProducts(
+    await db.prepare("SELECT * FROM products WHERE is_active = 1 ORDER BY id DESC").all()
+  );
+  const kampanyalar = (await liveCampaigns()).filter((c) => c.min_quantity > 0);
+
+  // Kapsam listelerini bir kez oku; ürün başına sorgu N+1 olurdu.
+  const kapsamlar = await Promise.all(kampanyalar.map(async (c) => ({
+    kampanya: c,
+    urunIdleri: c.scope === "products"
+      ? new Set((await campaignProductIds.all(c.id)).map((r) => r.product_id))
+      : null,
+    kategoriIdleri: c.scope === "categories"
+      ? new Set((await campaignCategoryIds.all(c.id)).map((r) => r.category_id))
+      : null
+  })));
+
+  const kademeler = (urun) => kapsamlar
+    .filter(({ kampanya, urunIdleri, kategoriIdleri }) => {
+      if (kampanya.scope === "products") return urunIdleri.has(urun.id);
+      if (kampanya.scope === "categories") return (urun.categories || []).some((k) => kategoriIdleri.has(k.id));
+      return true;   // scope === "all"
+    })
+    .map(({ kampanya }) => {
+      const birim = Number(urun.sale_price || urun.price) || 0;
+      const yuzde = kampanya.discount_type === "percent";
+      // Sabit indirim kampanyanın kapsadığı TUTARdan düşer; adet başına
+      // yansımasını göstermek için kademe adedine bölüyoruz.
+      const indirimliBirim = yuzde
+        ? birim * (1 - Number(kampanya.discount_value) / 100)
+        : Math.max(0, birim - Number(kampanya.discount_value) / kampanya.min_quantity);
+      return {
+        name: kampanya.name,
+        code: kampanya.code || null,
+        min_quantity: kampanya.min_quantity,
+        discount_type: kampanya.discount_type,
+        discount_value: Number(kampanya.discount_value),
+        kind: kampanya.kind,
+        unit_price: round2(indirimliBirim),
+        total_price: round2(indirimliBirim * kampanya.min_quantity),
+        saving: round2((birim - indirimliBirim) * kampanya.min_quantity)
+      };
+    })
+    .sort((a, b) => a.min_quantity - b.min_quantity);
+
+  res.json({
+    products: urunler.map((p) => ({
+      id: p.id, name: p.name, sku: p.sku, description: p.description,
+      image_path: p.image_path, image_alt: p.image_alt,
+      price: Number(p.price), sale_price: p.sale_price == null ? null : Number(p.sale_price),
+      stock: p.stock, colors: p.colors, categories: p.categories,
+      tiers: kademeler(p)
+    })),
+    // Adet koşulu olmayan ama katalogda anılmaya değer kampanyalar (hediye vb.)
+    general_campaigns: (await liveCampaigns())
+      .filter((c) => !c.min_quantity)
+      .map((c) => ({ name: c.name, code: c.code || null, kind: c.kind, discount_type: c.discount_type, discount_value: Number(c.discount_value), min_order_total: Number(c.min_order_total) }))
+  });
+});
 
 /* Bir kampanyayı kimlerin kullandığı. used_count tek bir sayı; "hangi
    müşteri" sorusunu ancak bu liste yanıtlar. Müşteri adı ve telefonu kayıt
