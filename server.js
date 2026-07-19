@@ -800,13 +800,30 @@ await db.prepare(`
 /* Şema hazır olana kadar hiçbir istek veritabanına dokunmamalı. initDb() modül
    yüklenirken bir kez başlar; aşağıdaki kapı her isteği o söz tutulana kadar
    bekletir. Vercel'de her soğuk başlatmada bir kez ödenen bir gecikme. */
-const dbReady = initDb().then(
-  () => console.log("Veritabanı hazır."),
-  (error) => {
-    console.error("VERİTABANI BAŞLATILAMADI:", error.message);
-    throw error;
+/* Sözü SADECE başarılıysa önbellekle. Eskiden tek bir söz tutuluyordu ve soğuk
+   başlatma sırasında Supabase'e bağlanma bir kez takılırsa o red kalıcı olarak
+   saklanıyordu: o fonksiyon örneğine düşen her istek, veritabanı çoktan ayağa
+   kalkmış olsa bile, örnek geri dönüşene kadar 503 alıyordu. Başarısızlıkta
+   önbelleği boşaltıyoruz ki sonraki istek yeniden denesin. */
+let dbReadyPromise = null;
+
+function ensureDbReady() {
+  if (!dbReadyPromise) {
+    dbReadyPromise = initDb().then(
+      () => console.log("Veritabanı hazır."),
+      (error) => {
+        console.error("VERİTABANI BAŞLATILAMADI:", error.message);
+        dbReadyPromise = null;
+        throw error;
+      }
+    );
   }
-);
+  return dbReadyPromise;
+}
+
+// Soğuk başlatmada kuruluma hemen başla; ilk istek beklerken ilerlemiş olsun.
+// catch şart: kimse beklemeden reddedilirse Node süreci düşürür.
+ensureDbReady().catch(() => {});
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -830,9 +847,11 @@ app.use(express.urlencoded({ extended: true }));
 // Statik dosyalardan önce durmasın diye onları aşağıda tanımlıyoruz.
 app.use(async (req, res, next) => {
   try {
-    await dbReady;
+    await ensureDbReady();
     next();
   } catch {
+    // Kurulum bir sonraki istekte yeniden denenecek; istemciye de bunu söyle.
+    res.set("Retry-After", "2");
     res.status(503).json({ error: "Veritabanı şu anda hazır değil, birazdan tekrar deneyin." });
   }
 });
