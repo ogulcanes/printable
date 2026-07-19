@@ -142,8 +142,18 @@
      görseli hedef genişliğe eziyor. Dış adresler (MakerWorld) olduğu gibi
      kalır — onları dönüştüremeyiz. */
   const pdfGorseli = (url) => {
-    if (!url || !url.includes("/storage/v1/object/public/")) return url;
-    return `${url.replace("/object/public/", "/render/image/public/")}?width=500&resize=contain&quality=80`;
+    if (!url) return url;
+    if (url.includes("/storage/v1/object/public/")) {
+      return `${url.replace("/object/public/", "/render/image/public/")}?width=500&resize=contain&quality=80`;
+    }
+    /* Ürün görsellerinin çoğu MakerWorld CDN'inde ve adreslerinde zaten
+       "w_1200" var. 34 ürünün 1200px görselini PDF'e gömmek dosyayı 36 MB
+       yapıyordu; aynı parametreyi 500'e çekmek e-postayla gönderilebilir
+       hale getiriyor. Parametre yoksa adrese dokunmuyoruz. */
+    if (url.includes("x-oss-process=image/resize,w_")) {
+      return url.replace(/resize,w_\d+/, "resize,w_500");
+    }
+    return url;
   };
 
   /* Yazdırma sürümü: katlaç kataloğuyla aynı dil — logo, tarih, numaralı
