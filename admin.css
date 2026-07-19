@@ -774,7 +774,7 @@ textarea { resize: vertical; }
     gap: 8mm;
     padding-bottom: 3mm;
     border-bottom: 0.6mm solid var(--ink, #181a22);
-    margin-bottom: 5mm;
+    margin-bottom: 4mm;
   }
   .katlac-print-brand { display: flex; align-items: center; gap: 2.5mm; }
   .katlac-print-mark {
@@ -813,10 +813,10 @@ textarea { resize: vertical; }
   .katlac-print-rows { display: block; }
   .katlac-row {
     display: grid;
-    grid-template-columns: 7mm 34mm 1fr auto;
+    grid-template-columns: 7mm 32mm 1fr auto;
     align-items: center;
     gap: 4mm;
-    padding: 2.6mm 0;
+    padding: 2mm 0;
     border-bottom: 0.2mm solid #ddd8ce;
     page-break-inside: avoid;
     break-inside: avoid;
@@ -832,8 +832,8 @@ textarea { resize: vertical; }
   /* Kaynak artık doğru oranda (resize=contain), bu yüzden cover güvenli:
      4:3 görseli 1.42:1 çerçeveye oturturken yalnızca %7 kırpıyor. */
   .katlac-row__img {
-    width: 34mm;
-    height: 24mm;
+    width: 32mm;
+    height: 21mm;
     object-fit: cover;
     background: #f5f2ec;
     border-radius: 1.6mm;
@@ -869,8 +869,8 @@ textarea { resize: vertical; }
   .katlac-print-foot {
     display: flex;
     justify-content: space-between;
-    margin-top: 5mm;
-    padding-top: 2.5mm;
+    margin-top: 4mm;
+    padding-top: 2mm;
     border-top: 0.2mm solid #ddd8ce;
     font-size: 7.5pt;
     color: #8a867f;
