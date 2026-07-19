@@ -28,6 +28,7 @@
         <button class="tab" data-tab="messages"><span>11</span>Mesajlar</button>
         <button class="tab" data-tab="reviews"><span>12</span>Yorumlar</button>
         <button class="tab" data-tab="campaigns"><span>13</span>Kampanyalar</button>
+        <button class="tab" data-tab="admins"><span>14</span>Yöneticiler</button>
       </nav>
       <div class="sidebar-note">
         <strong>Vercel notu</strong>
@@ -390,6 +391,48 @@
           </div>
           <p class="form-note">Sitenin altındaki "Bültenimize abone olun" formundan kaydolanlar.</p>
           <div id="subscriber-list" class="list"></div>
+        </div>
+      </section>
+
+      <section id="admins" class="panel">
+        <div class="admin-card">
+          <div class="card-title">
+            <h2>Panel Yöneticileri</h2>
+            <span id="admin-count" class="count-pill">0 yönetici</span>
+          </div>
+          <p class="form-note">Bu hesaplar admin paneline giriş yapabilir. Şifreler geri okunamaz şekilde saklanır — unutulursa buradan yenisi verilir.</p>
+          <div id="admin-list" class="list"></div>
+        </div>
+
+        <div class="admin-card">
+          <div class="card-title"><h2>Yeni Yönetici</h2></div>
+          <form id="admin-user-form" class="form-grid">
+            <label>Kullanıcı adı
+              <input name="username" required minlength="3" maxlength="32" pattern="[a-zA-Z0-9_-]+" placeholder="ornek: mehmet">
+            </label>
+            <label>Şifre
+              <input name="password" type="password" required minlength="8" placeholder="En az 8 karakter">
+            </label>
+            <div class="form-actions">
+              <button class="btn-solid" type="submit">Yönetici ekle</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="admin-card">
+          <div class="card-title"><h2>Şifremi Değiştir</h2></div>
+          <p class="form-note">Kendi şifrenizi değiştirdiğinizde diğer cihazlardaki açık oturumlarınız kapanır.</p>
+          <form id="own-password-form" class="form-grid">
+            <label>Mevcut şifreniz
+              <input name="current_password" type="password" required>
+            </label>
+            <label>Yeni şifre
+              <input name="password" type="password" required minlength="8" placeholder="En az 8 karakter">
+            </label>
+            <div class="form-actions">
+              <button class="btn-solid" type="submit">Şifreyi güncelle</button>
+            </div>
+          </form>
         </div>
       </section>
 

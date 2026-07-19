@@ -735,7 +735,11 @@ async function loadOptions() {
     fetch("/api/materials").then((response) => response.json()).catch(() => []),
     fetch("/api/colors").then((response) => response.json()).catch(() => [])
   ]);
-  palette = colors;
+  palette = Array.isArray(colors) ? colors : [];
+  if (!Array.isArray(materials)) {
+    document.querySelector("#stl-materials").innerHTML = "<p class=\"stl-error\">Malzemeler yüklenemedi. Sayfayı yenileyin.</p>";
+    return;
+  }
 
   document.querySelector("#stl-materials").innerHTML = materials.map((item) => `
     <label class="stl-option">
@@ -788,8 +792,12 @@ quantityInput.addEventListener("input", () => {
 const distinctColorCount = () =>
   new Set(quote.parts.map((part) => part.colorId).filter(Boolean)).size || 1;
 
+let priceRequestId = 0;
+
 async function refreshPrice() {
   if (!quote.file || !quote.materialId) return;
+  // Her istek sıra numarası alır; yanıt döndüğünde daha yenisi başladıysa yok sayılır.
+  const requestId = ++priceRequestId;
   try {
     const price = await fetch("/api/quote-price", {
       method: "POST",
@@ -804,11 +812,12 @@ async function refreshPrice() {
       })
     }).then((response) => response.json());
 
-    if (price.error) return;
+    if (requestId !== priceRequestId) return;   // arada daha yeni bir istek başladı
+    if (price.error || !price.material) return;
     priceEl.textContent = money(price.total);
 
     const lines = [
-      `${price.material.name} · %${price.infill} dolgu · ${price.used_volume_cm3.toFixed(2)} cm³ kullanılıyor`,
+      `${price.material.name} · %${price.infill} dolgu · ${Number(price.used_volume_cm3 || 0).toFixed(2)} cm³ kullanılıyor`,
       `hazırlık ${money(price.setup_fee)} + ${price.quantity} x ${money(price.unit_price)}`
     ];
     if (price.color_fee > 0) {
@@ -966,5 +975,7 @@ async function uploadDirect(files) {
   return keys;
 }
 
-loadOptions();
+loadOptions().catch(() => {
+  document.querySelector("#stl-materials").innerHTML = "<p class=\"stl-error\">Seçenekler yüklenemedi. Sayfayı yenileyin.</p>";
+});
 showStep(1);

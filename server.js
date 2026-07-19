@@ -43,8 +43,45 @@ const UPLOAD_DIR = path.join(WRITABLE_ROOT, "uploads");
 const ADMIN_USER = process.env.ADMIN_USER || "admin";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "printable-admin";
 const SESSION_SECRET = process.env.SESSION_SECRET || "local-printable-session-secret";
+/* Varsayılanlar yalnızca yerel geliştirme içindir. Canlıda SESSION_SECRET unutulursa
+   sır depoda yazılı olduğu için herkes kendine geçerli bir admin çerezi imzalayabilir.
+   Bu durumda sunucuyu komple düşürmüyoruz — vitrin çalışmaya devam etsin — ama
+   admin girişini kapatıyoruz: müşteriye kapalı dükkan, saldırgana açık kasa demek. */
+const IS_PRODUCTION = Boolean(process.env.VERCEL || process.env.NODE_ENV === "production");
+const ADMIN_LOCKED = IS_PRODUCTION && ["ADMIN_PASSWORD", "SESSION_SECRET"].some((key) => !process.env[key]);
+if (ADMIN_LOCKED) {
+  console.error("UYARI: ADMIN_PASSWORD veya SESSION_SECRET tanımlı değil — admin paneli kilitlendi.");
+}
 const SESSION_COOKIE = "printable_admin";
+/* İlk kurulumda açılacak panel hesapları. Sadece admin_users tablosu boşken
+   kullanılır; sonrası panelden yönetilir. ADMIN_USER da listeye katılır ki
+   eski tek-hesap kurulumları giriş yapabilmeye devam etsin. */
+const SEED_ADMIN_USERS = [...new Set(
+  (process.env.ADMIN_USERS || "ogulcan,furkan").split(",").map((name) => name.trim().toLowerCase()).filter(Boolean).concat(ADMIN_USER.toLowerCase())
+)];
 const KDV_RATE = 20; // Ürün fiyatları KDV dahildir; faturada bu oranla ayrıştırılır.
+
+/* Şifreler scrypt ile saklanır: her hesaba rastgele salt, sabit-zamanlı karşılaştırma.
+   Biçim: scrypt$<salt-hex>$<hash-hex>. Düz metin şifre hiçbir yere yazılmaz. */
+function hashPassword(plain) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  return `scrypt$${salt}$${crypto.scryptSync(String(plain), salt, 64).toString("hex")}`;
+}
+
+/* Var olmayan kullanıcı için de gerçek bir özet doğrulaması yapabilelim diye:
+   giriş denemesinin süresi "bu kullanıcı adı kayıtlı mı" sorusunu ele vermesin. */
+const DUMMY_PASSWORD_HASH = hashPassword(crypto.randomBytes(32).toString("hex"));
+
+function verifyPassword(plain, stored) {
+  const [scheme, salt, expected] = String(stored || "").split("$");
+  if (scheme !== "scrypt" || !salt || !expected) return false;
+  const actual = crypto.scryptSync(String(plain), salt, 64).toString("hex");
+  try {
+    return crypto.timingSafeEqual(Buffer.from(actual, "hex"), Buffer.from(expected, "hex"));
+  } catch {
+    return false;
+  }
+}
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -55,7 +92,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "2";
+const SCHEMA_VERSION = "3";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -337,6 +374,18 @@ async function initDb() {
     PRIMARY KEY (campaign_id, category_id),
     FOREIGN KEY(campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
     FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE CASCADE
+  );
+
+  -- Panel yöneticileri. Şifreler scrypt ile saltlanıp özetlenir, asla düz metin tutulmaz.
+  -- password_version her şifre değişiminde artar; oturum çerezi bu değeri taşıdığı için
+  -- şifre değişince o kullanıcının açık oturumları anında geçersizleşir.
+  CREATE TABLE IF NOT EXISTS admin_users (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    password_version INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
   -- Bülten aboneleri. Form daha önce hiçbir yere kaydetmiyordu.
@@ -729,6 +778,18 @@ if (!existingSlides) {
   for (const slide of slides) await seedSlide.run(slide);
 }
 
+// Panel yöneticileri: tablo boşsa ADMIN_USERS'taki isimler ADMIN_PASSWORD ile açılır.
+// Şifreler bundan sonra panelden değiştirilir; env yalnızca ilk kurulumu tohumlar.
+const adminCount = await db.prepare("SELECT COUNT(*)::int AS count FROM admin_users").get();
+if (!adminCount.count) {
+  const seedAdmin = db.prepare(
+    "INSERT INTO admin_users (username, password_hash) VALUES (@username, @password_hash) ON CONFLICT (username) DO NOTHING"
+  );
+  for (const username of SEED_ADMIN_USERS) {
+    await seedAdmin.run({ username, password_hash: hashPassword(ADMIN_PASSWORD) });
+  }
+}
+
 // Kurulum tamam: sonraki soğuk başlatmalar bu satır sayesinde erken çıkacak.
 await db.prepare(`
   INSERT INTO app_meta (key, value) VALUES ('schema_version', ?)
@@ -784,7 +845,7 @@ app.use("/uploads", express.static(UPLOAD_DIR));
    o yüzden uzantı doğrulaması burada, sunucuda yapılır. */
 app.post("/api/uploads/sign", async (req, res) => {
   const kind = req.body?.kind === "image" ? "image" : "model";
-  if (kind === "image" && !isAuthed(req)) {
+  if (kind === "image" && !(await isAuthed(req))) {
     return res.status(401).json({ error: "Yetkiniz yok." });
   }
   if (!storage.enabled) {
@@ -1194,40 +1255,63 @@ function parseCookies(req) {
   }));
 }
 
-function isAuthed(req) {
+/* Çerez biçimi: <kullanıcı>.<şifre-sürümü>.<bitiş>.<imza>
+   İmza çerezi bizim ürettiğimizi kanıtlar, ama yetkiyi çerezin iddiasına değil
+   veritabanına soruyoruz: hesap silinmişse ya da şifresi değişmişse (sürüm artar)
+   eldeki çerez anında geçersiz olur. Kullanıcı adları nokta içeremez — parçalamayı
+   bozardı; createAdminUser bunu zorunlu kılıyor. */
+async function currentAdmin(req) {
+  if (ADMIN_LOCKED) return null;
   const raw = parseCookies(req)[SESSION_COOKIE];
-  if (!raw) return false;
-  const [user, expires, signature] = raw.split(".");
-  if (!user || !expires || !signature || Number(expires) < Date.now()) return false;
-  const expected = signSession(`${user}.${expires}`);
+  if (!raw) return null;
+  const [user, version, expires, signature] = raw.split(".");
+  if (!user || !version || !expires || !signature || Number(expires) < Date.now()) return null;
+  const expected = signSession(`${user}.${version}.${expires}`);
   try {
-    return user === ADMIN_USER && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
   } catch {
-    return false;
+    return null;
   }
+  const row = await db.prepare("SELECT id, username, password_version FROM admin_users WHERE username = ?").get(user);
+  if (!row || String(row.password_version) !== version) return null;
+  return row;
 }
 
-function requireAdmin(req, res, next) {
-  if (isAuthed(req)) return next();
+const isAuthed = async (req) => Boolean(await currentAdmin(req));
+
+async function requireAdmin(req, res, next) {
+  const admin = await currentAdmin(req);
+  if (admin) {
+    req.admin = admin;
+    return next();
+  }
   if (req.path.startsWith("/api/")) return res.status(401).json({ error: "Admin login required." });
   return res.redirect("/login");
 }
 
-function setSessionCookie(res) {
+function setSessionCookie(res, admin) {
   const expires = Date.now() + 1000 * 60 * 60 * 12;
-  const value = `${ADMIN_USER}.${expires}`;
-  res.setHeader("Set-Cookie", `${SESSION_COOKIE}=${encodeURIComponent(`${value}.${signSession(value)}`)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200`);
+  const value = `${admin.username}.${admin.password_version}.${expires}`;
+  // Canlıda Secure: çerez düz metin bağlantıya asla düşmesin. Yerelde http olduğu için kapalı.
+  const secure = IS_PRODUCTION ? " Secure;" : "";
+  res.setHeader("Set-Cookie", `${SESSION_COOKIE}=${encodeURIComponent(`${value}.${signSession(value)}`)}; HttpOnly;${secure} SameSite=Lax; Path=/; Max-Age=43200`);
 }
 
 app.get("/login", async (req, res) => {
-  if (isAuthed(req)) return res.redirect("/admin");
+  if (await currentAdmin(req)) return res.redirect("/admin");
   return res.sendFile(path.join(ROOT, "login.html"));
 });
 
 app.post("/api/login", async (req, res) => {
-  if (req.body.username === ADMIN_USER && req.body.password === ADMIN_PASSWORD) {
-    setSessionCookie(res);
-    return res.json({ ok: true });
+  if (ADMIN_LOCKED) return res.status(503).json({ error: "Yönetim paneli yapılandırma eksikliği nedeniyle kapalı." });
+  const username = String(req.body.username || "").trim().toLowerCase();
+  const row = await db.prepare("SELECT * FROM admin_users WHERE username = ?").get(username);
+  /* Kullanıcı yoksa da özet doğrulaması çalıştırılır: aksi halde yanıt süresi
+     "bu kullanıcı var mı" sorusunu ele verir. */
+  const ok = verifyPassword(req.body.password, row ? row.password_hash : DUMMY_PASSWORD_HASH);
+  if (row && ok) {
+    setSessionCookie(res, row);
+    return res.json({ ok: true, user: row.username });
   }
   return res.status(401).json({ error: "Kullanıcı adı veya şifre hatalı." });
 });
@@ -1238,7 +1322,60 @@ app.post("/api/logout", async (req, res) => {
 });
 
 app.get("/api/session", async (req, res) => {
-  res.json({ authed: isAuthed(req), user: isAuthed(req) ? ADMIN_USER : null });
+  const admin = await currentAdmin(req);
+  res.json({ authed: Boolean(admin), user: admin ? admin.username : null });
+});
+
+// Panel yöneticileri. Şifre özeti hiçbir yanıtta dönmez.
+app.get("/api/admin-users", requireAdmin, async (req, res) => {
+  res.json(await db.prepare("SELECT id, username, created_at, updated_at FROM admin_users ORDER BY username").all());
+});
+
+app.post("/api/admin-users", requireAdmin, async (req, res) => {
+  const username = String(req.body.username || "").trim().toLowerCase();
+  const password = String(req.body.password || "");
+  if (!/^[a-z0-9_-]{3,32}$/.test(username)) {
+    return res.status(400).json({ error: "Kullanıcı adı 3-32 karakter olmalı; sadece harf, rakam, tire ve alt çizgi kullanılabilir." });
+  }
+  if (password.length < 8) return res.status(400).json({ error: "Şifre en az 8 karakter olmalı." });
+  if (await db.prepare("SELECT id FROM admin_users WHERE username = ?").get(username)) {
+    return res.status(400).json({ error: "Bu kullanıcı adı zaten kullanılıyor." });
+  }
+  const result = await db.prepare(
+    "INSERT INTO admin_users (username, password_hash) VALUES (@username, @password_hash)"
+  ).run({ username, password_hash: hashPassword(password) });
+  res.status(201).json(await db.prepare("SELECT id, username, created_at, updated_at FROM admin_users WHERE id = ?").get(result.lastInsertRowid));
+});
+
+app.put("/api/admin-users/:id/password", requireAdmin, async (req, res) => {
+  const password = String(req.body.password || "");
+  if (password.length < 8) return res.status(400).json({ error: "Şifre en az 8 karakter olmalı." });
+  const row = await db.prepare("SELECT * FROM admin_users WHERE id = ?").get(req.params.id);
+  if (!row) return res.status(404).json({ error: "Yönetici bulunamadı." });
+  /* Kendi şifresini değiştiren mevcut şifresini doğrulamak zorunda: panelde açık
+     unutulmuş bir oturumun hesabı ele geçirmesini engeller. Başkasının şifresini
+     sıfırlarken bu istenmez — kilitlenen arkadaşına yardım edebilmeli. */
+  if (row.id === req.admin.id && !verifyPassword(req.body.current_password, row.password_hash)) {
+    return res.status(400).json({ error: "Mevcut şifreniz hatalı." });
+  }
+  await db.prepare(
+    "UPDATE admin_users SET password_hash = @password_hash, password_version = password_version + 1, updated_at = NOW() WHERE id = @id"
+  ).run({ id: row.id, password_hash: hashPassword(password) });
+  // Şifre sürümü arttı: kendi çerezimiz de geçersizleşti, yenisini ver.
+  if (row.id === req.admin.id) {
+    setSessionCookie(res, { username: row.username, password_version: row.password_version + 1 });
+  }
+  res.json({ ok: true });
+});
+
+app.delete("/api/admin-users/:id", requireAdmin, async (req, res) => {
+  const row = await db.prepare("SELECT id FROM admin_users WHERE id = ?").get(req.params.id);
+  if (!row) return res.status(404).json({ error: "Yönetici bulunamadı." });
+  if (row.id === req.admin.id) return res.status(400).json({ error: "Kendi hesabınızı silemezsiniz." });
+  const total = await db.prepare("SELECT COUNT(*)::int AS count FROM admin_users").get();
+  if (total.count <= 1) return res.status(400).json({ error: "Son yönetici hesabı silinemez." });
+  await db.prepare("DELETE FROM admin_users WHERE id = ?").run(row.id);
+  res.status(204).end();
 });
 
 const money = (value) => Number(value || 0);
@@ -1545,7 +1682,7 @@ function heroSlidePayload(body, file) {
 
 // Storefront gets only active slides; an authenticated admin can ask for all of them.
 app.get("/api/hero-slides", async (req, res) => {
-  const all = req.query.all === "1" && isAuthed(req);
+  const all = req.query.all === "1" && await isAuthed(req);
   const slides = await db.prepare(`
     SELECT * FROM hero_slides
     ${all ? "" : "WHERE is_active = 1"}
@@ -1661,7 +1798,7 @@ async function priceQuote({ volume_cm3, max_dim_mm, material_id, infill, quantit
 }
 
 app.get("/api/materials", async (req, res) => {
-  const all = req.query.all === "1" && isAuthed(req);
+  const all = req.query.all === "1" && await isAuthed(req);
   res.json(await db.prepare(`
     SELECT * FROM materials
     ${all ? "" : "WHERE is_active = 1"}
@@ -1886,7 +2023,7 @@ app.delete("/api/quotes/:id", requireAdmin, async (req, res) => {
 });
 
 app.get("/api/colors", async (req, res) => {
-  const all = req.query.all === "1" && isAuthed(req);
+  const all = req.query.all === "1" && await isAuthed(req);
   res.json(await db.prepare(`
     SELECT * FROM colors
     ${all ? "" : "WHERE is_active = 1"}
@@ -1950,7 +2087,7 @@ function categoryPayload(body, file) {
 }
 
 app.get("/api/categories", async (req, res) => {
-  const all = req.query.all === "1" && isAuthed(req);
+  const all = req.query.all === "1" && await isAuthed(req);
   res.json(await db.prepare(`
     SELECT * FROM categories
     ${all ? "" : "WHERE is_active = 1"}
@@ -2083,7 +2220,11 @@ app.get("/api/orders", requireAdmin, async (req, res) => {
   ));
 });
 
-app.post("/api/orders", async (req, res) => {
+/* Panelden elle sipariş açma. Vitrin bu rotayı kullanmaz — o /api/checkout'a gider.
+   requireAdmin şart: aşağıda birim fiyat istemciden gelebiliyor (admin katalog dışı
+   bir iş için fiyat yazabilsin diye), yani yetkisiz bırakılırsa herkes kendi
+   fiyatını belirleyerek sipariş açabilirdi. */
+app.post("/api/orders", requireAdmin, async (req, res) => {
   const items = Array.isArray(req.body.items) ? req.body.items : [];
   if (!req.body.customer_id) return res.status(400).json({ error: "Müşteri seçimi zorunludur." });
   if (!items.length) return res.status(400).json({ error: "En az bir sipariş ürünü gereklidir." });
@@ -2274,21 +2415,28 @@ async function evaluateCampaigns(items, code) {
 }
 
 // Sepet satırlarını ürün tablosundan yeniden fiyatlar — istemciden gelen fiyat yok sayılır.
+/* Sepet kalemlerini katalogdan yeniden kurar. Tarayıcıdan SADECE ürün kimliği ve
+   adet okunur; isim ve fiyat her zaman veritabanından gelir.
+
+   Katalogda olmayan (veya yayından kaldırılmış) bir kalem sessizce düşürülür —
+   eskiden böyle bir kalem için tarayıcının gönderdiği unit_price kullanılıyordu ve
+   negatif bir fiyat sepet toplamını, KDV'yi ve genel toplamı eksiye çekebiliyordu. */
 async function normalizeCartItems(items) {
-  return Promise.all((Array.isArray(items) ? items : []).map(async (item) => {
-    const product = item.product_id
-      ? await db.prepare("SELECT * FROM products WHERE id = ?").get(item.product_id)
-      : null;
-    const quantity = Math.max(1, toInt(item.quantity));
-    const unitPrice = money(product?.sale_price || product?.price || item.unit_price);
+  const rows = await Promise.all((Array.isArray(items) ? items : []).map(async (item) => {
+    if (!item.product_id) return null;
+    const product = await db.prepare("SELECT * FROM products WHERE id = ? AND is_active = 1").get(item.product_id);
+    if (!product) return null;
+    const quantity = Math.min(999, Math.max(1, toInt(item.quantity)));
+    const unitPrice = Math.max(0, money(product.sale_price || product.price));
     return {
-      product_id: product?.id || null,
-      product_name: product?.name || item.product_name || "Ürün",
+      product_id: product.id,
+      product_name: product.name,
       quantity,
       unit_price: unitPrice,
       line_total: money(quantity * unitPrice)
     };
   }));
+  return rows.filter(Boolean);
 }
 
 // Ödeme sayfasının önizlemesi. Burada dönen tutar bilgilendirmedir; sipariş
@@ -2471,6 +2619,8 @@ app.post("/api/checkout", async (req, res) => {
   // Fiyatlama ve kampanya hesabı transaction'dan ÖNCE: bunlar salt-okunur
   // sorgular, yazma kilidini gereksiz yere tutmasınlar.
   const normalized = await normalizeCartItems(items);
+  // Katalogda karşılığı kalmayan kalemler yukarıda düşürülür; hepsi düştüyse sipariş açma.
+  if (!normalized.length) return res.status(400).json({ error: "Sepetinizdeki ürünler artık satışta değil. Sepetinizi güncelleyip tekrar deneyin." });
   const subtotal = round2(normalized.reduce((sum, item) => sum + item.line_total, 0));
 
   // Kampanyalar burada yeniden hesaplanır; tarayıcının gönderdiği indirim yok sayılır.

@@ -11,6 +11,8 @@ const state = {
   reviews: [],
   campaigns: [],
   subscribers: [],
+  adminUsers: [],
+  sessionUser: null,
   pricing: {},
   seo: { pages: [], site: {} }
 };
@@ -48,6 +50,16 @@ const paymentMethodLabels = {
   kapida: "Kapıda ödeme",
   kart: "Kredi / banka kartı"
 };
+
+/* Paneldeki form ve buton dinleyicilerinin çoğu async ve try/catch'siz: api()
+   hata fırlattığında sözü kimse yakalamıyordu, yani "Kaydet"e basınca hiçbir şey
+   olmuyor ve kullanıcı kaydedildi sanıyordu. Tek bir yerden yakalayıp gösteriyoruz. */
+window.addEventListener("unhandledrejection", (event) => {
+  const message = event.reason?.message || String(event.reason || "");
+  if (message === "Giriş gerekli") return;   // api() zaten /login'e yönlendirdi
+  event.preventDefault();
+  alert(message || "İşlem tamamlanamadı. Lütfen tekrar deneyin.");
+});
 
 async function api(path, options = {}) {
   const response = await fetch(path, options);
@@ -101,14 +113,14 @@ function renderProducts() {
     <article class="row">
       <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="">
       <div>
-        <h3>${product.name}</h3>
-        <p>${product.description || "Henüz açıklama yok."}</p>
+        <h3>${escapeHtml(product.name)}</h3>
+        <p>${escapeHtml(product.description) || "Henüz açıklama yok."}</p>
         <div class="meta-line">
-          ${(product.categories || []).map((category) => `<span class="badge">${category.name}</span>`).join("") || '<span class="badge">Kategori yok</span>'}
-          <span class="badge">${product.color || "Renk yok"}</span>
+          ${(product.categories || []).map((category) => `<span class="badge">${escapeHtml(category.name)}</span>`).join("") || '<span class="badge">Kategori yok</span>'}
+          <span class="badge">${escapeHtml(product.color) || "Renk yok"}</span>
           <span class="badge ${product.stock > 0 ? "green" : "orange"}">Stok ${product.stock}</span>
           <span class="badge blue">${money(product.sale_price || product.price)}${product.sale_price ? ` / <s>${money(product.price)}</s>` : ""}</span>
-          ${product.sale_price ? `<span class="badge orange">%${Math.round((1 - product.sale_price / product.price) * 100)} indirim</span>` : ""}
+          ${product.sale_price && product.price > 0 ? `<span class="badge orange">%${Math.round((1 - product.sale_price / product.price) * 100)} indirim</span>` : ""}
           ${product.rating?.count ? `<span class="badge">${product.rating.average} ★ (${product.rating.count} yorum)</span>` : ""}
           <span class="badge">Eklendi: ${formatDateTime(product.created_at)}</span>
         </div>
@@ -124,7 +136,7 @@ function renderProducts() {
 
   const productSelects = qsa('select[name="product_id"]');
   productSelects.forEach((select) => {
-    select.innerHTML = state.products.map((product) => `<option value="${product.id}">${product.name} - ${money(product.sale_price || product.price)}</option>`).join("");
+    select.innerHTML = state.products.map((product) => `<option value="${product.id}">${escapeHtml(product.name)} - ${money(product.sale_price || product.price)}</option>`).join("");
   });
 }
 
@@ -134,8 +146,8 @@ function renderSlides() {
     <article class="row">
       <img src="${slide.image_path}" alt="">
       <div>
-        <h3>${slide.title || "Başlıksız banner"}</h3>
-        <p>${slide.subtitle || "Alt başlık yok."}</p>
+        <h3>${escapeHtml(slide.title) || "Başlıksız banner"}</h3>
+        <p>${escapeHtml(slide.subtitle) || "Alt başlık yok."}</p>
         <div class="meta-line">
           <span class="badge ${slide.is_active ? "green" : "orange"}">${slide.is_active ? "Yayında" : "Gizli"}</span>
           <span class="badge blue">Sıra ${slide.sort_order}</span>
@@ -165,8 +177,8 @@ function renderMaterials() {
     <article class="row">
       <span class="brand-mark">${material.name.slice(0, 1).toUpperCase()}</span>
       <div>
-        <h3>${material.name}</h3>
-        <p>${material.description || "Açıklama yok."}</p>
+        <h3>${escapeHtml(material.name)}</h3>
+        <p>${escapeHtml(material.description) || "Açıklama yok."}</p>
         <div class="meta-line">
           <span class="badge blue">${money(material.price_per_cm3)} / cm³</span>
           <span class="badge ${material.is_active ? "green" : "orange"}">${material.is_active ? "Kullanımda" : "Pasif"}</span>
@@ -192,8 +204,8 @@ function renderQuotes() {
     <article class="row">
       <span class="brand-mark">3D</span>
       <div>
-        <h3>${quote.quote_number} - ${quote.customer_name}</h3>
-        <p>${quote.file_name || "Dosya yok"} | ${quote.width ?? "?"} x ${quote.height ?? "?"} x ${quote.depth ?? "?"} mm | ${Number(quote.volume_cm3).toFixed(2)} cm³</p>
+        <h3>${escapeHtml(quote.quote_number)} - ${escapeHtml(quote.customer_name)}</h3>
+        <p>${escapeHtml(quote.file_name) || "Dosya yok"} | ${quote.width ?? "?"} x ${quote.height ?? "?"} x ${quote.depth ?? "?"} mm | ${Number(quote.volume_cm3).toFixed(2)} cm³</p>
         <div class="meta-line">
           <span class="badge ${quote.status === "new" ? "orange" : "green"}">${quoteStatusLabels[quote.status] || quote.status}</span>
           <span class="badge blue">${money(quote.total)}</span>
@@ -202,26 +214,26 @@ function renderQuotes() {
             const colors = new Set((quote.parts || []).map((p) => p.color_name).filter(Boolean)).size;
             return colors > 1 ? `<span class="badge orange">${colors} renk - filament değişimi</span>` : "";
           })()}
-          <span class="badge">${quote.material_name || "-"}</span>
+          <span class="badge">${escapeHtml(quote.material_name) || "-"}</span>
           <span class="badge">%${quote.infill} dolgu</span>
           <span class="badge">${quote.quantity} adet</span>
-          <span class="badge">${quote.email || quote.phone || "-"}</span>
+          <span class="badge">${escapeHtml(quote.email || quote.phone) || "-"}</span>
         </div>
         <div class="meta-line">
           ${(quote.parts || []).length
             ? quote.parts.map((part) => `
                 <span class="badge">
-                  <span class="color-dot" style="background:${part.color_hex || "#ddd"}"></span>
-                  ${part.name || `Parça ${part.part_index}`}: ${part.color_name || "renk yok"} (${Number(part.volume_cm3).toFixed(2)} cm³)
-                  ${part.file_path ? `<a href="${part.file_path}" download>STL</a>` : ""}
+                  <span class="color-dot" style="background:${escapeHtml(part.color_hex) || "#ddd"}"></span>
+                  ${escapeHtml(part.name) || `Parça ${part.part_index}`}: ${escapeHtml(part.color_name) || "renk yok"} (${Number(part.volume_cm3).toFixed(2)} cm³)
+                  ${part.file_path ? `<a href="${escapeHtml(part.file_path)}" download>STL</a>` : ""}
                 </span>
               `).join("")
-            : `<span class="badge">${quote.color_name || "Renk yok"}</span>`}
+            : `<span class="badge">${escapeHtml(quote.color_name) || "Renk yok"}</span>`}
         </div>
-        ${quote.note ? `<p>Not: ${quote.note}</p>` : ""}
+        ${quote.note ? `<p>Not: ${escapeHtml(quote.note)}</p>` : ""}
       </div>
       <div class="row-actions">
-        ${quote.file_path ? `<a class="small-button" href="${quote.file_path}" download>STL indir</a>` : ""}
+        ${quote.file_path ? `<a class="small-button" href="${escapeHtml(quote.file_path)}" download>STL indir</a>` : ""}
         <select data-quote-status="${quote.id}">
           ${Object.entries(quoteStatusLabels).map(([value, label]) => `<option value="${value}" ${value === quote.status ? "selected" : ""}>${label}</option>`).join("")}
         </select>
@@ -333,14 +345,14 @@ function renderCustomers() {
   qs("#customer-count").textContent = `${state.customers.length} kişi`;
   qs("#customer-list").innerHTML = state.customers.map((customer) => `
     <article class="row">
-      <span class="brand-mark">${customer.name.slice(0, 1).toUpperCase()}</span>
+      <span class="brand-mark">${escapeHtml(customer.name.slice(0, 1).toUpperCase())}</span>
       <div>
-        <h3>${customer.name}</h3>
-        <p>${customer.address || "Kayıtlı adres yok."}</p>
+        <h3>${escapeHtml(customer.name)}</h3>
+        <p>${escapeHtml(customer.address) || "Kayıtlı adres yok."}</p>
         <div class="meta-line">
-          <span class="badge">${customer.email || "E-posta yok"}</span>
-          <span class="badge">${customer.phone || "Telefon yok"}</span>
-          <span class="badge blue">${customer.city || "Şehir yok"}</span>
+          <span class="badge">${escapeHtml(customer.email) || "E-posta yok"}</span>
+          <span class="badge">${escapeHtml(customer.phone) || "Telefon yok"}</span>
+          <span class="badge blue">${escapeHtml(customer.city) || "Şehir yok"}</span>
         </div>
       </div>
       <span></span>
@@ -349,7 +361,7 @@ function renderCustomers() {
 
   const customerSelects = qsa('select[name="customer_id"]');
   customerSelects.forEach((select) => {
-    select.innerHTML = state.customers.map((customer) => `<option value="${customer.id}">${customer.name}</option>`).join("");
+    select.innerHTML = state.customers.map((customer) => `<option value="${customer.id}">${escapeHtml(customer.name)}</option>`).join("");
   });
 }
 
@@ -359,8 +371,8 @@ function renderOrders() {
     <article class="row">
       <span class="brand-mark">#</span>
       <div>
-        <h3>${order.order_number} - ${order.customer_name}</h3>
-        <p>${order.items.map((item) => `${item.quantity} adet ${item.product_name}`).join(", ")}</p>
+        <h3>${escapeHtml(order.order_number)} - ${escapeHtml(order.customer_name)}</h3>
+        <p>${order.items.map((item) => `${item.quantity} adet ${escapeHtml(item.product_name)}`).join(", ")}</p>
         <div class="meta-line">
           <span class="badge ${statusClass[order.status] || ""}">${statusLabels[order.status] || order.status}</span>
           <span class="badge blue">${money(order.total)}</span>
@@ -368,13 +380,13 @@ function renderOrders() {
           <span class="badge">Kargo: ${order.shipping_method === "recipient_paid" ? "Alıcı ödemeli" : "-"}</span>
           <span class="badge">${paymentLabels[order.payment_status] || order.payment_status}</span>
           <span class="badge">${paymentMethodLabels[order.payment_method] || "Ödeme yöntemi belirtilmemiş"}</span>
-          <span class="badge">${order.tracking_code || "Takip kodu yok"}</span>
+          <span class="badge">${escapeHtml(order.tracking_code) || "Takip kodu yok"}</span>
         </div>
         <div class="meta-line">
           <span class="badge ${order.invoice_type === "corporate" ? "blue" : ""}">${order.invoice_type === "corporate" ? "Kurumsal fatura" : "Bireysel fatura"}</span>
           ${order.invoice_type === "corporate"
-            ? `<span class="badge">${order.company_name || "-"}</span><span class="badge">VKN ${order.tax_number || "-"}</span><span class="badge">${order.tax_office || "-"}</span>`
-            : `<span class="badge">TC ${order.tc_no || "-"}</span>`}
+            ? `<span class="badge">${escapeHtml(order.company_name) || "-"}</span><span class="badge">VKN ${escapeHtml(order.tax_number) || "-"}</span><span class="badge">${escapeHtml(order.tax_office) || "-"}</span>`
+            : `<span class="badge">TC ${escapeHtml(order.tc_no) || "-"}</span>`}
         </div>
       </div>
       <div class="row-actions">
@@ -431,6 +443,26 @@ function renderSubscribers() {
       </div>
     </article>
   `).join("") || "<p>Henüz abone yok.</p>";
+}
+
+function renderAdminUsers() {
+  qs("#admin-count").textContent = `${state.adminUsers.length} yönetici`;
+  qs("#admin-list").innerHTML = state.adminUsers.map((a) => {
+    const self = a.username === state.sessionUser;
+    return `
+    <article class="row">
+      <span class="brand-mark">${escapeHtml(a.username.slice(0, 1).toUpperCase())}</span>
+      <div>
+        <h3>${escapeHtml(a.username)}${self ? ' <span class="badge blue">siz</span>' : ""}</h3>
+        <div class="meta-line"><span class="badge">Eklendi: ${formatDateTime(a.created_at)}</span></div>
+      </div>
+      <div class="row-actions">
+        <button data-reset-admin="${a.id}" data-admin-name="${escapeHtml(a.username)}">Şifre ver</button>
+        ${self ? "" : `<button class="danger" data-delete-admin="${a.id}" data-admin-name="${escapeHtml(a.username)}">Sil</button>`}
+      </div>
+    </article>
+  `;
+  }).join("") || "<p>Henüz yönetici yok.</p>";
 }
 
 function renderReviews() {
@@ -535,7 +567,7 @@ function renderCampaignOptions(campaign) {
 }
 
 async function refresh() {
-  const [stats, products, customers, orders, slides, categories, colors, materials, quotes, pricing, seo, messages, reviews, campaigns, subscribers] = await Promise.all([
+  const [stats, products, customers, orders, slides, categories, colors, materials, quotes, pricing, seo, messages, reviews, campaigns, subscribers, adminUsers] = await Promise.all([
     api("/api/stats"),
     api("/api/products"),
     api("/api/customers"),
@@ -550,7 +582,8 @@ async function refresh() {
     api("/api/messages"),
     api("/api/reviews"),
     api("/api/campaigns"),
-    api("/api/subscribers")
+    api("/api/subscribers"),
+    api("/api/admin-users")
   ]);
   state.products = products;
   state.customers = customers;
@@ -565,6 +598,7 @@ async function refresh() {
   state.messages = messages;
   state.reviews = reviews;
   state.campaigns = campaigns;
+  state.adminUsers = adminUsers;
   state.subscribers = subscribers;
   qs("#stat-products").textContent = stats.products;
   qs("#stat-customers").textContent = stats.customers;
@@ -583,6 +617,7 @@ async function refresh() {
   renderReviews();
   renderCampaigns();
   renderSubscribers();
+  renderAdminUsers();
   // Yalnızca düzenlenmiyorken sıfırla — düzenleme sırasındaki seçimler kaybolmasın.
   if (!qs('#campaign-form input[name="id"]').value) renderCampaignOptions(null);
   syncCampaignFields();
@@ -614,6 +649,69 @@ qs("#subscriber-list").addEventListener("click", async (event) => {
   if (id && confirm("Bu abone silinsin mi?")) {
     await api(`/api/subscribers/${id}`, { method: "DELETE" });
     await refresh();
+  }
+});
+
+qs("#admin-list").addEventListener("click", async (event) => {
+  const resetId = event.target.dataset.resetAdmin;
+  const deleteId = event.target.dataset.deleteAdmin;
+  const name = event.target.dataset.adminName;
+  try {
+    if (resetId) {
+      const password = prompt(`"${name}" için yeni şifre (en az 8 karakter):`);
+      if (!password) return;
+      await api(`/api/admin-users/${resetId}/password`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password })
+      });
+      alert(`"${name}" hesabının şifresi güncellendi.`);
+    } else if (deleteId) {
+      if (!confirm(`"${name}" hesabı silinsin mi? Bu kişi artık panele giremez.`)) return;
+      await api(`/api/admin-users/${deleteId}`, { method: "DELETE" });
+    } else {
+      return;
+    }
+    await refresh();
+  } catch (error) {
+    alert(error.message);
+  }
+});
+
+qs("#admin-user-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.target;
+  try {
+    await api("/api/admin-users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(Object.fromEntries(new FormData(form)))
+    });
+    form.reset();
+    await refresh();
+    alert("Yönetici eklendi.");
+  } catch (error) {
+    alert(error.message);
+  }
+});
+
+/* Kendi şifresini değiştirmek sunucuda oturum çerezini tazeliyor; sayfayı
+   yeniden yüklemeye gerek yok, ama diğer cihazlardaki oturumlar düşer. */
+qs("#own-password-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.target;
+  const me = state.adminUsers.find((a) => a.username === state.sessionUser);
+  if (!me) return alert("Oturum bilgisi okunamadı, sayfayı yenileyin.");
+  try {
+    await api(`/api/admin-users/${me.id}/password`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(Object.fromEntries(new FormData(form)))
+    });
+    form.reset();
+    alert("Şifreniz güncellendi.");
+  } catch (error) {
+    alert(error.message);
   }
 });
 
@@ -738,6 +836,7 @@ qsa("[data-open-tab]").forEach((button) => button.addEventListener("click", () =
 async function loadSession() {
   const session = await api("/api/session");
   if (!session.authed) window.location.href = "/login";
+  state.sessionUser = session.user || null;
   qs("#session-user").textContent = session.user || "admin";
 }
 
@@ -1100,7 +1199,7 @@ qs("#order-form").addEventListener("submit", async (event) => {
   await refresh();
 });
 
-qs("#order-list").addEventListener("change", async (event) => {
+document.addEventListener("change", async (event) => {
   const id = event.target.dataset.orderStatus;
   if (!id) return;
   await api(`/api/orders/${id}`, {
