@@ -812,18 +812,25 @@ const pdfGorseli = (url) => {
 
 function renderKatlacPrint() {
   const liste = state.katlac || [];
-  qs("#katlac-print-grid").innerHTML = liste.map((k) => `
-    <figure class="katlac-print-item">
-      <img src="${escapeHtml(pdfGorseli(k.image_path))}" alt="${escapeHtml(k.name)}">
-      <figcaption>
-        <strong>${escapeHtml(k.name)}</strong>
-        <span class="katlac-print-price">${Number(k.price) > 0 ? money(k.price) : "fiyat belirtilmedi"}</span>
-        ${k.note ? `<small>${escapeHtml(k.note)}</small>` : ""}
-      </figcaption>
-    </figure>
+  // Satır düzeni: görsel | ad + not | fiyat. Numara, telefonda okurken
+  // "üçüncü sıradaki" demeyi kolaylaştırıyor.
+  qs("#katlac-print-grid").innerHTML = liste.map((k, i) => `
+    <article class="katlac-row">
+      <span class="katlac-row__no">${String(i + 1).padStart(2, "0")}</span>
+      <img class="katlac-row__img" src="${escapeHtml(pdfGorseli(k.image_path))}" alt="${escapeHtml(k.name)}">
+      <div class="katlac-row__text">
+        <h2>${escapeHtml(k.name)}</h2>
+        ${k.note ? `<p>${escapeHtml(k.note)}</p>` : ""}
+      </div>
+      <span class="katlac-row__price">${Number(k.price) > 0
+        ? money(k.price)
+        : '<span class="katlac-row__nofiyat">fiyat belirtilmedi</span>'}</span>
+    </article>
   `).join("");
+
   qs("#katlac-print-date").textContent =
-    `${liste.length} ürün · ${new Date().toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" })}`;
+    new Date().toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" });
+  qs("#katlac-print-count").textContent = `${liste.length} ürün`;
 }
 
 /* Yazdırırken panelin geri kalanı gizlensin diye body'ye işaret koyuyoruz:

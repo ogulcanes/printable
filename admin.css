@@ -748,65 +748,129 @@ textarea { resize: vertical; }
 /* ---------- Katlaç PDF sürümü ----------
    Ekranda gizli; "PDF / Yazdır" basılınca body'ye .printing-katlac gelir ve
    yalnızca bu blok basılır. admin.html tek sayfa olduğu için doğrudan
-   yazdırmak bütün sekmeleri kâğıda dökerdi. */
+   yazdırmak bütün sekmeleri kâğıda dökerdi.
+
+   Izgara yerine satır düzeni: bir katalog satırında göz soldan sağa
+   görsel → ad → fiyat izler, ürünleri karşılaştırmak kolaylaşır. */
 .katlac-print-view { display: none; }
 
 @media print {
-  /* Katlaç yazdırılırken panelin tamamı gizlenir. */
   body.printing-katlac .sidebar,
   body.printing-katlac .admin-header,
   body.printing-katlac .panel,
   body.printing-katlac .admin-card { display: none !important; }
 
-  body.printing-katlac {
-    display: block;
-    background: #fff;
-  }
+  body.printing-katlac { display: block; background: #fff; }
   body.printing-katlac #katlac { display: block !important; }
   body.printing-katlac .katlac-print-view { display: block !important; }
 
-  @page { size: A4 portrait; margin: 10mm; }
+  @page { size: A4 portrait; margin: 12mm 14mm; }
 
-  .katlac-print-title {
-    margin: 0 0 6mm;
-    font-size: 16pt;
-    text-align: center;
+  /* --- başlık --- */
+  .katlac-print-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 8mm;
+    padding-bottom: 3mm;
+    border-bottom: 0.6mm solid var(--ink, #181a22);
+    margin-bottom: 5mm;
   }
-
-  /* 3 sütun × 3 satır: 9 kayıt iki sayfayı geçmiyor. */
-  .katlac-print-grid {
+  .katlac-print-brand { display: flex; align-items: center; gap: 2.5mm; }
+  .katlac-print-mark {
+    width: 9mm;
+    height: 9mm;
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 4mm;
+    place-items: center;
+    /* Panelin marka işaretiyle aynı asimetrik köşe. */
+    border-radius: 2.6mm 2.6mm 4.8mm 2.6mm;
+    background: var(--orange, #ff6542);
+    color: #fff;
+    font-size: 13pt;
+    font-weight: 800;
+    line-height: 1;
   }
-  .katlac-print-item {
+  .katlac-print-name {
+    font-size: 17pt;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--ink, #181a22);
+  }
+  .katlac-print-meta { text-align: right; }
+  .katlac-print-meta h1 {
     margin: 0;
-    border: 1px solid #bbb;
-    border-radius: 2mm;
-    overflow: hidden;
+    font-size: 12pt;
+    font-weight: 700;
+    color: var(--ink, #181a22);
+  }
+  .katlac-print-meta p {
+    margin: 1mm 0 0;
+    font-size: 8pt;
+    color: #6b6862;
+  }
+
+  /* --- satırlar --- */
+  .katlac-print-rows { display: block; }
+  .katlac-row {
+    display: grid;
+    grid-template-columns: 7mm 30mm 1fr auto;
+    align-items: center;
+    gap: 4mm;
+    padding: 2.4mm 0;
+    border-bottom: 0.2mm solid #ddd8ce;
     page-break-inside: avoid;
     break-inside: avoid;
   }
-  .katlac-print-item img {
-    width: 100%;
-    height: 42mm;
+  .katlac-row:last-child { border-bottom: 0; }
+
+  .katlac-row__no {
+    font-size: 8pt;
+    font-weight: 700;
+    color: #b4aea4;
+    font-variant-numeric: tabular-nums;
+  }
+  .katlac-row__img {
+    width: 30mm;
+    height: 20mm;
     object-fit: cover;
+    border-radius: 1.6mm;
     display: block;
   }
-  .katlac-print-item figcaption {
-    padding: 2mm 2.5mm;
-    display: grid;
-    gap: 0.6mm;
+  .katlac-row__text h2 {
+    margin: 0;
+    font-size: 11pt;
+    font-weight: 700;
+    color: var(--ink, #181a22);
+    letter-spacing: -0.01em;
   }
-  .katlac-print-item strong { font-size: 9.5pt; }
-  .katlac-print-price { font-size: 9pt; font-weight: 700; }
-  .katlac-print-item small { font-size: 7.5pt; color: #444; }
-
-  .katlac-print-date {
-    margin-top: 4mm;
-    text-align: right;
+  .katlac-row__text p {
+    margin: 0.8mm 0 0;
     font-size: 8pt;
-    color: #555;
+    color: #6b6862;
+  }
+  .katlac-row__price {
+    font-size: 12pt;
+    font-weight: 800;
+    color: var(--ink, #181a22);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .katlac-row__nofiyat {
+    font-size: 8pt;
+    font-weight: 600;
+    color: #b4aea4;
+    font-style: italic;
+  }
+
+  /* --- alt bilgi --- */
+  .katlac-print-foot {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 5mm;
+    padding-top: 2.5mm;
+    border-top: 0.2mm solid #ddd8ce;
+    font-size: 7.5pt;
+    color: #8a867f;
   }
 
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }

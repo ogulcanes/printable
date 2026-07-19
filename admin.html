@@ -448,9 +448,21 @@
         <!-- Yalnızca yazdırırken görünür. Ekrandaki düzenleme kartlarını
              yazdırmak input kutuları basardı; PDF için ayrı, sade bir sürüm. -->
         <div id="katlac-print-view" class="katlac-print-view">
-          <h1 class="katlac-print-title">Katlaç Kataloğu</h1>
-          <div id="katlac-print-grid" class="katlac-print-grid"></div>
-          <p id="katlac-print-date" class="katlac-print-date"></p>
+          <header class="katlac-print-head">
+            <div class="katlac-print-brand">
+              <span class="katlac-print-mark">P</span>
+              <span class="katlac-print-name">Printable</span>
+            </div>
+            <div class="katlac-print-meta">
+              <h1>Katlaç Kataloğu</h1>
+              <p id="katlac-print-date"></p>
+            </div>
+          </header>
+          <div id="katlac-print-grid" class="katlac-print-rows"></div>
+          <footer class="katlac-print-foot">
+            <span>printable-silk.vercel.app</span>
+            <span id="katlac-print-count"></span>
+          </footer>
         </div>
 
         <div class="admin-card">
