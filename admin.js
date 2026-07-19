@@ -804,10 +804,13 @@ function renderKatlac() {
    500px, 42mm'de 300 DPI eder — baskı için doğru çözünürlük, altına inmek
    kaliteyi düşürür, üstü boşa yer kaplar. Ölçüm: 700px→7.2MB, 500px→5.1MB,
    400px→4.1MB; hepsi tek sayfa.
+   resize=contain ŞART: yalnızca width verilince Supabase görseli oranını
+   koruyarak küçültmüyor, hedef genişliğe EZİYOR (1400x1050 → 500x1050).
+   CSS cover bunu kırparak gizliyordu, yani orantı baştan beri bozuktu.
    Dönüştürme kapalı bir kurulumda adres yine çalışır, sadece küçültmez. */
 const pdfGorseli = (url) => {
   if (!url || !url.includes("/storage/v1/object/public/")) return url;
-  return `${url.replace("/object/public/", "/render/image/public/")}?width=500&quality=80`;
+  return `${url.replace("/object/public/", "/render/image/public/")}?width=500&resize=contain&quality=80`;
 };
 
 function renderKatlacPrint() {
