@@ -144,14 +144,16 @@
   const pdfGorseli = (url) => {
     if (!url) return url;
     if (url.includes("/storage/v1/object/public/")) {
-      return `${url.replace("/object/public/", "/render/image/public/")}?width=500&resize=contain&quality=80`;
+      return `${url.replace("/object/public/", "/render/image/public/")}?width=400&resize=contain&quality=80`;
     }
     /* Ürün görsellerinin çoğu MakerWorld CDN'inde ve adreslerinde zaten
        "w_1200" var. 34 ürünün 1200px görselini PDF'e gömmek dosyayı 36 MB
        yapıyordu; aynı parametreyi 500'e çekmek e-postayla gönderilebilir
-       hale getiriyor. Parametre yoksa adrese dokunmuyoruz. */
+       hale getiriyor. 400px: kâğıtta 30mm basılan kare için 300 DPI eder,
+       yani baskı çözünürlüğü tam. Ölçüm: 500px→10.5MB, 400px→7.3MB,
+       320px→5.1MB. Parametre yoksa adrese dokunmuyoruz. */
     if (url.includes("x-oss-process=image/resize,w_")) {
-      return url.replace(/resize,w_\d+/, "resize,w_500");
+      return url.replace(/resize,w_\d+/, "resize,w_400");
     }
     return url;
   };
