@@ -5275,27 +5275,111 @@ body {
   .catalog-tiers { display: block; overflow-x: auto; white-space: nowrap; }
 }
 
-/* Yazdırma: gezinme, arama ve sohbet düğmesi kâğıda basılmaz; renkler
-   yazıcıda kaybolmasın diye tam renk zorlanır. */
+/* ---------- Katalog: görünüm seçimi ---------- */
+.catalog-views {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.catalog-views button {
+  border: 0;
+  background: #fff;
+  padding: 11px 18px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+.catalog-views button.active { background: var(--blue); color: #fff; }
+.catalog-views button + button { border-left: 1px solid var(--line); }
+
+/* Ekranda kart mı tablo mu — gövdedeki sınıf karar veriyor. */
+.catalog-table-view { display: none; }
+body.catalog-view-table .catalog-body { display: none; }
+body.catalog-view-table .catalog-table-view { display: block; overflow-x: auto; }
+
+/* ---------- Katalog: yoğun fiyat listesi tablosu ---------- */
+.catalog-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.catalog-table th,
+.catalog-table td {
+  border: 1px solid var(--line);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: middle;
+}
+.catalog-table thead th {
+  background: var(--soft);
+  font-weight: 700;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+}
+.catalog-table tbody tr:nth-child(even) { background: #fafbfe; }
+.catalog-tname { font-weight: 600; }
+.catalog-tcolors { color: var(--muted); font-size: 13px; }
+.catalog-empty { color: #c9ccd6; }
+
+/* ---------- Yazdırma ----------
+   Kâğıtta her zaman TABLO basılır: 16 ürünlük kart düzeni yazdırınca
+   metrelerce sürüyordu. Yatay A4, çünkü adet kademeleri sütun sütun yan
+   yana geliyor. */
+@page {
+  size: A4 landscape;
+  margin: 12mm 10mm;
+}
+
 @media print {
   .site-header,
   .footer,
   .no-print,
   .catalog-actions,
-  .chat-button,
+  .chat,
   .cart-panel,
-  .search-popover { display: none !important; }
+  .search-popover,
+  .catalog-body { display: none !important; }
 
-  body { background: #fff; }
-  .catalog-item {
-    border-color: #ccc;
-    padding: 12px;
-    page-break-inside: avoid;
+  /* Genel kampanyalar kâğıtta da kalsın — fiyat listesine bakan kişi için
+     "kupon KATALOG10 %10" bilgisi fiyatın parçası. Birkaç satır, uzatmıyor. */
+  .catalog-general {
+    background: none;
+    border: 1px solid #999;
+    padding: 6px 10px;
+    margin-bottom: 8px;
+    font-size: 9px;
   }
-  .catalog-item__media img { max-width: 150px; }
-  .catalog-price { color: #000; }
-  .catalog-code { background: #000; }
-  .catalog-save { color: #000; }
+  .catalog-general h2 { font-size: 11px; margin-bottom: 3px; }
+  .catalog-general ul { line-height: 1.5; }
+
+  body { background: #fff; font-size: 11px; }
+  .page-hero { padding: 0 0 10px; }
+  .catalog-hero h1 { font-size: 20px; margin: 0 0 4px; }
+  .catalog-hero .section-kicker,
+  .catalog-hero .page-lead { display: none; }
+
+  /* Kart görünümü seçiliyken bile kâğıda tablo gider. */
+  .catalog-table-view { display: block !important; overflow: visible !important; }
+
+  .catalog-table { font-size: 10px; }
+  .catalog-table th,
+  .catalog-table td { padding: 4px 6px; border-color: #999; }
+  .catalog-table thead th { background: #eee; position: static; }
+  .catalog-table tbody tr { page-break-inside: avoid; }
+  /* Başlık satırı her sayfada tekrarlansın — çok sayfalı listede şart. */
+  .catalog-table thead { display: table-header-group; }
+  .catalog-tcolors { color: #333; }
+  .catalog-empty { color: #999; }
+
+  .catalog-footnote { margin-top: 12px; padding-top: 8px; font-size: 9px; border-color: #999; }
   a { text-decoration: none; color: #000; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+@media (max-width: 720px) {
+  .catalog-views { width: 100%; }
+  .catalog-views button { flex: 1; }
 }

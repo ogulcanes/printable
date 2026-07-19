@@ -30,6 +30,10 @@
             <input type="checkbox" id="catalog-only-bulk">
             <span>Sadece toplu alım indirimi olanlar</span>
           </label>
+          <div class="catalog-views" role="group" aria-label="Görünüm">
+            <button type="button" id="view-cards" class="active">Kart</button>
+            <button type="button" id="view-table">Tablo</button>
+          </div>
         </div>
         <p id="catalog-count" class="catalog-count"></p>
       </section>
@@ -39,6 +43,8 @@
         <div id="catalog-body" class="catalog-body">
           <p class="catalog-loading">Katalog yükleniyor…</p>
         </div>
+        <!-- Ekranda gizli; "Tablo" seçilince veya yazdırırken bu basılır. -->
+        <div id="catalog-table-view" class="catalog-table-view"></div>
       </section>
 
       <section class="container catalog-footnote">

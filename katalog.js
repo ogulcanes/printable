@@ -92,6 +92,50 @@
       </ul>`;
   }
 
+  /* Kâğıt/PDF için yoğun fiyat listesi.
+
+     Kart düzeni ekranda iyi ama yazdırınca 16 ürün metrelerce sürüyordu.
+     Toptancı fiyat listesi mantığı: her ürün BİR satır, adet kademeleri
+     SÜTUN. Sütunlar tüm ürünlerdeki farklı kademelerin birleşimi — bir
+     ürün o kademeye girmiyorsa hücre boş kalır. */
+  function tabloCiz(liste) {
+    const kademeAdetleri = [...new Set(
+      liste.flatMap((p) => (p.tiers || []).map((t) => t.min_quantity))
+    )].sort((a, b) => a - b);
+
+    const basliklar = [
+      "<th>Ürün</th>", "<th>Kod</th>", "<th>Renkler</th>",
+      '<th class="catalog-num">1 adet</th>',
+      ...kademeAdetleri.map((n) => `<th class="catalog-num">${n}+ adet</th>`)
+    ].join("");
+
+    const satirlar = liste.map((p) => {
+      const birim = birimFiyat(p);
+      const renkler = (p.colors || []).map((c) => kacir(c.name)).join(", ") || "—";
+      const hucreler = kademeAdetleri.map((n) => {
+        const t = (p.tiers || []).find((x) => x.min_quantity === n);
+        return t
+          ? `<td class="catalog-num"><strong>${money(t.unit_price)}</strong></td>`
+          : `<td class="catalog-num catalog-empty">—</td>`;
+      }).join("");
+      return `
+        <tr>
+          <td class="catalog-tname">${kacir(p.name)}</td>
+          <td>${kacir(p.sku) || "—"}</td>
+          <td class="catalog-tcolors">${renkler}</td>
+          <td class="catalog-num">${money(birim)}</td>
+          ${hucreler}
+        </tr>`;
+    }).join("");
+
+    return `
+      <table class="catalog-table">
+        <thead><tr>${basliklar}</tr></thead>
+        <tbody>${satirlar}</tbody>
+      </table>
+      ${kademeAdetleri.length ? "" : '<p class="catalog-notier">Henüz toplu alım kademesi tanımlı değil.</p>'}`;
+  }
+
   function ciz() {
     const ara = durum.arama.trim().toLocaleLowerCase("tr");
     const liste = veri.products.filter((p) => {
@@ -110,6 +154,20 @@
 
     govde.innerHTML = liste.map(urunKarti).join("")
       || `<p class="catalog-loading">Aramanıza uyan ürün bulunamadı.</p>`;
+
+    // Tablo her zaman üretilir: ekranda gizli durur, yazdırırken o basılır.
+    qs("#catalog-table-view").innerHTML = liste.length
+      ? tabloCiz(liste)
+      : `<p class="catalog-loading">Aramanıza uyan ürün bulunamadı.</p>`;
+  }
+
+  /* Ekranda görünüm seçimi. Yazdırma her hâlükârda tabloyu basar — kâğıtta
+     kart düzeni okunabilir değil, kullanıcının ayrıca seçmesini beklemek
+     yanlış çıktıyı varsayılan yapardı. */
+  function gorunumSec(tablo) {
+    document.body.classList.toggle("catalog-view-table", tablo);
+    qs("#view-cards").classList.toggle("active", !tablo);
+    qs("#view-table").classList.toggle("active", tablo);
   }
 
   function kategorileriDoldur() {
@@ -123,6 +181,8 @@
   qs("#catalog-category").addEventListener("change", (e) => { durum.kategori = e.target.value; ciz(); });
   qs("#catalog-only-bulk").addEventListener("change", (e) => { durum.sadeceToplu = e.target.checked; ciz(); });
   qs("#catalog-print").addEventListener("click", () => window.print());
+  qs("#view-cards").addEventListener("click", () => gorunumSec(false));
+  qs("#view-table").addEventListener("click", () => gorunumSec(true));
 
   async function baslat() {
     try {
