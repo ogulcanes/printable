@@ -987,6 +987,8 @@ app.post("/api/uploads/sign", async (req, res) => {
   }
 });
 app.use("/assets", express.static(path.join(ROOT, "assets")));
+// Tarayicinin otomatik istegi 404 uretmesin.
+app.get("/favicon.ico", async (req, res) => res.redirect(301, "/assets/favicon.svg"));
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
 
@@ -1000,6 +1002,10 @@ function absoluteUrl(req, value, siteUrl) {
 
 // Meta tags must be in the HTML the server sends: crawlers and social-preview
 // bots (WhatsApp, X, LinkedIn) do not run our JavaScript.
+/* Sekme ikonu. Tarayıcı istemesek de /favicon.ico istiyor; tanımlamazsak
+   her sayfa yüklemesinde 404 üretiyor ve sekmede boş ikon görünüyor. */
+const FAVICON_TAGS = `<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">`;
+
 async function seoHead(req, slug) {
   const page = await db.prepare("SELECT * FROM seo_pages WHERE slug = ?").get(slug) || {};
   const site = await db.prepare("SELECT * FROM site_settings WHERE id = 1").get() || {};
@@ -1015,6 +1021,7 @@ async function seoHead(req, slug) {
 
   const tags = [
     `<title>${escapeHtml(title)}</title>`,
+    FAVICON_TAGS,
     description && `<meta name="description" content="${escapeHtml(description)}">`,
     `<meta name="robots" content="${escapeHtml(page.robots || "index,follow")}">`,
     canonical && `<link rel="canonical" href="${escapeHtml(canonical)}">`,
@@ -1322,6 +1329,7 @@ async function productMetaTags(req, product) {
 
   const tags = [
     `<title>${escapeHtml(title)}</title>`,
+    FAVICON_TAGS,
     description && `<meta name="description" content="${escapeHtml(description)}">`,
     product.meta_keywords && `<meta name="keywords" content="${escapeHtml(product.meta_keywords)}">`,
     `<meta name="robots" content="index,follow">`,
