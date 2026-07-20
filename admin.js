@@ -767,6 +767,119 @@ async function galeriyiTazele() {
   if (guncel) renderGallery(guncel);
 }
 
+/* ---------- 3D baskı maliyet hesaplayıcı ----------
+   Hesap tarayıcıda: her tuş vuruşunda sunucuya gitmek gereksiz gecikme
+   olurdu. Sunucu yalnızca girdileri saklıyor (/api/cost-settings). */
+
+const COST_ALANLAR = ["adet", "agirlik", "sure", "filamentFiyat", "elektrikFiyat", "guc",
+  "iscilik", "amortisman", "fire", "kira", "aylikCalisma", "karMarji",
+  "kargo", "kdv", "komisyon", "belirlenen"];
+
+const yuvarla = (x) => Math.round((Number(x) || 0) * 100) / 100;
+
+function costGirdileri() {
+  const form = qs("#cost-form");
+  const g = {};
+  COST_ALANLAR.forEach((a) => { g[a] = Number(form.elements[a].value) || 0; });
+  return g;
+}
+
+/* Google Sheets tablosundaki 12 çıktının birebir karşılığı. Sıra ve adlar
+   kasıtlı olarak aynı: yan yana koyup karşılaştırılabilsin. */
+function costHesapla(g) {
+  const malzeme = (g.agirlik / 1000) * g.filamentFiyat * (1 + g.fire / 100) * g.adet;
+  const elektrik = (g.guc / 1000) * g.sure * g.elektrikFiyat * g.adet;
+  // Kira saatlik maliyete çevrilir; aylık çalışma 0 ise sıfıra bölmeyi önle.
+  const kiraPayi = g.aylikCalisma > 0 ? (g.kira / g.aylikCalisma) * g.sure : 0;
+  const iscilikAmortisman = (g.iscilik + g.amortisman + kiraPayi) * g.adet;
+  const netMaliyet = malzeme + elektrik + iscilikAmortisman;
+
+  const karliFiyat = netMaliyet * (1 + g.karMarji / 100);
+  const kargoDahil = karliFiyat + g.kargo;
+  const kdvTutari = kargoDahil * (g.kdv / 100);
+  const kdvDahil = kargoDahil + kdvTutari;
+  const komisyonFiyati = kdvDahil * (g.komisyon / 100);
+  const komisyonKdv = komisyonFiyati * 0.20;          // hizmet bedeli KDV'si
+  const komisyonlaFiyat = kdvDahil + komisyonFiyati + komisyonKdv;
+  const fark = g.belirlenen - komisyonlaFiyat;
+
+  return { malzeme, elektrik, iscilikAmortisman, netMaliyet, karliFiyat, kargoDahil,
+    kdvTutari, kdvDahil, komisyonFiyati, komisyonKdv, komisyonlaFiyat, fark };
+}
+
+function renderCost() {
+  const g = costGirdileri();
+  const h = costHesapla(g);
+
+  const satir = (etiket, deger, sinif = "") =>
+    `<div class="cost-cell ${sinif}"><span>${etiket}</span><strong>${money(yuvarla(deger))}</strong></div>`;
+
+  qs("#cost-results").innerHTML = [
+    satir("Toplam malzeme mâliyeti", h.malzeme),
+    satir("Toplam elektrik mâliyeti", h.elektrik),
+    satir("Toplam işçilik ve amortisman", h.iscilikAmortisman),
+    satir("Toplam net mâliyet", h.netMaliyet, "cost-cell--strong"),
+    satir("Kârlı satış fiyatı", h.karliFiyat),
+    satir("Kargo dâhil", h.kargoDahil),
+    satir("KDV tutarı", h.kdvTutari),
+    satir("KDV dâhil", h.kdvDahil),
+    satir("Pazar yeri komisyon fiyatı", h.komisyonFiyati),
+    satir("Pazar yeri komisyonunun KDV'si", h.komisyonKdv),
+    satir("Pazar yeri komisyonla fiyatı", h.komisyonlaFiyat, "cost-cell--strong"),
+    satir("Belirlenen fiyattan gelen ek kâr/zarar", h.fark,
+      h.fark < 0 ? "cost-cell--loss" : "cost-cell--gain")
+  ].join("");
+
+  /* Komisyonlu fiyat, komisyonu KDV DÂHİL fiyatın üstüne ekliyor. Ama pazar
+     yeri komisyonu satış fiyatının tamamından kestiği için, zam yapılmış
+     fiyattan yine komisyon alınır ve hedef kâr tutmaz. Doğrusu bölerek
+     brütleştirmektir. Tabloyu değiştirmiyorum — hesabı senin sayfanla aynı
+     tutuyorum — ama farkı söylüyorum. */
+  const uyari = qs("#cost-warning");
+  const oran = (g.komisyon / 100) * 1.20;
+  if (g.komisyon > 0 && oran < 1) {
+    const dogruFiyat = h.kdvDahil / (1 - oran);
+    const eksik = dogruFiyat - h.komisyonlaFiyat;
+    uyari.hidden = false;
+    uyari.innerHTML = `<strong>Komisyon notu:</strong> Pazar yeri komisyonu satış fiyatının
+      <em>tamamından</em> kesilir. Komisyonu fiyatın üstüne eklemek yetmez; zamlı fiyattan da
+      komisyon alınır. Hedef kârı tam tutturmak için satış fiyatı
+      <strong>${money(yuvarla(dogruFiyat))}</strong> olmalı —
+      yukarıdaki ${money(yuvarla(h.komisyonlaFiyat))} ile arada
+      <strong>${money(yuvarla(eksik))}</strong> fark var.`;
+  } else {
+    uyari.hidden = true;
+  }
+}
+
+qs("#cost-form").addEventListener("input", renderCost);
+
+qs("#cost-save").addEventListener("click", async () => {
+  await api("/api/cost-settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(costGirdileri())
+  });
+  alert("Girdiler varsayılan olarak kaydedildi.");
+});
+
+qs("#cost-reset").addEventListener("click", () => {
+  const form = qs("#cost-form");
+  COST_ALANLAR.forEach((a) => { form.elements[a].value = a === "adet" ? 1 : 0; });
+  renderCost();
+});
+
+async function loadCostSettings() {
+  const kayit = await api("/api/cost-settings").catch(() => null);
+  if (kayit) {
+    const form = qs("#cost-form");
+    COST_ALANLAR.forEach((a) => {
+      if (kayit[a] !== undefined) form.elements[a].value = kayit[a];
+    });
+  }
+  renderCost();
+}
+
 /* ---------- Katlaç kataloğu (yalnızca panel) ----------
    Her kart kendi başına kaydediliyor: 9 katlaçlık listede tek bir "hepsini
    kaydet" düğmesi, bir alandaki hatada diğerlerini de belirsiz bırakırdı. */
@@ -1649,6 +1762,8 @@ document.addEventListener("click", async (event) => {
   });
   await refresh();
 });
+
+loadCostSettings();
 
 loadSession()
   .then(refresh)

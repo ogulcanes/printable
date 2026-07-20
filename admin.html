@@ -31,7 +31,8 @@
         <button class="tab" data-tab="campaigns"><span>13</span>Kampanyalar</button>
         <button class="tab" data-tab="admins"><span>14</span>Yöneticiler</button>
         <button class="tab" data-tab="katlac"><span>15</span>Katlaç</button>
-        <button class="tab" data-tab="settings"><span>16</span>Ayarlar</button>
+        <button class="tab" data-tab="cost"><span>16</span>Maliyet</button>
+        <button class="tab" data-tab="settings"><span>17</span>Ayarlar</button>
       </nav>
       <div class="sidebar-note">
         <strong>Vercel notu</strong>
@@ -430,6 +431,59 @@
           </div>
           <p class="form-note">Sitenin altındaki "Bültenimize abone olun" formundan kaydolanlar.</p>
           <div id="subscriber-list" class="list"></div>
+        </div>
+      </section>
+
+      <section id="cost" class="panel">
+        <div class="admin-card">
+          <div class="card-title">
+            <h2>3D Baskı Maliyet Hesaplayıcı</h2>
+            <div class="card-title__actions">
+              <button type="button" class="small-button" id="cost-save">Girdileri varsayılan yap</button>
+              <button type="button" class="small-button" id="cost-reset">Sıfırla</button>
+            </div>
+          </div>
+          <p class="form-note">Değerleri değiştirdikçe sonuçlar anında güncellenir. <strong>Girdileri varsayılan yap</strong> dersen elektrik fiyatı, yazıcı gücü, kira gibi her hesapta aynı olan değerler kaydedilir ve panele bir daha girdiğinde hazır gelir — Furkan'da da aynı değerler görünür.</p>
+
+          <form id="cost-form" class="cost-form" autocomplete="off">
+            <fieldset class="cost-group">
+              <legend>Baskı</legend>
+              <label>Üretim adedi<input type="number" name="adet" min="1" step="1" value="1"></label>
+              <label>Filament ağırlığı <small>gr</small><input type="number" name="agirlik" min="0" step="0.01" value="0"></label>
+              <label>Baskı süresi <small>saat</small><input type="number" name="sure" min="0" step="0.01" value="0"></label>
+              <label>Fire payı <small>%</small><input type="number" name="fire" min="0" step="0.1" value="0"></label>
+            </fieldset>
+
+            <fieldset class="cost-group">
+              <legend>Birim maliyetler</legend>
+              <label>Filament fiyatı <small>TL / kg</small><input type="number" name="filamentFiyat" min="0" step="0.01" value="0"></label>
+              <label>Elektrik fiyatı <small>TL / kWh</small><input type="number" name="elektrikFiyat" min="0" step="0.01" value="0"></label>
+              <label>Yazıcı gücü <small>watt</small><input type="number" name="guc" min="0" step="1" value="0"></label>
+              <label>İşçilik <small>TL</small><input type="number" name="iscilik" min="0" step="0.01" value="0"></label>
+              <label>Amortisman <small>TL</small><input type="number" name="amortisman" min="0" step="0.01" value="0"></label>
+            </fieldset>
+
+            <fieldset class="cost-group">
+              <legend>Genel giderler</legend>
+              <label>Aylık kira <small>TL</small><input type="number" name="kira" min="0" step="0.01" value="0"></label>
+              <label>Aylık toplam çalışma <small>saat</small><input type="number" name="aylikCalisma" min="0" step="1" value="0"></label>
+            </fieldset>
+
+            <fieldset class="cost-group">
+              <legend>Fiyatlama</legend>
+              <label>Hedef kâr marjı <small>%</small><input type="number" name="karMarji" min="0" step="0.1" value="0"></label>
+              <label>Kargo ücreti <small>TL</small><input type="number" name="kargo" min="0" step="0.01" value="0"></label>
+              <label>KDV <small>%</small><input type="number" name="kdv" min="0" step="0.1" value="0"></label>
+              <label>Pazar yeri komisyonu <small>%</small><input type="number" name="komisyon" min="0" step="0.1" value="0"></label>
+              <label>Belirlenen satış fiyatı <small>TL</small><input type="number" name="belirlenen" min="0" step="0.01" value="0"></label>
+            </fieldset>
+          </form>
+        </div>
+
+        <div class="admin-card">
+          <div class="card-title"><h2>Sonuçlar</h2></div>
+          <div id="cost-results" class="cost-results"></div>
+          <p id="cost-warning" class="cost-warning" hidden></p>
         </div>
       </section>
 

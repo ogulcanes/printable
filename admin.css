@@ -878,3 +878,70 @@ textarea { resize: vertical; }
 
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* ---------- Maliyet hesaplayıcı ---------- */
+.cost-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 14px;
+}
+.cost-group {
+  margin: 0;
+  border: 1px solid var(--line, #e8eaf0);
+  border-radius: 12px;
+  padding: 12px 14px 14px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.cost-group legend {
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--orange, #ff6542);
+}
+.cost-group label { gap: 5px; font-size: 12px; }
+/* Birim etiketi başlığın parçası ama ikincil: "TL / kg" başlığı bastırmasın. */
+.cost-group label small {
+  font-weight: 500;
+  color: #8a867f;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.cost-group input { padding: 9px 11px; font-size: 15px; }
+
+.cost-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+  gap: 10px;
+}
+/* Sonuçlar yeşil zeminde — tablodaki renk kodunun aynısı, alışkanlık bozulmasın. */
+.cost-cell {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #eef7f0;
+  border: 1px solid #cfe6d6;
+}
+.cost-cell span { font-size: 12px; color: #4a6b55; font-weight: 600; line-height: 1.35; }
+.cost-cell strong { font-size: 19px; font-variant-numeric: tabular-nums; }
+.cost-cell--strong { background: #dff0e5; border-color: #a9d4ba; }
+.cost-cell--gain strong { color: #1f8f67; }
+.cost-cell--loss { background: #fdeced; border-color: #f3c2c5; }
+.cost-cell--loss span { color: #8a4145; }
+.cost-cell--loss strong { color: #b4232a; }
+
+.cost-warning {
+  margin: 16px 0 0;
+  padding: 13px 15px;
+  border-radius: 10px;
+  background: #fff8e6;
+  border: 1px solid #f5dfa8;
+  border-left: 4px solid #e5a83a;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.cost-warning em { font-style: italic; }

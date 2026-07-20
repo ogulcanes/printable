@@ -1531,6 +1531,45 @@ app.get("/api/session", async (req, res) => {
   res.json({ authed: Boolean(admin), user: admin ? admin.username : null });
 });
 
+/* ---------- Maliyet hesaplayıcı ayarları ----------
+   Hesap tamamen tarayıcıda yapılıyor (anında sonuç, sunucuya gitmeye gerek
+   yok). Burada saklanan yalnızca GİRDİLER: elektrik fiyatı, yazıcı gücü,
+   aylık kira gibi değerler her hesapta aynı, her seferinde yeniden yazmak
+   anlamsız. localStorage yerine veritabanı, çünkü iki yönetici var ve
+   atölyenin gider verisi ikisinde de aynı olmalı.
+
+   Yeni tablo açmadım: app_meta zaten anahtar/değer deposu. */
+const MALIYET_ANAHTARI = "cost_calculator";
+
+app.get("/api/cost-settings", requireAdmin, async (req, res) => {
+  const row = await db.prepare("SELECT value FROM app_meta WHERE key = ?").get(MALIYET_ANAHTARI);
+  if (!row) return res.json(null);
+  try {
+    res.json(JSON.parse(row.value));
+  } catch {
+    res.json(null);   // bozuk kayıt hesabı kilitlemesin
+  }
+});
+
+app.put("/api/cost-settings", requireAdmin, async (req, res) => {
+  const govde = req.body && typeof req.body === "object" ? req.body : {};
+  // Yalnızca bilinen alanlar ve yalnızca sayı: gövde olduğu gibi saklanırsa
+  // ileride bu JSON'a ne geldiğini kimse bilemez.
+  const ALANLAR = ["adet", "agirlik", "sure", "filamentFiyat", "elektrikFiyat", "guc",
+    "iscilik", "amortisman", "fire", "kira", "aylikCalisma", "karMarji",
+    "kargo", "kdv", "komisyon", "belirlenen"];
+  const temiz = {};
+  for (const alan of ALANLAR) {
+    const deger = Number(govde[alan]);
+    temiz[alan] = Number.isFinite(deger) && deger >= 0 ? deger : 0;
+  }
+  await db.prepare(`
+    INSERT INTO app_meta (key, value) VALUES (?, ?)
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+  `).run(MALIYET_ANAHTARI, JSON.stringify(temiz));
+  res.json(temiz);
+});
+
 /* ---------- Katlaç kataloğu (yalnızca panel) ----------
    Her rota requireAdmin arkasında; bu listenin herkese açık bir ucu YOK. */
 
