@@ -84,39 +84,39 @@
     const onSale = product.sale_price && product.price > product.sale_price;
     const off = onSale ? Math.round((1 - product.sale_price / product.price) * 100) : 0;
     const cats = (product.categories || [])
-      .map((c) => `<a class="chip" href="/urunler?kategori=${c.id}">${c.name}</a>`).join("");
+      .map((c) => `<a class="chip" href="/urunler?kategori=${c.id}">${escapeHtml(c.name)}</a>`).join("");
     // Rengin kendi fotoğrafı varsa nokta tıklanabilir olur; yoksa sade kalır
     // — tıklayınca hiçbir şey olmayan bir düğme kullanıcıyı yanıltır.
     const renkliFotoVar = (renkId) => (product.images || []).some((g) => g.color_id === renkId);
     const swatches = (product.colors || [])
       .map((c) => renkliFotoVar(c.id)
-        ? `<button type="button" class="color-dot color-dot--action ${seciliRenkId === c.id ? "active" : ""}" style="background:${c.hex}" title="${c.name} fotoğraflarını göster" aria-label="${c.name} fotoğraflarını göster" data-color-pick="${c.id}"></button>`
-        : `<span class="color-dot" style="background:${c.hex}" title="${c.name}"></span>`).join("");
+        ? `<button type="button" class="color-dot color-dot--action ${seciliRenkId === c.id ? "active" : ""}" style="background:${escapeHtml(c.hex)}" title="${escapeHtml(c.name)} fotoğraflarını göster" aria-label="${escapeHtml(c.name)} fotoğraflarını göster" data-color-pick="${c.id}"></button>`
+        : `<span class="color-dot" style="background:${escapeHtml(c.hex)}" title="${escapeHtml(c.name)}"></span>`).join("");
 
     detail.innerHTML = `
       <nav class="breadcrumb" aria-label="Sayfa yolu">
         <a href="/">Ana Sayfa</a><span aria-hidden="true">/</span>
         <a href="/urunler">Ürünler</a><span aria-hidden="true">/</span>
-        <strong>${product.name}</strong>
+        <strong>${escapeHtml(product.name)}</strong>
       </nav>
       <div class="product-detail__grid">
         <div class="product-detail__media">
           <div class="gallery-main">
-            <img id="gallery-main-image" src="${galeriKareleri(product)[0]?.src || "/assets/printable-logo.svg"}"
-                 alt="${galeriKareleri(product)[0]?.alt || product.image_alt || product.name}">
+            <img id="gallery-main-image" src="${escapeHtml(galeriKareleri(product)[0]?.src) || "/assets/printable-logo.svg"}"
+                 alt="${escapeHtml(galeriKareleri(product)[0]?.alt || product.image_alt || product.name)}">
           </div>
           ${galeriKareleri(product).length > 1 ? `
             <div class="gallery-thumbs" id="gallery-thumbs">
               ${galeriKareleri(product).map((k, i) => `
                 <button type="button" class="gallery-thumb ${i === 0 ? "active" : ""}" data-gallery-index="${i}"
                         aria-label="${i + 1}. fotoğrafı göster">
-                  <img src="${k.src}" alt="">
+                  <img src="${escapeHtml(k.src)}" alt="">
                 </button>`).join("")}
             </div>` : ""}
         </div>
         <div class="product-detail__info">
           ${cats ? `<div class="product-detail__cats">${cats}</div>` : ""}
-          <h1>${product.name}</h1>
+          <h1>${escapeHtml(product.name)}</h1>
           ${product.rating?.count
             ? `<a class="product-detail__rating" href="#reviews-section">${stars(product.rating.average)}
                  <span>${product.rating.average} · ${product.rating.count} değerlendirme</span></a>`
@@ -126,10 +126,10 @@
           ${onSale ? `<p class="product-detail__save">${money(product.price - product.sale_price)} tasarruf edin</p>` : ""}
           <p class="product-detail__tax">Fiyata KDV eklenir · Kargo alıcı ödemeli</p>
           ${swatches ? `<div class="product-detail__colors"><span>Renkler</span><div class="swatches">${swatches}</div></div>` : ""}
-          ${product.description ? `<p class="product-detail__desc">${product.description}</p>` : ""}
+          ${product.description ? `<p class="product-detail__desc">${escapeHtml(product.description)}</p>` : ""}
           <ul class="product-detail__specs">
-            ${product.color ? `<li><span>Malzeme</span><strong>${product.color}</strong></li>` : ""}
-            ${product.sku ? `<li><span>Ürün kodu</span><strong>${product.sku}</strong></li>` : ""}
+            ${product.color ? `<li><span>Malzeme</span><strong>${escapeHtml(product.color)}</strong></li>` : ""}
+            ${product.sku ? `<li><span>Ürün kodu</span><strong>${escapeHtml(product.sku)}</strong></li>` : ""}
             ${stokGoster || !inStock
               ? `<li><span>Stok</span><strong class="${inStock ? "spec-in" : "spec-out"}">${inStock ? product.stock + " adet" : "Tükendi"}</strong></li>`
               : ""}

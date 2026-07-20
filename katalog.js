@@ -16,14 +16,26 @@
   /* Kademe etiketi. "10 adet %15 indirim" ile "10 adet 1.700,00 TL" farklı
      bilgiler: ilki kuralı, ikincisi cebinden çıkacak parayı söylüyor. İkisini
      birden gösteriyoruz — toplu alım yapan kişi toplam tutarı arıyor. */
+  /* "10+ adet" yalnızca yüzde indirimde doğru. Sabit indirim sepete BİR KEZ
+     uygulandığı için hesaplanan birim fiyat sadece TAM o adette geçerli;
+     üstünde müşteri daha fazla öder. quantity_exact bunu ayırt ediyor. */
+  const kademeAdet = (k) => (k.quantity_exact ? `${k.min_quantity} adette` : `${k.min_quantity}+ adet`);
+
   function kademeSatiri(k) {
     const kural = k.discount_type === "percent"
       ? `%${k.discount_value} indirim`
       : `${money(k.discount_value)} indirim`;
+    /* Kampanyanın minimum sepet tutarı varsa ve bu ürün tek başına o tutarı
+       karşılamıyorsa şartı yazıyoruz. Yazmasaydık katalog tutulamayacak bir
+       söz verirdi: müşteri 10 adet alır, ara toplam sınırın altında kalır,
+       ödemede indirim uygulanmaz. */
+    const sart = k.min_order_total && !k.min_order_met
+      ? ` <span class="catalog-cond">${money(k.min_order_total)} ve üzeri sepette</span>`
+      : "";
     return `
       <tr>
-        <td><strong>${k.min_quantity}+ adet</strong></td>
-        <td>${kacir(kural)}${k.code ? ` <span class="catalog-code">kod: ${kacir(k.code)}</span>` : ""}</td>
+        <td><strong>${kademeAdet(k)}</strong></td>
+        <td>${kacir(kural)}${sart}</td>
         <td class="catalog-num">${money(k.unit_price)}</td>
         <td class="catalog-num">${money(k.total_price)}</td>
         <td class="catalog-num catalog-save">${money(k.saving)}</td>
@@ -87,7 +99,7 @@
             ? "hediye ürün"
             : c.discount_type === "percent" ? `%${c.discount_value} indirim` : `${money(c.discount_value)} indirim`;
           const kosul = c.min_order_total ? ` (${money(c.min_order_total)} ve üzeri alışverişlerde)` : "";
-          return `<li><strong>${kacir(c.name)}</strong> — ${kacir(kural)}${kacir(kosul)}${c.code ? ` · kod: <span class="catalog-code">${kacir(c.code)}</span>` : ""}</li>`;
+          return `<li><strong>${kacir(c.name)}</strong> — ${kacir(kural)}${kacir(kosul)}</li>`;
         }).join("")}
       </ul>`;
   }
@@ -106,7 +118,7 @@
     const basliklar = [
       "<th>Ürün</th>", "<th>Kod</th>", "<th>Renkler</th>",
       '<th class="catalog-num">1 adet</th>',
-      ...kademeAdetleri.map((n) => `<th class="catalog-num">${n}+ adet</th>`)
+      ...kademeAdetleri.map((n) => `<th class="catalog-num">${n} adet+</th>`)
     ].join("");
 
     const satirlar = liste.map((p) => {
@@ -167,7 +179,8 @@
       const indirimli = p.sale_price && p.price > p.sale_price;
       const renkler = (p.colors || []).map((c) => kacir(c.name)).join(", ");
       const kademeler = (p.tiers || []).map((t) =>
-        `<span class="print-tier"><em>${t.min_quantity}+</em> ${money(t.unit_price)}</span>`).join("");
+        `<span class="print-tier"><em>${t.quantity_exact ? t.min_quantity : t.min_quantity + "+"}</em> ${money(t.unit_price)}${
+          t.min_order_total && !t.min_order_met ? `<i>*</i>` : ""}</span>`).join("");
 
       return `
         <article class="print-row">
@@ -195,7 +208,7 @@
       ? `<strong>Tüm siparişlerde:</strong> ${genel.map((c) => {
           const kural = c.kind === "gift" ? "hediye ürün"
             : c.discount_type === "percent" ? `%${c.discount_value} indirim` : `${money(c.discount_value)} indirim`;
-          return `${kacir(c.name)} — ${kacir(kural)}${c.code ? ` (kod: ${kacir(c.code)})` : ""}`;
+          return `${kacir(c.name)} — ${kacir(kural)}`;
         }).join(" · ")}`
       : "";
     kutu.hidden = !genel.length;
@@ -203,6 +216,12 @@
     document.querySelector("#print-date").textContent =
       new Date().toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" });
     document.querySelector("#print-count").textContent = `${liste.length} ürün`;
+
+    // Yıldızlı kademelerin şartı dipnotta açıklansın.
+    const sartliVar = liste.some((p) => (p.tiers || []).some((t) => t.min_order_total && !t.min_order_met));
+    document.querySelector("#print-note").textContent = sartliVar
+      ? "* Bu kademe yalnızca kampanyanın minimum sepet tutarı sağlandığında geçerlidir."
+      : "";
   }
 
   function ciz() {

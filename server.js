@@ -1965,7 +1965,26 @@ app.post("/api/products", requireAdmin, upload.single("image"), async (req, res)
 app.put("/api/products/:id", requireAdmin, upload.single("image"), async (req, res) => {
   const current = await db.prepare("SELECT * FROM products WHERE id = ?").get(req.params.id);
   if (!current) return res.status(404).json({ error: "Ürün bulunamadı." });
-  const product = productPayload({ ...req.body, current_image: current.image_path }, req.file);
+
+  /* Gövdede olmayan alan MEVCUT değerini korur.
+
+     productPayload eksik alanı null/0 yapıyor, is_active ise gönderilmediğinde
+     1 oluyordu. Yani {"stock": 5} gibi kısmi bir istek ürünün adını,
+     açıklamasını ve meta alanlarını siler, fiyatını 0'a düşürür ve pasif
+     ürünü yayına alırdı. Panel şu an formun tamamını gönderdiği için
+     tetiklenmiyordu; katlaç ve galeri uçlarında bilinçli olarak yazılan
+     koruma burada eksikti. */
+  const gonderilen = { ...req.body };
+  const KORUNACAK = ["name", "sku", "category", "description", "color", "price", "sale_price",
+    "width", "height", "depth", "weight", "stock", "image_alt", "meta_title",
+    "meta_description", "meta_keywords", "is_active"];
+  for (const alan of KORUNACAK) {
+    if (gonderilen[alan] === undefined && current[alan] !== undefined && current[alan] !== null) {
+      gonderilen[alan] = alan === "is_active" ? String(current[alan]) : current[alan];
+    }
+  }
+
+  const product = productPayload({ ...gonderilen, current_image: current.image_path }, req.file);
   product.id = current.id;
 
   await db.prepare(`
@@ -1978,8 +1997,11 @@ app.put("/api/products/:id", requireAdmin, upload.single("image"), async (req, r
     WHERE id=@id
   `).run(product);
 
-  await setProductColors(current.id, req.body.color_ids);
-  await setProductCategories(current.id, req.body.category_ids);
+  /* color_ids/category_ids gönderilmediyse bağlara DOKUNMA: bu iki
+     fonksiyon önce hepsini siliyor, undefined gelince ürün renksiz ve
+     kategorisiz kalırdı. */
+  if (req.body.color_ids !== undefined) await setProductColors(current.id, req.body.color_ids);
+  if (req.body.category_ids !== undefined) await setProductCategories(current.id, req.body.category_ids);
   if (priceChanged(current, product.price, product.sale_price)) {
     await logPrice(current.id, product.price, product.sale_price);
   }
@@ -2049,8 +2071,13 @@ app.post("/api/products/:id/images/:imageId/cover", requireAdmin, async (req, re
   const row = await db.prepare("SELECT image_path, image_alt FROM product_images WHERE id = ? AND product_id = ?")
     .get(req.params.imageId, req.params.id);
   if (!row) return res.status(404).json({ error: "Fotoğraf bulunamadı." });
-  await db.prepare("UPDATE products SET image_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-    .run(row.image_path, req.params.id);
+  /* Alt metin de taşınır: kapak değişip alt metin eski fotoğrafınki kalırsa
+     ürün sayfası yanlış görseli tarif eder (SEO ve ekran okuyucu için hatalı).
+     Galeri fotoğrafının alt metni boşsa üründekine dokunmuyoruz. */
+  await db.prepare(`
+    UPDATE products SET image_path = ?, image_alt = COALESCE(?, image_alt), updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(row.image_path, row.image_alt || null, req.params.id);
   res.json(await withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(req.params.id)));
 });
 
@@ -2940,7 +2967,8 @@ app.get("/api/catalog", async (req, res) => {
   const urunler = await decorateProducts(
     await db.prepare("SELECT * FROM products WHERE is_active = 1 ORDER BY id DESC").all()
   );
-  const kampanyalar = (await liveCampaigns()).filter((c) => c.min_quantity > 0);
+  const kampanyalarTumu = await liveCampaigns();
+  const kampanyalar = kampanyalarTumu.filter((c) => c.min_quantity > 0);
 
   // Kapsam listelerini bir kez oku; ürün başına sorgu N+1 olurdu.
   const kapsamlar = await Promise.all(kampanyalar.map(async (c) => ({
@@ -2955,6 +2983,9 @@ app.get("/api/catalog", async (req, res) => {
 
   const kademeler = (urun) => kapsamlar
     .filter(({ kampanya, urunIdleri, kategoriIdleri }) => {
+      // Hediye kampanyasının indirim değeri 0'a zorlanıyor; kademe satırı
+      // "%0 indirim, 0 TL kazanç" gibi anlamsız bir satır üretirdi.
+      if (kampanya.kind === "gift") return false;
       if (kampanya.scope === "products") return urunIdleri.has(urun.id);
       if (kampanya.scope === "categories") return (urun.categories || []).some((k) => kategoriIdleri.has(k.id));
       return true;   // scope === "all"
@@ -2962,18 +2993,32 @@ app.get("/api/catalog", async (req, res) => {
     .map(({ kampanya }) => {
       const birim = Number(urun.sale_price || urun.price) || 0;
       const yuzde = kampanya.discount_type === "percent";
-      // Sabit indirim kampanyanın kapsadığı TUTARdan düşer; adet başına
-      // yansımasını göstermek için kademe adedine bölüyoruz.
+      /* Sabit indirim sepete BİR KEZ uygulanır (evaluateOne), adet başına
+         değil. Kademe adedine bölüp birim fiyat göstermek yalnızca TAM o
+         adette doğru; üstünde müşteri daha fazla öder. Bu yüzden yüzde
+         kademeleri "10+ adet", sabit kademeleri "10 adette" diye
+         etiketleniyor — quantity_exact bunu istemciye söylüyor. */
       const indirimliBirim = yuzde
         ? birim * (1 - Number(kampanya.discount_value) / 100)
         : Math.max(0, birim - Number(kampanya.discount_value) / kampanya.min_quantity);
+
+      /* min_order_total katalogda yok sayılıyordu: "10 adet %15" yazıp
+         ödemede uygulanmayabiliyordu, çünkü evaluateOne ara toplam bu
+         tutarın altındaysa kampanyayı hiç döndürmüyor. Koşulu kademeyle
+         birlikte gönderiyoruz ki katalog söz vermeden önce şartı yazsın. */
+      const enAzTutar = Number(kampanya.min_order_total) || 0;
+      const buUrunleKarsilanir = round2(indirimliBirim * kampanya.min_quantity) >= enAzTutar;
+
       return {
         name: kampanya.name,
-        code: kampanya.code || null,
+        // code BİLEREK yok — /api/catalog herkese açık. Tek kullanımlık özel
+        // bir kupon burada yayınlanırsa ilk gelen hakkı yakardı.
         min_quantity: kampanya.min_quantity,
+        quantity_exact: !yuzde,
         discount_type: kampanya.discount_type,
         discount_value: Number(kampanya.discount_value),
-        kind: kampanya.kind,
+        min_order_total: enAzTutar,
+        min_order_met: buUrunleKarsilanir,
         unit_price: round2(indirimliBirim),
         total_price: round2(indirimliBirim * kampanya.min_quantity),
         saving: round2((birim - indirimliBirim) * kampanya.min_quantity)
@@ -2989,10 +3034,13 @@ app.get("/api/catalog", async (req, res) => {
       stock: p.stock, colors: p.colors, categories: p.categories,
       tiers: kademeler(p)
     })),
-    // Adet koşulu olmayan ama katalogda anılmaya değer kampanyalar (hediye vb.)
-    general_campaigns: (await liveCampaigns())
+    /* Adet koşulu olmayan kampanyalar. KOD YAYINLANMIYOR: bu uç herkese
+       açık, tek kullanımlık ya da belirli bir müşteriye verilmiş bir kupon
+       burada görünseydi ilk gelen hakkı yakardı. Kodunu duyurmak isteyen
+       kampanya adına yazabilir. */
+    general_campaigns: kampanyalarTumu
       .filter((c) => !c.min_quantity)
-      .map((c) => ({ name: c.name, code: c.code || null, kind: c.kind, discount_type: c.discount_type, discount_value: Number(c.discount_value), min_order_total: Number(c.min_order_total) }))
+      .map((c) => ({ name: c.name, kind: c.kind, discount_type: c.discount_type, discount_value: Number(c.discount_value), min_order_total: Number(c.min_order_total) }))
   });
 });
 
