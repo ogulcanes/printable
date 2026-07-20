@@ -145,6 +145,22 @@ function renderProductFilterOptions() {
   secim.value = onceki;
 }
 
+/* Maliyet ve kâr marjı rozeti. Marj SATIŞ FİYATI üzerinden hesaplanıyor:
+   "100 TL'ye satıyorum, 40 TL kâr" demek %40 marj demektir. Maliyet
+   üzerinden hesaplasaydık aynı durum %66,7 çıkardı ve iki rakam sürekli
+   karıştırılırdı; perakendede kullanılan marj bu. */
+function maliyetRozeti(p) {
+  if (p.unit_cost === null || p.unit_cost === undefined) return "";
+  const maliyet = Number(p.unit_cost);
+  const fiyat = Number(p.sale_price || p.price) || 0;
+  const rozet = `<span class="badge">Maliyet ${money(maliyet)}</span>`;
+  if (!fiyat) return `${rozet}<span class="badge orange">Fiyat girilmemiş</span>`;
+  const kar = fiyat - maliyet;
+  const marj = (kar / fiyat) * 100;
+  return `${rozet}<span class="badge ${marj < 0 ? "orange" : "green"}">${
+    marj < 0 ? "Zarar" : "Kâr"} ${money(Math.abs(kar))} · %${marj.toFixed(1)}</span>`;
+}
+
 function renderProducts() {
   renderProductFilterOptions();
   const gosterilen = filteredProducts();
@@ -165,6 +181,7 @@ function renderProducts() {
           <span class="badge blue">${money(product.sale_price || product.price)}${product.sale_price ? ` / <s>${money(product.price)}</s>` : ""}</span>
           ${product.sale_price && product.price > 0 ? `<span class="badge orange">%${Math.round((1 - product.sale_price / product.price) * 100)} indirim</span>` : ""}
           ${product.rating?.count ? `<span class="badge">${product.rating.average} ★ (${product.rating.count} yorum)</span>` : ""}
+          ${maliyetRozeti(product)}
           <span class="badge">Eklendi: ${formatDateTime(product.created_at)}</span>
         </div>
         <div class="price-history" data-history-for="${product.id}" hidden></div>
@@ -680,6 +697,7 @@ async function refresh() {
   renderAdminUsers();
   renderSettings();
   renderKatlac();
+  renderCostProducts();
   // Yalnızca düzenlenmiyorken sıfırla — düzenleme sırasındaki seçimler kaybolmasın.
   if (!qs('#campaign-form input[name="id"]').value) renderCampaignOptions(null);
   syncCampaignFields();
@@ -867,6 +885,91 @@ qs("#cost-reset").addEventListener("click", () => {
   const form = qs("#cost-form");
   COST_ALANLAR.forEach((a) => { form.elements[a].value = a === "adet" ? 1 : 0; });
   renderCost();
+});
+
+/* ---------- Maliyeti ürüne atama ---------- */
+
+function renderCostProducts() {
+  const secim = qs("#cost-product");
+  if (!secim) return;
+  const onceki = secim.value;
+  secim.innerHTML = '<option value="">Ürün seçin…</option>'
+    + state.products.map((p) => {
+      const maliyet = Number(p.unit_cost);
+      const etiket = Number.isFinite(maliyet) && p.unit_cost !== null
+        ? ` — maliyet ${money(maliyet)}`
+        : "";
+      return `<option value="${p.id}">${escapeHtml(p.name)}${etiket}</option>`;
+    }).join("");
+  secim.value = onceki;
+}
+
+const costDurum = (metin, tur = "") => {
+  const el = qs("#cost-assign-status");
+  el.textContent = metin;
+  el.className = `cost-assign-status ${tur}`;
+};
+
+qs("#cost-assign").addEventListener("click", async () => {
+  const id = qs("#cost-product").value;
+  if (!id) return costDurum("Önce bir ürün seçin.", "uyari");
+
+  const g = costGirdileri();
+  const h = costHesapla(g);
+
+  /* Marjı state'teki kopyadan DEĞİL, sunucunun döndürdüğü güncel üründen
+     hesapla. state.products son refresh()'ten kalma; ürünün fiyatı bu arada
+     başka bir sekmede değişmişse mesaj bayat bir marj söyler (listedeki
+     rozetle çelişir — test tam olarak bunu yakaladı). */
+  const guncel = await api(`/api/products/${id}/cost`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ unit_cost: yuvarla(h.netMaliyet), inputs: g })
+  });
+  await refresh();
+  renderCostProducts();
+  qs("#cost-product").value = id;
+
+  const urun = guncel;
+  // Fiyat girilmişse marjı da söyle: asıl merak edilen bu.
+  const fiyat = Number(urun?.sale_price || urun?.price) || 0;
+  const marj = fiyat > 0 ? ((fiyat - h.netMaliyet) / fiyat) * 100 : null;
+  costDurum(
+    `${urun?.name || "Ürün"} → maliyet ${money(yuvarla(h.netMaliyet))} olarak kaydedildi.`
+    + (marj === null
+      ? " Ürünün satış fiyatı girilmemiş, kâr marjı hesaplanamıyor."
+      : ` Satış fiyatı ${money(fiyat)}, kâr marjı %${marj.toFixed(1)}.`),
+    marj !== null && marj < 0 ? "zarar" : "tamam"
+  );
+});
+
+qs("#cost-load").addEventListener("click", () => {
+  const id = qs("#cost-product").value;
+  if (!id) return costDurum("Önce bir ürün seçin.", "uyari");
+  const urun = state.products.find((p) => String(p.id) === id);
+  if (!urun?.cost_inputs) return costDurum("Bu ürün için kayıtlı bir hesap yok.", "uyari");
+
+  let girdiler;
+  try { girdiler = JSON.parse(urun.cost_inputs); } catch { girdiler = null; }
+  if (!girdiler) return costDurum("Kayıtlı hesap okunamadı.", "uyari");
+
+  const form = qs("#cost-form");
+  COST_ALANLAR.forEach((a) => {
+    if (girdiler[a] !== undefined) form.elements[a].value = girdiler[a];
+  });
+  renderCost();
+  costDurum(`${urun.name} için kayıtlı hesap yüklendi.`, "tamam");
+});
+
+qs("#cost-clear").addEventListener("click", async () => {
+  const id = qs("#cost-product").value;
+  if (!id) return costDurum("Önce bir ürün seçin.", "uyari");
+  if (!confirm("Bu ürünün kayıtlı maliyeti silinsin mi?")) return;
+  await api(`/api/products/${id}/cost`, { method: "DELETE" });
+  await refresh();
+  renderCostProducts();
+  qs("#cost-product").value = id;
+  costDurum("Maliyet silindi.", "tamam");
 });
 
 async function loadCostSettings() {

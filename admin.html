@@ -485,6 +485,18 @@
           <div id="cost-results" class="cost-results"></div>
           <p id="cost-warning" class="cost-warning" hidden></p>
         </div>
+
+        <div class="admin-card">
+          <div class="card-title"><h2>Maliyeti Bir Ürüne Ata</h2></div>
+          <p class="form-note">Hesapladığın <strong>toplam net mâliyet</strong> seçtiğin ürüne kaydedilir. Ürünler listesinde her ürünün maliyeti ve kâr marjı görünür. Girdiler de saklanır — sonra "kayıtlı hesabı yükle" deyip aynı yerden devam edebilirsin.</p>
+          <div class="cost-assign">
+            <select id="cost-product"><option value="">Ürün seçin…</option></select>
+            <button type="button" class="btn-solid" id="cost-assign">Maliyeti ata</button>
+            <button type="button" class="small-button" id="cost-load">Kayıtlı hesabı yükle</button>
+            <button type="button" class="small-button danger" id="cost-clear">Maliyeti sil</button>
+          </div>
+          <p id="cost-assign-status" class="cost-assign-status"></p>
+        </div>
       </section>
 
       <section id="katlac" class="panel">

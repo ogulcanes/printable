@@ -945,3 +945,25 @@ textarea { resize: vertical; }
   line-height: 1.65;
 }
 .cost-warning em { font-style: italic; }
+
+/* Maliyeti ürüne atama satırı */
+.cost-assign {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.cost-assign select {
+  flex: 1 1 280px;
+  min-width: 200px;
+  padding: 11px 13px;
+}
+.cost-assign-status {
+  margin: 12px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 1em;
+}
+.cost-assign-status.tamam { color: #1f8f67; font-weight: 600; }
+.cost-assign-status.uyari { color: #b4232a; font-weight: 600; }
+.cost-assign-status.zarar { color: #b4232a; font-weight: 700; }

@@ -92,7 +92,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "8";
+const SCHEMA_VERSION = "9";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -125,6 +125,9 @@ async function initDb() {
     stock INTEGER NOT NULL DEFAULT 0,
     image_path TEXT,
     meta_keywords TEXT,
+    unit_cost REAL,
+    cost_inputs TEXT,
+    cost_updated_at TIMESTAMPTZ,
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -499,6 +502,12 @@ const existingColumns = new Set(
 const hasColumn = async (table, column) => existingColumns.has(`${table}.${column}`);
 
 for (const [table, column, type] of [
+  /* Ürün başına maliyet. unit_cost hızlı gösterim için (liste, kâr marjı),
+     cost_inputs ise hesabın girdilerinin anlık görüntüsü: aylar sonra "bu
+     25,48 nereden çıktı" sorusunun yanıtı ve yeniden hesaplamak için. */
+  ["products", "unit_cost", "REAL"],
+  ["products", "cost_inputs", "TEXT"],
+  ["products", "cost_updated_at", "TIMESTAMPTZ"],
   ["products", "meta_title", "TEXT"],
   ["products", "meta_description", "TEXT"],
   ["products", "meta_keywords", "TEXT"],
@@ -1570,6 +1579,44 @@ app.put("/api/cost-settings", requireAdmin, async (req, res) => {
   res.json(temiz);
 });
 
+/* Hesaplanan maliyeti bir ÜRÜNE bağlar.
+
+   Ayrı bir uç, PUT /api/products/:id değil: o uç ürün formunun tamamını
+   bekliyor ve maliyet ataması sırasında ürünün diğer alanlarını taşımak
+   gereksiz risk. Girdilerin anlık görüntüsü de saklanıyor — aylar sonra
+   "bu 25,48 nereden çıktı" sorusunun yanıtı ve hesabı yeniden açmak için. */
+app.post("/api/products/:id/cost", requireAdmin, async (req, res) => {
+  const urun = await db.prepare("SELECT id FROM products WHERE id = ?").get(req.params.id);
+  if (!urun) return res.status(404).json({ error: "Ürün bulunamadı." });
+
+  const maliyet = Number(req.body.unit_cost);
+  if (!Number.isFinite(maliyet) || maliyet < 0) {
+    return res.status(400).json({ error: "Maliyet 0 veya daha büyük bir sayı olmalı." });
+  }
+
+  await db.prepare(`
+    UPDATE products SET unit_cost = @unit_cost, cost_inputs = @cost_inputs,
+      cost_updated_at = NOW(), updated_at = CURRENT_TIMESTAMP
+    WHERE id = @id
+  `).run({
+    id: urun.id,
+    unit_cost: round2(maliyet),
+    cost_inputs: req.body.inputs && typeof req.body.inputs === "object"
+      ? JSON.stringify(req.body.inputs)
+      : null
+  });
+
+  res.json(await withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(urun.id)));
+});
+
+app.delete("/api/products/:id/cost", requireAdmin, async (req, res) => {
+  const urun = await db.prepare("SELECT id FROM products WHERE id = ?").get(req.params.id);
+  if (!urun) return res.status(404).json({ error: "Ürün bulunamadı." });
+  await db.prepare("UPDATE products SET unit_cost = NULL, cost_inputs = NULL, cost_updated_at = NULL WHERE id = ?")
+    .run(urun.id);
+  res.status(204).end();
+});
+
 /* ---------- Katlaç kataloğu (yalnızca panel) ----------
    Her rota requireAdmin arkasında; bu listenin herkese açık bir ucu YOK. */
 
@@ -1903,17 +1950,28 @@ async function logPrice(productId, price, salePrice) {
 const priceChanged = (before, price, salePrice) =>
   Number(before.price) !== Number(price) || (before.sale_price ?? null) !== (salePrice ?? null);
 
+/* Maliyet verisi TİCARİ SIR: /api/products herkese açık, ürünün kaça mal
+   olduğu müşteriye ya da rakibe gitmemeli. Yalnızca giriş yapmış yöneticiye
+   dönüyor. Ayrı bir uç açmak yerine burada süzmek yeterli — panel zaten bu
+   listeyi kullanıyor. */
+const maliyetiGizle = (urun) => {
+  const { unit_cost, cost_inputs, cost_updated_at, ...kalan } = urun;
+  return kalan;
+};
+
 app.get("/api/products", async (req, res) => {
   // id breaks the tie: the seed inserts every product in the same second, so
   // created_at alone leaves "en yeni" in arbitrary order.
   const products = await db.prepare("SELECT * FROM products ORDER BY created_at DESC, id DESC").all();
-  res.json(await decorateProducts(products));
+  const suslu = await decorateProducts(products);
+  res.json(await isAuthed(req) ? suslu : suslu.map(maliyetiGizle));
 });
 
 app.get("/api/products/:id", async (req, res) => {
   const product = await db.prepare("SELECT * FROM products WHERE id = ?").get(req.params.id);
   if (!product) return res.status(404).json({ error: "Ürün bulunamadı." });
-  res.json(await withColors(product));
+  const suslu = await withColors(product);
+  res.json(await isAuthed(req) ? suslu : maliyetiGizle(suslu));
 });
 
 /* ---------- müşteri değerlendirmeleri ---------- */
