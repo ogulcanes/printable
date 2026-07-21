@@ -900,20 +900,54 @@ qs("#cost-reset").addEventListener("click", () => {
 
 /* ---------- Maliyeti ürüne atama ---------- */
 
+/* Maliyet atanacak ürünler bir ızgarada seçiliyor (görsel + ad + fiyat),
+   birden fazla seçilebiliyor. Seçim state'te tutuluyor çünkü ızgara arama
+   ve refresh() ile yeniden çizilir; DOM'dan okumak seçimi kaybettirirdi. */
+const costSecili = new Set();
+let costArama = "";
+
 function renderCostProducts() {
-  const secim = qs("#cost-product");
-  if (!secim) return;
-  const onceki = secim.value;
-  secim.innerHTML = '<option value="">Ürün seçin…</option>'
-    + state.products.map((p) => {
-      const maliyet = Number(p.unit_cost);
-      const etiket = Number.isFinite(maliyet) && p.unit_cost !== null
-        ? ` — maliyet ${money(maliyet)}`
-        : "";
-      return `<option value="${p.id}">${escapeHtml(p.name)}${etiket}</option>`;
-    }).join("");
-  secim.value = onceki;
+  const izgara = qs("#cost-product-grid");
+  if (!izgara) return;
+
+  const ara = costArama.trim().toLocaleLowerCase("tr");
+  const liste = state.products.filter((p) => {
+    if (!ara) return true;
+    return [p.name, p.sku].filter(Boolean).join(" ").toLocaleLowerCase("tr").includes(ara);
+  });
+
+  izgara.innerHTML = liste.map((p) => {
+    const secili = costSecili.has(p.id);
+    const fiyat = Number(p.sale_price || p.price) || 0;
+    const maliyet = p.unit_cost !== null && p.unit_cost !== undefined ? Number(p.unit_cost) : null;
+    return `
+      <button type="button" class="cost-pick ${secili ? "active" : ""}" data-cost-pick="${p.id}" aria-pressed="${secili}">
+        <span class="cost-pick__check">✓</span>
+        <img src="${escapeHtml(p.image_path) || "/assets/printable-logo.svg"}" alt="" loading="lazy">
+        <span class="cost-pick__name">${escapeHtml(p.name)}</span>
+        <span class="cost-pick__price">${fiyat > 0 ? money(fiyat) : "fiyat yok"}</span>
+        ${maliyet !== null ? `<span class="cost-pick__cost">Maliyet ${money(maliyet)}</span>` : ""}
+      </button>`;
+  }).join("") || "<p class='field-note'>Aramanıza uyan ürün yok.</p>";
+
+  qs("#cost-pick-count").textContent = `${costSecili.size} seçili`;
 }
+
+qs("#cost-product-grid").addEventListener("click", (event) => {
+  const kart = event.target.closest("[data-cost-pick]");
+  if (!kart) return;
+  const id = Number(kart.dataset.costPick);
+  if (costSecili.has(id)) costSecili.delete(id);
+  else costSecili.add(id);
+  kart.classList.toggle("active");
+  kart.setAttribute("aria-pressed", costSecili.has(id));
+  qs("#cost-pick-count").textContent = `${costSecili.size} seçili`;
+});
+
+qs("#cost-pick-search").addEventListener("input", (event) => {
+  costArama = event.target.value;
+  renderCostProducts();
+});
 
 const costDurum = (metin, tur = "") => {
   const el = qs("#cost-assign-status");
@@ -922,42 +956,47 @@ const costDurum = (metin, tur = "") => {
 };
 
 qs("#cost-assign").addEventListener("click", async () => {
-  const id = qs("#cost-product").value;
-  if (!id) return costDurum("Önce bir ürün seçin.", "uyari");
+  if (!costSecili.size) return costDurum("Önce en az bir ürün seçin.", "uyari");
 
   const g = costGirdileri();
   const h = costHesapla(g);
+  const maliyet = yuvarla(h.netMaliyet);
+  const idler = [...costSecili];
 
-  /* Marjı state'teki kopyadan DEĞİL, sunucunun döndürdüğü güncel üründen
-     hesapla. state.products son refresh()'ten kalma; ürünün fiyatı bu arada
-     başka bir sekmede değişmişse mesaj bayat bir marj söyler (listedeki
-     rozetle çelişir — test tam olarak bunu yakaladı). */
-  const guncel = await api(`/api/products/${id}/cost`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ unit_cost: yuvarla(h.netMaliyet), inputs: g })
-  });
+  for (const id of idler) {
+    await api(`/api/products/${id}/cost`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ unit_cost: maliyet, inputs: g })
+    });
+  }
   await refresh();
   renderCostProducts();
-  qs("#cost-product").value = id;
 
-  const urun = guncel;
-  // Fiyat girilmişse marjı da söyle: asıl merak edilen bu.
-  const fiyat = Number(urun?.sale_price || urun?.price) || 0;
-  const marj = fiyat > 0 ? ((fiyat - h.netMaliyet) / fiyat) * 100 : null;
-  costDurum(
-    `${urun?.name || "Ürün"} → maliyet ${money(yuvarla(h.netMaliyet))} olarak kaydedildi.`
-    + (marj === null
-      ? " Ürünün satış fiyatı girilmemiş, kâr marjı hesaplanamıyor."
-      : ` Satış fiyatı ${money(fiyat)}, kâr marjı %${marj.toFixed(1)}.`),
-    marj !== null && marj < 0 ? "zarar" : "tamam"
-  );
+  if (idler.length === 1) {
+    /* Tek üründe marjı da söyle — asıl merak edilen bu. state.products
+       refresh sonrası güncel, oradan okumak güvenli. */
+    const urun = state.products.find((p) => p.id === idler[0]);
+    const fiyat = Number(urun?.sale_price || urun?.price) || 0;
+    const marj = fiyat > 0 ? ((fiyat - maliyet) / fiyat) * 100 : null;
+    costDurum(
+      `${urun?.name || "Ürün"} → maliyet ${money(maliyet)} olarak kaydedildi.`
+      + (marj === null
+        ? " Ürünün satış fiyatı girilmemiş, kâr marjı hesaplanamıyor."
+        : ` Satış fiyatı ${money(fiyat)}, kâr marjı %${marj.toFixed(1)}.`),
+      marj !== null && marj < 0 ? "zarar" : "tamam"
+    );
+  } else {
+    costDurum(`${idler.length} ürüne ${money(maliyet)} maliyet atandı. Her ürünün kâr marjı ürünler listesinde görünür.`, "tamam");
+  }
 });
 
+/* Kayıtlı hesabı yükle: tek ürün seçiliyken anlamlı — birden fazla seçiliyken
+   hangisinin hesabını yükleyeceği belirsiz. */
 qs("#cost-load").addEventListener("click", () => {
-  const id = qs("#cost-product").value;
-  if (!id) return costDurum("Önce bir ürün seçin.", "uyari");
-  const urun = state.products.find((p) => String(p.id) === id);
+  if (costSecili.size !== 1) return costDurum("Kayıtlı hesabı yüklemek için tek bir ürün seçin.", "uyari");
+  const id = [...costSecili][0];
+  const urun = state.products.find((p) => p.id === id);
   if (!urun?.cost_inputs) return costDurum("Bu ürün için kayıtlı bir hesap yok.", "uyari");
 
   let girdiler;
@@ -974,14 +1013,15 @@ qs("#cost-load").addEventListener("click", () => {
 });
 
 qs("#cost-clear").addEventListener("click", async () => {
-  const id = qs("#cost-product").value;
-  if (!id) return costDurum("Önce bir ürün seçin.", "uyari");
-  if (!confirm("Bu ürünün kayıtlı maliyeti silinsin mi?")) return;
-  await api(`/api/products/${id}/cost`, { method: "DELETE" });
+  if (!costSecili.size) return costDurum("Önce en az bir ürün seçin.", "uyari");
+  if (!confirm(`Seçili ${costSecili.size} üründen kayıtlı maliyet silinsin mi?`)) return;
+  for (const id of costSecili) {
+    await api(`/api/products/${id}/cost`, { method: "DELETE" });
+  }
+  const sayi = costSecili.size;
   await refresh();
   renderCostProducts();
-  qs("#cost-product").value = id;
-  costDurum("Maliyet silindi.", "tamam");
+  costDurum(`${sayi} üründen maliyet silindi.`, "tamam");
 });
 
 async function loadCostSettings() {
