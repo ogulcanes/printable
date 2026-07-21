@@ -150,9 +150,22 @@ function renderProductFilterOptions() {
    üzerinden hesaplasaydık aynı durum %66,7 çıkardı ve iki rakam sürekli
    karıştırılırdı; perakendede kullanılan marj bu. */
 function maliyetRozeti(p) {
-  if (p.unit_cost === null || p.unit_cost === undefined) return "";
-  const maliyet = Number(p.unit_cost);
+  const olcekler = p.cost_scales || [];
+  if (!olcekler.length) return "";
   const fiyat = Number(p.sale_price || p.price) || 0;
+
+  // Birden fazla ölçek: aralık göster, tek tek marj listeye sığmaz.
+  if (olcekler.length > 1) {
+    const enaz = Math.min(...olcekler.map((s) => Number(s.unit_cost)));
+    const encok = Math.max(...olcekler.map((s) => Number(s.unit_cost)));
+    const aralik = `<span class="badge">${olcekler.length} ölçek · maliyet ${money(enaz)}–${money(encok)}</span>`;
+    if (!fiyat) return `${aralik}<span class="badge orange">Fiyat girilmemiş</span>`;
+    // En düşük maliyet üzerinden en yüksek marjı göster (fiyat sabit).
+    const marj = ((fiyat - enaz) / fiyat) * 100;
+    return `${aralik}<span class="badge ${marj < 0 ? "orange" : "green"}">en fazla %${marj.toFixed(1)} marj</span>`;
+  }
+
+  const maliyet = Number(olcekler[0].unit_cost);
   const rozet = `<span class="badge">Maliyet ${money(maliyet)}</span>`;
   if (!fiyat) return `${rozet}<span class="badge orange">Fiyat girilmemiş</span>`;
   const kar = fiyat - maliyet;
@@ -919,37 +932,73 @@ function renderCostProducts() {
   izgara.innerHTML = liste.map((p) => {
     const secili = costSecili.has(p.id);
     const fiyat = Number(p.sale_price || p.price) || 0;
-    const maliyet = p.unit_cost !== null && p.unit_cost !== undefined ? Number(p.unit_cost) : null;
+    const olcekler = p.cost_scales || [];
+    /* Rozet: tek ölçek → "Maliyet X TL"; birden fazla → "N ölçek · min–max". */
+    let rozet = "";
+    if (olcekler.length === 1) {
+      rozet = `<span class="cost-pick__cost">Maliyet ${money(olcekler[0].unit_cost)}</span>`;
+    } else if (olcekler.length > 1) {
+      const enaz = Math.min(...olcekler.map((s) => Number(s.unit_cost)));
+      const encok = Math.max(...olcekler.map((s) => Number(s.unit_cost)));
+      rozet = `<span class="cost-pick__cost">${olcekler.length} ölçek · ${money(enaz)}–${money(encok)}</span>`;
+    }
     return `
       <button type="button" class="cost-pick ${secili ? "active" : ""}" data-cost-pick="${p.id}" aria-pressed="${secili}">
         <span class="cost-pick__check">✓</span>
         <img src="${escapeHtml(p.image_path) || "/assets/printable-logo.svg"}" alt="" loading="lazy">
         <span class="cost-pick__name">${escapeHtml(p.name)}</span>
         <span class="cost-pick__price">${fiyat > 0 ? money(fiyat) : "fiyat yok"}</span>
-        ${maliyet !== null ? `<span class="cost-pick__cost">Maliyet ${money(maliyet)}</span>` : ""}
+        ${rozet}
       </button>`;
   }).join("") || "<p class='field-note'>Aramanıza uyan ürün yok.</p>";
 
   qs("#cost-pick-count").textContent = `${costSecili.size} seçili`;
+  renderCostScales();
 }
 
-/* Bir ürünün kayıtlı hesabını forma yükler ("neyi ne girmişim"). Kayıt yoksa
-   forma dokunmaz ve false döner. Hem kart tıklamasında hem "Kayıtlı hesabı
-   yükle" butonunda kullanılıyor. */
-function yukleUrunHesabi(id) {
-  const urun = state.products.find((p) => p.id === id);
-  if (!urun?.cost_inputs) return false;
-  let girdiler;
-  try { girdiler = JSON.parse(urun.cost_inputs); } catch { return false; }
-  if (!girdiler) return false;
+/* Tek ürün seçiliyken o ürünün ölçek kayıtlarını listeler: her ölçek adı,
+   maliyeti ve [Yükle]/[Sil]. Birden fazla ürün seçiliyken atama hepsine
+   uygulanacağı için tek tek ölçek yönetimi gösterilmiyor. */
+function renderCostScales() {
+  const kutu = qs("#cost-scales");
+  if (!kutu) return;
+  if (costSecili.size !== 1) { kutu.hidden = true; kutu.innerHTML = ""; return; }
 
+  const urun = state.products.find((p) => p.id === [...costSecili][0]);
+  const olcekler = urun?.cost_scales || [];
+  kutu.hidden = false;
+  kutu.innerHTML = `
+    <div class="cost-scales__head">${escapeHtml(urun.name)} — kayıtlı ölçekler</div>
+    ${olcekler.length
+      ? olcekler.map((s) => {
+          const fiyat = Number(urun.sale_price || urun.price) || 0;
+          const marj = fiyat > 0 ? ((fiyat - Number(s.unit_cost)) / fiyat) * 100 : null;
+          return `
+            <div class="cost-scale-row">
+              <span class="cost-scale-row__name">${escapeHtml(s.scale)}</span>
+              <span class="cost-scale-row__cost">${money(s.unit_cost)}</span>
+              <span class="cost-scale-row__marj ${marj !== null && marj < 0 ? "loss" : ""}">${
+                marj === null ? "fiyat yok" : `%${marj.toFixed(1)} marj`}</span>
+              <button type="button" class="small-button" data-scale-load="${s.id}">Yükle</button>
+              <button type="button" class="small-button danger" data-scale-del="${s.id}">Sil</button>
+            </div>`;
+        }).join("")
+      : "<p class='field-note'>Bu ürüne henüz ölçek eklenmemiş. Formu doldurup ölçek adı yazın, \"maliyet ölçeği ekle\" deyin.</p>"}`;
+}
+
+/* Belirli bir ölçek kaydının girdilerini forma yükler. inputs JSON'undan
+   COST_ALANLAR + ölçek etiketi doldurulur. */
+function yukleOlcek(urunAdi, girdilerJson, olcekEtiketi) {
+  let girdiler;
+  try { girdiler = JSON.parse(girdilerJson); } catch { girdiler = null; }
+  if (!girdiler) return false;
   const form = qs("#cost-form");
   COST_ALANLAR.forEach((a) => {
     if (girdiler[a] !== undefined) form.elements[a].value = girdiler[a];
   });
-  form.elements.olcek.value = girdiler.olcek || "";
+  form.elements.olcek.value = girdiler.olcek || olcekEtiketi || "";
   renderCost();
-  costDurum(`${urun.name} için kayıtlı hesap forma yüklendi — girdileri düzenleyip yeniden atayabilirsin.`, "tamam");
+  costDurum(`${urunAdi} · "${olcekEtiketi}" ölçeği forma yüklendi — düzenleyip yeniden atayabilirsin.`, "tamam");
   return true;
 }
 
@@ -957,16 +1006,42 @@ qs("#cost-product-grid").addEventListener("click", (event) => {
   const kart = event.target.closest("[data-cost-pick]");
   if (!kart) return;
   const id = Number(kart.dataset.costPick);
-  const secildi = !costSecili.has(id);   // tıklamadan sonraki durum
+  const secildi = !costSecili.has(id);
   if (secildi) costSecili.add(id);
   else costSecili.delete(id);
   kart.classList.toggle("active");
   kart.setAttribute("aria-pressed", secildi);
   qs("#cost-pick-count").textContent = `${costSecili.size} seçili`;
+  renderCostScales();
 
-  // Seçilirken, ürünün kayıtlı hesabı varsa girdileri forma çek: karta tıkla,
-  // o ölçekte neyi ne girdiğini gör. Seçimden çıkarken yükleme yapma.
-  if (secildi) yukleUrunHesabi(id);
+  /* Seçilirken: ürünün TEK ölçeği varsa onu forma çek (eski davranış). Birden
+     fazla ölçek varsa hangisini yükleyeceği belirsiz — ölçek listesi zaten
+     altta göründüğü için kullanıcı oradan seçer. */
+  if (secildi && costSecili.size === 1) {
+    const urun = state.products.find((p) => p.id === id);
+    const olcekler = urun?.cost_scales || [];
+    if (olcekler.length === 1) yukleOlcek(urun.name, olcekler[0].inputs, olcekler[0].scale);
+  }
+});
+
+// Ölçek listesindeki Yükle / Sil.
+qs("#cost-scales").addEventListener("click", async (event) => {
+  const yukle = event.target.dataset.scaleLoad;
+  const sil = event.target.dataset.scaleDel;
+  const urun = state.products.find((p) => p.id === [...costSecili][0]);
+  if (!urun) return;
+
+  if (yukle) {
+    const olcek = (urun.cost_scales || []).find((s) => String(s.id) === yukle);
+    if (olcek) yukleOlcek(urun.name, olcek.inputs, olcek.scale);
+  } else if (sil) {
+    const olcek = (urun.cost_scales || []).find((s) => String(s.id) === sil);
+    if (!confirm(`"${olcek?.scale}" ölçeği silinsin mi?`)) return;
+    await api(`/api/products/${urun.id}/cost?scaleId=${sil}`, { method: "DELETE" });
+    await refresh();
+    renderCostProducts();
+    costDurum(`"${olcek?.scale}" ölçeği silindi.`, "tamam");
+  }
 });
 
 qs("#cost-pick-search").addEventListener("input", (event) => {
@@ -986,53 +1061,43 @@ qs("#cost-assign").addEventListener("click", async () => {
   const g = costGirdileri();
   const h = costHesapla(g);
   const maliyet = yuvarla(h.netMaliyet);
+  const olcek = g.olcek || "Standart";
   const idler = [...costSecili];
 
   for (const id of idler) {
     await api(`/api/products/${id}/cost`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ unit_cost: maliyet, inputs: g })
+      body: JSON.stringify({ scale: olcek, unit_cost: maliyet, inputs: g })
     });
   }
   await refresh();
   renderCostProducts();
 
   if (idler.length === 1) {
-    /* Tek üründe marjı da söyle — asıl merak edilen bu. state.products
-       refresh sonrası güncel, oradan okumak güvenli. */
     const urun = state.products.find((p) => p.id === idler[0]);
     const fiyat = Number(urun?.sale_price || urun?.price) || 0;
     const marj = fiyat > 0 ? ((fiyat - maliyet) / fiyat) * 100 : null;
     costDurum(
-      `${urun?.name || "Ürün"} → maliyet ${money(maliyet)} olarak kaydedildi.`
-      + (marj === null
-        ? " Ürünün satış fiyatı girilmemiş, kâr marjı hesaplanamıyor."
-        : ` Satış fiyatı ${money(fiyat)}, kâr marjı %${marj.toFixed(1)}.`),
+      `${urun?.name || "Ürün"} · "${olcek}" ölçeği ${money(maliyet)} olarak kaydedildi.`
+      + (marj === null ? " Ürünün satış fiyatı girilmemiş." : ` Satış fiyatı ${money(fiyat)}, kâr marjı %${marj.toFixed(1)}.`),
       marj !== null && marj < 0 ? "zarar" : "tamam"
     );
   } else {
-    costDurum(`${idler.length} ürüne ${money(maliyet)} maliyet atandı. Her ürünün kâr marjı ürünler listesinde görünür.`, "tamam");
+    costDurum(`${idler.length} ürüne "${olcek}" ölçeği ${money(maliyet)} olarak eklendi.`, "tamam");
   }
-});
-
-/* Kayıtlı hesabı yükle: tek ürün seçiliyken anlamlı. Kart tıklaması zaten
-   otomatik yüklüyor; bu buton kayıt yoksa açık bir mesaj vermek için duruyor. */
-qs("#cost-load").addEventListener("click", () => {
-  if (costSecili.size !== 1) return costDurum("Kayıtlı hesabı yüklemek için tek bir ürün seçin.", "uyari");
-  if (!yukleUrunHesabi([...costSecili][0])) costDurum("Bu ürün için kayıtlı bir hesap yok.", "uyari");
 });
 
 qs("#cost-clear").addEventListener("click", async () => {
   if (!costSecili.size) return costDurum("Önce en az bir ürün seçin.", "uyari");
-  if (!confirm(`Seçili ${costSecili.size} üründen kayıtlı maliyet silinsin mi?`)) return;
+  if (!confirm(`Seçili ${costSecili.size} üründen TÜM ölçekler silinsin mi?`)) return;
   for (const id of costSecili) {
     await api(`/api/products/${id}/cost`, { method: "DELETE" });
   }
   const sayi = costSecili.size;
   await refresh();
   renderCostProducts();
-  costDurum(`${sayi} üründen maliyet silindi.`, "tamam");
+  costDurum(`${sayi} üründen tüm ölçekler silindi.`, "tamam");
 });
 
 async function loadCostSettings() {

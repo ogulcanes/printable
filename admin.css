@@ -1117,3 +1117,30 @@ textarea { resize: vertical; }
   transition: opacity .12s ease, transform .12s ease;
 }
 .cost-pick.active .cost-pick__check { opacity: 1; transform: scale(1); }
+
+/* ---------- Maliyet: ürünün ölçek listesi ---------- */
+.cost-scales {
+  margin: 0 0 16px;
+  border: 1px solid var(--line, #e8eaf0);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #fafbfe;
+}
+.cost-scales__head {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink, #181a22);
+  margin-bottom: 8px;
+}
+.cost-scale-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 7px 0;
+  border-top: 1px solid var(--line, #e8eaf0);
+}
+.cost-scale-row__name { font-weight: 700; flex: 1 1 120px; }
+.cost-scale-row__cost { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--ink, #181a22); }
+.cost-scale-row__marj { font-size: 12px; font-weight: 600; color: #1f8f67; }
+.cost-scale-row__marj.loss { color: #b4232a; }

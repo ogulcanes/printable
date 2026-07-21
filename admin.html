@@ -494,16 +494,20 @@
           <div class="card-title"><h2>Maliyeti Bir Ürüne Ata</h2></div>
           <p class="form-note">Hesapladığın <strong>toplam net mâliyet</strong> seçtiğin ürünlere kaydedilir. Birden fazla ürün seçebilirsin — kartlara tıkla. Ürünler listesinde her ürünün maliyeti ve kâr marjı görünür.</p>
 
+          <p class="form-note">Bir ürünün birden fazla <strong>ölçeği</strong> olabilir (küçük/büyük boy gibi) — her biri ayrı maliyet. Formdaki <strong>Ölçek</strong> alanına etiket yazıp ata; aynı ürüne farklı etiketle atarsan yeni ölçek eklenir, aynı etikete atarsan güncellenir.</p>
+
           <div class="cost-pick-toolbar">
             <input type="search" id="cost-pick-search" placeholder="Ürün adı veya koda göre ara..." autocomplete="off">
             <span id="cost-pick-count" class="cost-pick-count">0 seçili</span>
           </div>
           <div id="cost-product-grid" class="cost-pick-grid"></div>
 
+          <!-- Tek ürün seçiliyken o ürünün ölçek kayıtları burada listelenir. -->
+          <div id="cost-scales" class="cost-scales" hidden></div>
+
           <div class="cost-assign">
-            <button type="button" class="btn-solid" id="cost-assign">Seçili ürünlere maliyeti ata</button>
-            <button type="button" class="small-button" id="cost-load">Kayıtlı hesabı yükle</button>
-            <button type="button" class="small-button danger" id="cost-clear">Maliyeti sil</button>
+            <button type="button" class="btn-solid" id="cost-assign">Seçili ürünlere maliyet ölçeği ekle</button>
+            <button type="button" class="small-button danger" id="cost-clear">Tüm ölçekleri sil</button>
           </div>
           <p id="cost-assign-status" class="cost-assign-status"></p>
         </div>

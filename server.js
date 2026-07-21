@@ -92,7 +92,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "10";
+const SCHEMA_VERSION = "11";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -392,6 +392,22 @@ async function initDb() {
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  /* Ürün başına ÖLÇEK başına maliyet. Bir katlaç büyük/küçük boyda farklı
+     filament ve süre tükettiği için tek maliyet yetmiyor. Her satır bir
+     ölçeğin (etiket) girdileri ve hesaplanan net maliyeti.
+     products.unit_cost bu satırların EN DÜŞÜĞÜ olarak özetleniyor — liste
+     rozeti ve public gizleme onu kullandığı için bozmuyoruz. */
+  CREATE TABLE IF NOT EXISTS product_cost_scales (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    product_id INTEGER NOT NULL,
+    scale TEXT NOT NULL DEFAULT 'Standart',
+    unit_cost REAL NOT NULL DEFAULT 0,
+    inputs TEXT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (product_id, scale),
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
   );
 
   /* Ürün galerisi. products.image_path "kapak" olarak kalır — ürün kartları,
@@ -913,6 +929,24 @@ if (!adminCount.count) {
   );
   for (const username of SEED_ADMIN_USERS) {
     await seedAdmin.run({ username, password_hash: hashPassword(ADMIN_PASSWORD) });
+  }
+}
+
+/* Eski tek-maliyet kayıtlarını ölçek tablosuna taşı. Bir kez çalışır:
+   ölçek tablosu boşsa ve products.unit_cost dolu ürünler varsa, her birini
+   cost_inputs.olcek etiketiyle (yoksa "Standart") bir ölçek satırına dönüştür.
+   Böylece daha önce atanmış maliyetler (Creeper, TNT, Basketbol...) kaybolmaz. */
+const scaleCount = await db.prepare("SELECT COUNT(*)::int AS count FROM product_cost_scales").get();
+if (!scaleCount.count) {
+  const eskiler = await db.prepare("SELECT id, unit_cost, cost_inputs FROM products WHERE unit_cost IS NOT NULL").all();
+  const tasi = db.prepare(`
+    INSERT INTO product_cost_scales (product_id, scale, unit_cost, inputs)
+    VALUES (?, ?, ?, ?) ON CONFLICT (product_id, scale) DO NOTHING
+  `);
+  for (const p of eskiler) {
+    let olcek = "Standart";
+    try { const j = JSON.parse(p.cost_inputs); if (j?.olcek?.trim()) olcek = j.olcek.trim(); } catch { /* etiketsiz */ }
+    await tasi.run(p.id, olcek, p.unit_cost, p.cost_inputs);
   }
 }
 
@@ -1593,6 +1627,36 @@ app.put("/api/cost-settings", requireAdmin, async (req, res) => {
    bekliyor ve maliyet ataması sırasında ürünün diğer alanlarını taşımak
    gereksiz risk. Girdilerin anlık görüntüsü de saklanıyor — aylar sonra
    "bu 25,48 nereden çıktı" sorusunun yanıtı ve hesabı yeniden açmak için. */
+/* products.unit_cost'u ölçeklerin EN DÜŞÜĞÜ olarak özetler; hiç ölçek yoksa
+   NULL yapar. Liste rozeti, kâr marjı ve public gizleme hâlâ bu sütuna
+   baktığı için her ölçek değişikliğinden sonra çağrılıyor. */
+async function ozetMaliyet(productId) {
+  const ozet = await db.prepare(
+    "SELECT MIN(unit_cost) AS enaz, COUNT(*)::int AS adet FROM product_cost_scales WHERE product_id = ?"
+  ).get(productId);
+  const enucuz = ozet.adet
+    ? await db.prepare("SELECT inputs FROM product_cost_scales WHERE product_id = ? ORDER BY unit_cost ASC LIMIT 1").get(productId)
+    : null;
+  await db.prepare(`
+    UPDATE products SET unit_cost = @unit_cost, cost_inputs = @cost_inputs,
+      cost_updated_at = @stamp, updated_at = CURRENT_TIMESTAMP WHERE id = @id
+  `).run({
+    id: productId,
+    unit_cost: ozet.adet ? round2(ozet.enaz) : null,
+    cost_inputs: enucuz?.inputs || null,
+    stamp: ozet.adet ? new Date().toISOString() : null
+  });
+}
+
+// Bir ürünün tüm ölçek kayıtları (en ucuzdan pahalıya).
+app.get("/api/products/:id/costs", requireAdmin, async (req, res) => {
+  res.json(await db.prepare(
+    "SELECT id, scale, unit_cost, inputs, updated_at FROM product_cost_scales WHERE product_id = ? ORDER BY unit_cost ASC, id ASC"
+  ).all(req.params.id));
+});
+
+/* Bir ölçek ekler ya da günceller. Aynı ürün + aynı ölçek etiketi ikinci kez
+   atanınca üzerine yazılır (upsert); farklı etiket yeni bir ölçek olur. */
 app.post("/api/products/:id/cost", requireAdmin, async (req, res) => {
   const urun = await db.prepare("SELECT id FROM products WHERE id = ?").get(req.params.id);
   if (!urun) return res.status(404).json({ error: "Ürün bulunamadı." });
@@ -1601,27 +1665,37 @@ app.post("/api/products/:id/cost", requireAdmin, async (req, res) => {
   if (!Number.isFinite(maliyet) || maliyet < 0) {
     return res.status(400).json({ error: "Maliyet 0 veya daha büyük bir sayı olmalı." });
   }
+  const olcek = String(req.body.scale || "").trim() || "Standart";
 
   await db.prepare(`
-    UPDATE products SET unit_cost = @unit_cost, cost_inputs = @cost_inputs,
-      cost_updated_at = NOW(), updated_at = CURRENT_TIMESTAMP
-    WHERE id = @id
+    INSERT INTO product_cost_scales (product_id, scale, unit_cost, inputs)
+    VALUES (@product_id, @scale, @unit_cost, @inputs)
+    ON CONFLICT (product_id, scale) DO UPDATE
+      SET unit_cost = EXCLUDED.unit_cost, inputs = EXCLUDED.inputs, updated_at = NOW()
   `).run({
-    id: urun.id,
+    product_id: urun.id,
+    scale: olcek,
     unit_cost: round2(maliyet),
-    cost_inputs: req.body.inputs && typeof req.body.inputs === "object"
-      ? JSON.stringify(req.body.inputs)
-      : null
+    inputs: req.body.inputs && typeof req.body.inputs === "object" ? JSON.stringify(req.body.inputs) : null
   });
 
-  res.json(await withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(urun.id)));
+  await ozetMaliyet(urun.id);
+  res.json({
+    product: await withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(urun.id)),
+    scales: await db.prepare("SELECT id, scale, unit_cost, inputs FROM product_cost_scales WHERE product_id = ? ORDER BY unit_cost ASC").all(urun.id)
+  });
 });
 
+/* Tek bir ölçeği siler (scaleId ile). scaleId yoksa ürünün TÜM ölçekleri. */
 app.delete("/api/products/:id/cost", requireAdmin, async (req, res) => {
   const urun = await db.prepare("SELECT id FROM products WHERE id = ?").get(req.params.id);
   if (!urun) return res.status(404).json({ error: "Ürün bulunamadı." });
-  await db.prepare("UPDATE products SET unit_cost = NULL, cost_inputs = NULL, cost_updated_at = NULL WHERE id = ?")
-    .run(urun.id);
+  if (req.query.scaleId) {
+    await db.prepare("DELETE FROM product_cost_scales WHERE id = ? AND product_id = ?").run(req.query.scaleId, urun.id);
+  } else {
+    await db.prepare("DELETE FROM product_cost_scales WHERE product_id = ?").run(urun.id);
+  }
+  await ozetMaliyet(urun.id);
   res.status(204).end();
 });
 
@@ -1888,7 +1962,7 @@ async function decorateProducts(products) {
   const ids = products.map((p) => p.id);
   const list = `(${ids.map(() => "?").join(",")})`;
 
-  const [colorRows, categoryRows, ratingRows, imageRows] = await Promise.all([
+  const [colorRows, categoryRows, ratingRows, imageRows, scaleRows] = await Promise.all([
     db.prepare(`
       SELECT pc.product_id, c.* FROM colors c
       JOIN product_colors pc ON pc.color_id = c.id
@@ -1911,6 +1985,11 @@ async function decorateProducts(products) {
       SELECT id, product_id, color_id, image_path, image_alt, sort_order
       FROM product_images WHERE product_id IN ${list}
       ORDER BY sort_order ASC, id ASC
+    `).all(...ids),
+    // Maliyet ölçekleri de toplu; public'te maliyetiGizle bunu siler.
+    db.prepare(`
+      SELECT id, product_id, scale, unit_cost, inputs FROM product_cost_scales
+      WHERE product_id IN ${list} ORDER BY unit_cost ASC, id ASC
     `).all(...ids)
   ]);
 
@@ -1923,13 +2002,15 @@ async function decorateProducts(products) {
   const categories = bucket(categoryRows);
   const ratings = Object.fromEntries(ratingRows.map((r) => [r.product_id, { average: r.average, count: r.count }]));
   const images = bucket(imageRows);
+  const scales = bucket(scaleRows);
 
   return products.map((product) => ({
     ...product,
     rating: ratings[product.id] || { average: null, count: 0 },
     colors: colors[product.id] || [],
     categories: categories[product.id] || [],
-    images: images[product.id] || []
+    images: images[product.id] || [],
+    cost_scales: scales[product.id] || []
   }));
 }
 
@@ -1945,7 +2026,10 @@ const withColors = async (product) => ({
   rating: (await ratingOfProduct.get(product.id)) || { average: null, count: 0 },
   colors: await colorsOfProduct.all(product.id),
   categories: await categoriesOfProduct.all(product.id),
-  images: await imagesOfProduct.all(product.id)
+  images: await imagesOfProduct.all(product.id),
+  cost_scales: await db.prepare(
+    "SELECT id, scale, unit_cost, inputs FROM product_cost_scales WHERE product_id = ? ORDER BY unit_cost ASC, id ASC"
+  ).all(product.id)
 });
 
 // A multi-select posts one value per checked box; multer/urlencoded gives a string
@@ -1985,7 +2069,7 @@ const priceChanged = (before, price, salePrice) =>
    dönüyor. Ayrı bir uç açmak yerine burada süzmek yeterli — panel zaten bu
    listeyi kullanıyor. */
 const maliyetiGizle = (urun) => {
-  const { unit_cost, cost_inputs, cost_updated_at, ...kalan } = urun;
+  const { unit_cost, cost_inputs, cost_updated_at, cost_scales, ...kalan } = urun;
   return kalan;
 };
 
