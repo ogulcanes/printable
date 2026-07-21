@@ -933,15 +933,40 @@ function renderCostProducts() {
   qs("#cost-pick-count").textContent = `${costSecili.size} seçili`;
 }
 
+/* Bir ürünün kayıtlı hesabını forma yükler ("neyi ne girmişim"). Kayıt yoksa
+   forma dokunmaz ve false döner. Hem kart tıklamasında hem "Kayıtlı hesabı
+   yükle" butonunda kullanılıyor. */
+function yukleUrunHesabi(id) {
+  const urun = state.products.find((p) => p.id === id);
+  if (!urun?.cost_inputs) return false;
+  let girdiler;
+  try { girdiler = JSON.parse(urun.cost_inputs); } catch { return false; }
+  if (!girdiler) return false;
+
+  const form = qs("#cost-form");
+  COST_ALANLAR.forEach((a) => {
+    if (girdiler[a] !== undefined) form.elements[a].value = girdiler[a];
+  });
+  form.elements.olcek.value = girdiler.olcek || "";
+  renderCost();
+  costDurum(`${urun.name} için kayıtlı hesap forma yüklendi — girdileri düzenleyip yeniden atayabilirsin.`, "tamam");
+  return true;
+}
+
 qs("#cost-product-grid").addEventListener("click", (event) => {
   const kart = event.target.closest("[data-cost-pick]");
   if (!kart) return;
   const id = Number(kart.dataset.costPick);
-  if (costSecili.has(id)) costSecili.delete(id);
-  else costSecili.add(id);
+  const secildi = !costSecili.has(id);   // tıklamadan sonraki durum
+  if (secildi) costSecili.add(id);
+  else costSecili.delete(id);
   kart.classList.toggle("active");
-  kart.setAttribute("aria-pressed", costSecili.has(id));
+  kart.setAttribute("aria-pressed", secildi);
   qs("#cost-pick-count").textContent = `${costSecili.size} seçili`;
+
+  // Seçilirken, ürünün kayıtlı hesabı varsa girdileri forma çek: karta tıkla,
+  // o ölçekte neyi ne girdiğini gör. Seçimden çıkarken yükleme yapma.
+  if (secildi) yukleUrunHesabi(id);
 });
 
 qs("#cost-pick-search").addEventListener("input", (event) => {
@@ -991,25 +1016,11 @@ qs("#cost-assign").addEventListener("click", async () => {
   }
 });
 
-/* Kayıtlı hesabı yükle: tek ürün seçiliyken anlamlı — birden fazla seçiliyken
-   hangisinin hesabını yükleyeceği belirsiz. */
+/* Kayıtlı hesabı yükle: tek ürün seçiliyken anlamlı. Kart tıklaması zaten
+   otomatik yüklüyor; bu buton kayıt yoksa açık bir mesaj vermek için duruyor. */
 qs("#cost-load").addEventListener("click", () => {
   if (costSecili.size !== 1) return costDurum("Kayıtlı hesabı yüklemek için tek bir ürün seçin.", "uyari");
-  const id = [...costSecili][0];
-  const urun = state.products.find((p) => p.id === id);
-  if (!urun?.cost_inputs) return costDurum("Bu ürün için kayıtlı bir hesap yok.", "uyari");
-
-  let girdiler;
-  try { girdiler = JSON.parse(urun.cost_inputs); } catch { girdiler = null; }
-  if (!girdiler) return costDurum("Kayıtlı hesap okunamadı.", "uyari");
-
-  const form = qs("#cost-form");
-  COST_ALANLAR.forEach((a) => {
-    if (girdiler[a] !== undefined) form.elements[a].value = girdiler[a];
-  });
-  form.elements.olcek.value = girdiler.olcek || "";
-  renderCost();
-  costDurum(`${urun.name} için kayıtlı hesap yüklendi.`, "tamam");
+  if (!yukleUrunHesabi([...costSecili][0])) costDurum("Bu ürün için kayıtlı bir hesap yok.", "uyari");
 });
 
 qs("#cost-clear").addEventListener("click", async () => {
