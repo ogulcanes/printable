@@ -799,6 +799,10 @@ function costGirdileri() {
   const form = qs("#cost-form");
   const g = {};
   COST_ALANLAR.forEach((a) => { g[a] = Number(form.elements[a].value) || 0; });
+  // Ölçek serbest bir ETİKET: hesaba girmez, yalnızca hangi boyutun maliyeti
+  // olduğunu not etmek için. costHesapla onu görmezden gelir; kaydedilir ve
+  // ürüne atandığında girdilerle birlikte saklanır.
+  g.olcek = form.elements.olcek.value.trim();
   return g;
 }
 
@@ -831,6 +835,12 @@ function renderCost() {
 
   const satir = (etiket, deger, sinif = "") =>
     `<div class="cost-cell ${sinif}"><span>${etiket}</span><strong>${money(yuvarla(deger))}</strong></div>`;
+
+  // Ölçek etiketi sonuçların başında; hesabın hangi boyuta ait olduğunu söyler.
+  qs("#cost-scale-label").innerHTML = g.olcek
+    ? `Ölçek: <strong>${escapeHtml(g.olcek)}</strong>`
+    : "";
+  qs("#cost-scale-label").hidden = !g.olcek;
 
   qs("#cost-results").innerHTML = [
     satir("Toplam malzeme mâliyeti", h.malzeme),
@@ -884,6 +894,7 @@ qs("#cost-save").addEventListener("click", async () => {
 qs("#cost-reset").addEventListener("click", () => {
   const form = qs("#cost-form");
   COST_ALANLAR.forEach((a) => { form.elements[a].value = a === "adet" ? 1 : 0; });
+  form.elements.olcek.value = "";
   renderCost();
 });
 
@@ -957,6 +968,7 @@ qs("#cost-load").addEventListener("click", () => {
   COST_ALANLAR.forEach((a) => {
     if (girdiler[a] !== undefined) form.elements[a].value = girdiler[a];
   });
+  form.elements.olcek.value = girdiler.olcek || "";
   renderCost();
   costDurum(`${urun.name} için kayıtlı hesap yüklendi.`, "tamam");
 });
@@ -1002,6 +1014,20 @@ function renderKatlac() {
         <label>Not
           <input type="text" data-katlac-note="${k.id}" value="${escapeHtml(k.note) || ""}" placeholder="İsteğe bağlı">
         </label>
+        <label>Kaynak linki
+          <input type="url" data-katlac-source="${k.id}" value="${escapeHtml(k.source_url) || ""}" placeholder="https://makerworld.com/...">
+        </label>
+        <div class="katlac-model">
+          ${k.model_key
+            ? `<span class="katlac-model__has">📎 ${escapeHtml(k.model_name) || "model dosyası"}</span>
+               <button type="button" class="small-button" data-katlac-download="${k.id}">İndir</button>
+               <button type="button" class="small-button danger" data-katlac-model-del="${k.id}">Kaldır</button>`
+            : `<label class="katlac-model__upload">
+                 <span>STL / 3MF yükle</span>
+                 <input type="file" accept=".stl,.3mf" data-katlac-model="${k.id}" hidden>
+               </label>`}
+          <span class="katlac-model__status" data-katlac-model-status="${k.id}"></span>
+        </div>
         <div class="katlac-card__actions">
           <button type="button" class="small-button" data-katlac-save="${k.id}">Kaydet</button>
           <button type="button" class="small-button danger" data-katlac-delete="${k.id}">Sil</button>
@@ -1081,7 +1107,8 @@ qs("#katlac-grid").addEventListener("click", async (event) => {
       body: JSON.stringify({
         name: qs(`[data-katlac-name="${kaydet}"]`).value,
         price: qs(`[data-katlac-price="${kaydet}"]`).value,
-        note: qs(`[data-katlac-note="${kaydet}"]`).value
+        note: qs(`[data-katlac-note="${kaydet}"]`).value,
+        source_url: qs(`[data-katlac-source="${kaydet}"]`).value
       })
     });
     durum.textContent = "Kaydedildi ✓";
@@ -1092,6 +1119,7 @@ qs("#katlac-grid").addEventListener("click", async (event) => {
       kayit.name = qs(`[data-katlac-name="${kaydet}"]`).value;
       kayit.price = Number(qs(`[data-katlac-price="${kaydet}"]`).value) || 0;
       kayit.note = qs(`[data-katlac-note="${kaydet}"]`).value;
+      kayit.source_url = qs(`[data-katlac-source="${kaydet}"]`).value;
     }
     setTimeout(() => { durum.textContent = ""; }, 2500);
   } else if (sil) {
@@ -1099,6 +1127,55 @@ qs("#katlac-grid").addEventListener("click", async (event) => {
     await api(`/api/katlac/${sil}`, { method: "DELETE" });
     state.katlac = state.katlac.filter((k) => String(k.id) !== sil);
     renderKatlac();
+  } else if (event.target.dataset.katlacDownload) {
+    // İmzalı adresi al, yeni sekmede aç.
+    const id = event.target.dataset.katlacDownload;
+    const { url } = await api(`/api/katlac/${id}/model`);
+    window.open(url, "_blank");
+  } else if (event.target.dataset.katlacModelDel) {
+    const id = event.target.dataset.katlacModelDel;
+    if (!confirm("Yüklü model dosyası kaldırılsın mı?")) return;
+    await api(`/api/katlac/${id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model_key: "", model_name: "" })
+    });
+    await refresh();
+    renderKatlac();
+  }
+});
+
+/* Model dosyası (STL/3MF) doğrudan Supabase Storage'a yüklenir: dosyalar
+   10-100 MB, Vercel'in ~4.5 MB istek sınırından geçemez. Sunucudan imzalı
+   adres alınır, dosya oraya PUT edilir, katlaç kaydına yalnızca anahtar yazılır. */
+qs("#katlac-grid").addEventListener("change", async (event) => {
+  const id = event.target.dataset.katlacModel;
+  if (!id) return;
+  const dosya = event.target.files[0];
+  if (!dosya) return;
+
+  const durum = qs(`[data-katlac-model-status="${id}"]`);
+  durum.textContent = "Yükleniyor…";
+  try {
+    const signRes = await fetch("/api/uploads/sign", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "model", filename: dosya.name })
+    });
+    if (signRes.status === 503) throw new Error("Dosya depolama yapılandırılmamış.");
+    const signed = await signRes.json();
+    if (!signRes.ok) throw new Error(signed.error || "Yükleme adresi alınamadı.");
+
+    const put = await fetch(signed.signedUrl, { method: "PUT", body: dosya });
+    if (!put.ok) throw new Error("Dosya yüklenemedi.");
+
+    await api(`/api/katlac/${id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model_key: signed.path, model_name: dosya.name })
+    });
+    durum.textContent = "";
+    await refresh();
+    renderKatlac();
+  } catch (error) {
+    durum.textContent = error.message;
   }
 });
 

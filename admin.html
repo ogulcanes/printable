@@ -452,6 +452,9 @@
               <label>Filament ağırlığı <small>gr</small><input type="number" name="agirlik" min="0" step="0.01" value="0"></label>
               <label>Baskı süresi <small>saat</small><input type="number" name="sure" min="0" step="0.01" value="0"></label>
               <label>Fire payı <small>%</small><input type="number" name="fire" min="0" step="0.1" value="0"></label>
+              <label>Ölçek <small>etiket · hesaba girmez</small>
+                <input type="text" name="olcek" placeholder="Örn. %100 · Büyük boy · 1:1">
+              </label>
             </fieldset>
 
             <fieldset class="cost-group">
@@ -482,6 +485,7 @@
 
         <div class="admin-card">
           <div class="card-title"><h2>Sonuçlar</h2></div>
+          <p id="cost-scale-label" class="cost-scale-label" hidden></p>
           <div id="cost-results" class="cost-results"></div>
           <p id="cost-warning" class="cost-warning" hidden></p>
         </div>

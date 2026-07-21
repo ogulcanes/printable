@@ -89,9 +89,19 @@ button { cursor: pointer; }
   font-weight: 800;
 }
 
-.sidebar nav { display: grid; gap: 8px; }
+.sidebar nav {
+  display: grid;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-height: 0;        /* flex çocuğunun taşmak yerine kaymasını sağlar */
+  overflow-y: auto;
+  margin: 0 -8px;       /* kaydırma çubuğu için nefes */
+  padding: 0 8px;
+}
+.sidebar nav::-webkit-scrollbar { width: 6px; }
+.sidebar nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 3px; }
 .tab {
-  min-height: 46px;
+  min-height: 40px;
   border: 1px solid transparent;
   border-radius: 8px;
   padding: 0 13px;
@@ -115,8 +125,9 @@ button { cursor: pointer; }
 }
 
 .sidebar-note {
-  margin-top: auto;
-  padding: 16px;
+  flex: 0 0 auto;
+  margin-top: 12px;
+  padding: 12px;
   border: 1px solid rgba(255,255,255,.1);
   border-radius: 8px;
   background: rgba(255,255,255,.06);
@@ -967,3 +978,45 @@ textarea { resize: vertical; }
 .cost-assign-status.tamam { color: #1f8f67; font-weight: 600; }
 .cost-assign-status.uyari { color: #b4232a; font-weight: 600; }
 .cost-assign-status.zarar { color: #b4232a; font-weight: 700; }
+
+/* Katlaç model dosyası + kaynak linki */
+.katlac-model {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--line, #e8eaf0);
+}
+.katlac-model__upload {
+  display: inline-flex;
+  cursor: pointer;
+}
+.katlac-model__upload span {
+  padding: 5px 10px;
+  border: 1px dashed #bcbfc8;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6c7180;
+}
+.katlac-model__upload:hover span { border-color: var(--orange, #ff6542); color: var(--orange, #ff6542); }
+.katlac-model__has {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1f8f67;
+  word-break: break-all;
+}
+.katlac-model__status { font-size: 12px; color: #b4232a; }
+
+/* Maliyet: ölçek etiketi (hesaba girmeyen not) */
+.cost-scale-label {
+  margin: 0 0 12px;
+  padding: 8px 13px;
+  background: #eef2ff;
+  border: 1px solid #cdd6f5;
+  border-radius: 10px;
+  font-size: 14px;
+  color: #384a8a;
+}
+.cost-scale-label strong { color: #1b2c66; }

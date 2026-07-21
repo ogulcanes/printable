@@ -92,7 +92,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "9";
+const SCHEMA_VERSION = "10";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -386,6 +386,9 @@ async function initDb() {
     price REAL NOT NULL DEFAULT 0,
     image_path TEXT NOT NULL,
     note TEXT,
+    source_url TEXT,
+    model_key TEXT,
+    model_name TEXT,
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -543,6 +546,11 @@ for (const [table, column, type] of [
      reddeder. Varsayılan kapalı — mevcut davranış bu ve açmak iş akışını
      değiştiren bir karar, sessizce başlatılmamalı. */
   ["site_settings", "track_stock", "INTEGER NOT NULL DEFAULT 0"],
+  /* Katlaç kaynağı: MakerWorld vb. modelin linki ve yüklenen STL/3MF.
+     model_key gizli "models" kovasında; indirmek imzalı adres gerektirir. */
+  ["katlac_items", "source_url", "TEXT"],
+  ["katlac_items", "model_key", "TEXT"],
+  ["katlac_items", "model_name", "TEXT"],
   ["site_settings", "min_cart_total", "REAL NOT NULL DEFAULT 0"],
   /* Satıcı kimliği — mesafeli satış sözleşmesi ve iade sayfaları bunlardan
      üretilir. Boş bırakılırsa sayfalar eksik olduklarını açıkça yazar. */
@@ -1650,8 +1658,14 @@ app.put("/api/katlac/:id", requireAdmin, async (req, res) => {
   if (req.body.price !== undefined && (!Number.isFinite(fiyat) || fiyat < 0)) {
     return res.status(400).json({ error: "Fiyat 0 veya daha büyük bir sayı olmalı." });
   }
+  // Model dosyası tarayıcıdan doğrudan Storage'a yüklendi; forma yalnızca
+  // anahtarı geldi. "" gelirse dosya kaldırılmak isteniyor demektir.
+  const modelAnahtari = req.body.model_key === undefined ? row.model_key
+    : (req.body.model_key?.trim() || null);
+
   await db.prepare(`
     UPDATE katlac_items SET name = @name, price = @price, note = @note,
+      source_url = @source_url, model_key = @model_key, model_name = @model_name,
       sort_order = @sort_order, updated_at = NOW() WHERE id = @id
   `).run({
     id: row.id,
@@ -1659,14 +1673,30 @@ app.put("/api/katlac/:id", requireAdmin, async (req, res) => {
     name: req.body.name === undefined ? row.name : (req.body.name.trim() || "İsimsiz katlaç"),
     price: req.body.price === undefined ? row.price : fiyat,
     note: req.body.note === undefined ? row.note : (req.body.note?.trim() || null),
+    source_url: req.body.source_url === undefined ? row.source_url : (req.body.source_url?.trim() || null),
+    model_key: modelAnahtari,
+    model_name: req.body.model_name === undefined ? row.model_name : (req.body.model_name?.trim() || null),
     sort_order: req.body.sort_order === undefined ? row.sort_order : toInt(req.body.sort_order)
   });
   res.json(await db.prepare("SELECT * FROM katlac_items WHERE id = ?").get(row.id));
 });
 
+/* Yüklenen STL/3MF gizli "models" kovasında; kalıcı genel adresi yok. İndirmek
+   için kısa ömürlü imzalı adres üretiliyor. Dış kaynak adresi (source_url)
+   buraya girmez, o zaten tarayıcıda doğrudan açılıyor. */
+app.get("/api/katlac/:id/model", requireAdmin, async (req, res) => {
+  const row = await db.prepare("SELECT model_key, model_name FROM katlac_items WHERE id = ?").get(req.params.id);
+  if (!row || !row.model_key) return res.status(404).json({ error: "Bu katlaç için yüklü model dosyası yok." });
+  const url = await storage.signedModelUrl(row.model_key);
+  if (!url) return res.status(503).json({ error: "İndirme adresi üretilemedi." });
+  res.json({ url, name: row.model_name });
+});
+
 app.delete("/api/katlac/:id", requireAdmin, async (req, res) => {
-  const row = await db.prepare("SELECT id FROM katlac_items WHERE id = ?").get(req.params.id);
+  const row = await db.prepare("SELECT id, model_key FROM katlac_items WHERE id = ?").get(req.params.id);
   if (!row) return res.status(404).json({ error: "Katlaç bulunamadı." });
+  // Kaydı silerken yüklü model dosyasını da depodan temizle.
+  if (row.model_key) await storage.remove("model", row.model_key);
   await db.prepare("DELETE FROM katlac_items WHERE id = ?").run(row.id);
   res.status(204).end();
 });
