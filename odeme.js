@@ -57,6 +57,7 @@
 
   let minSepet = 0;   // panelden gelen minimum sipariş tutarı; 0 = sınır yok
   let taxRate = 20; // KDV hariç fiyatların üstüne eklenir; oran /api/site-info'dan gelir.
+  let freeShippingThreshold = 599;
 
   // Campaigns are computed server-side; this holds the last preview so the
   // summary can show it. The server recomputes everything on submit anyway.
@@ -67,6 +68,8 @@
     const discount = Math.min(campaigns.discount || 0, subtotal);
     const net = subtotal - discount;
     const tax = net * taxRate / 100;
+    const total = Math.round((net + tax) * 100) / 100;
+    const ucretsizKargo = total >= freeShippingThreshold;
     qs("#summary-items").innerHTML = cart.map((i) =>
       `<div class="summary-item"><span>${i.quantity} × ${i.name}${
         i.scale ? ` <em>(${escapeHtml(i.scale)})</em>` : ""}</span><span>${money(i.price * i.quantity)}</span></div>`
@@ -85,7 +88,15 @@
     qs("#summary-tax-rate").textContent = `%${taxRate}`;
     qs("#summary-subtotal").textContent = money(subtotal);
     qs("#summary-tax").textContent = money(tax);
-    qs("#summary-total").textContent = money(net + tax);
+    qs("#summary-total").textContent = money(total);
+    qs(".summary-shipping").textContent = ucretsizKargo ? "Ücretsiz" : "Alıcı ödemeli";
+    const shippingNote = qs("#summary-shipping-note");
+    if (shippingNote) {
+      shippingNote.textContent = ucretsizKargo
+        ? "Ücretsiz kargoyu kazandınız 🎉"
+        : `Ücretsiz kargoya ${money(freeShippingThreshold - total)} kaldı.`;
+      shippingNote.classList.toggle("summary-note--qualified", ucretsizKargo);
+    }
   }
 
   // Ask the server what applies to this cart. Never computed in the browser.
@@ -123,6 +134,9 @@
   fetch("/api/site-info").then((r) => r.json()).then((info) => {
     if (info && Number.isFinite(Number(info.tax_rate))) taxRate = Number(info.tax_rate);
     if (info && Number.isFinite(Number(info.min_cart_total))) minSepet = Number(info.min_cart_total);
+    if (info && Number.isFinite(Number(info.free_shipping_threshold))) {
+      freeShippingThreshold = Number(info.free_shipping_threshold);
+    }
     renderSummary();
     showStep(step);   // minimum sağlanmıyorsa Devam butonu kilitlensin
   }).catch(() => {});
@@ -299,7 +313,9 @@
           <strong>Siparişiniz alındı! 🎉</strong>
           <p>Sipariş numaranız: <b>${data.order_number}</b></p>
           <p>Ödeme yöntemi: Kredi / banka kartı</p>
-          <p class="checkout-success__note">Kargo ücreti teslimatta alıcı tarafından ödenir.</p>
+          <p class="checkout-success__note">${data.shipping_method === "free"
+            ? "Siparişiniz ücretsiz kargo ile gönderilecektir."
+            : "Kargo ücreti teslimatta alıcı tarafından ödenir."}</p>
           <a class="btn-outline" href="/urunler">Alışverişe devam et</a>
         </div>`;
       qs("#co-submit").hidden = true;

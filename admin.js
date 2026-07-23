@@ -470,7 +470,7 @@ function renderOrders() {
           <span class="badge ${statusClass[order.status] || ""}">${statusLabels[order.status] || order.status}</span>
           <span class="badge blue">${money(order.total)}</span>
           <span class="badge">KDV %${order.tax_rate ?? 20}: ${money(order.tax_amount)}</span>
-          <span class="badge">Kargo: ${order.shipping_method === "recipient_paid" ? "Alıcı ödemeli" : "-"}</span>
+          <span class="badge">Kargo: ${order.shipping_method === "free" ? "Ücretsiz" : order.shipping_method === "recipient_paid" ? "Alıcı ödemeli" : "-"}</span>
           <span class="badge">${paymentLabels[order.payment_status] || order.payment_status}</span>
           <span class="badge">${paymentMethodLabels[order.payment_method] || "Ödeme yöntemi belirtilmemiş"}</span>
           <span class="badge">${escapeHtml(order.tracking_code) || "Takip kodu yok"}</span>

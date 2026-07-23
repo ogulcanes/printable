@@ -12,6 +12,8 @@ function saveCart() {
   try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch { /* ignore quota/privacy errors */ }
 }
 const cart = loadCart();
+let storefrontTaxRate = 20;
+let freeShippingThreshold = 599;
 
 /* Sepet satırının kimliği ÜRÜN + ÖLÇEK. Aynı katlacın küçük ve büyük boyu iki
    ayrı satır, iki ayrı fiyat; yalnızca ürün id'siyle eşleştirseydik biri
@@ -118,6 +120,15 @@ function renderCart() {
   if (footer) footer.hidden = cart.length === 0;
   const subtotalEl = document.querySelector("#cart-subtotal");
   if (subtotalEl) subtotalEl.textContent = money(cartSubtotal());
+  const shippingNote = document.querySelector("#cart-shipping-note");
+  if (shippingNote) {
+    const kdvliToplam = Math.round(cartSubtotal() * (1 + storefrontTaxRate / 100) * 100) / 100;
+    const kalan = Math.max(0, freeShippingThreshold - kdvliToplam);
+    shippingNote.textContent = kalan > 0
+      ? `Ücretsiz kargoya ${money(kalan)} kaldı`
+      : "Ücretsiz kargoyu kazandınız 🎉";
+    shippingNote.classList.toggle("cart-note--qualified", kalan === 0);
+  }
 }
 
 const categoryGrid = document.querySelector("#category-grid");
@@ -577,4 +588,11 @@ loadProducts();
 loadCategories();
 loadHeroSlides();
 renderCart();
+fetch("/api/site-info").then((response) => response.json()).then((info) => {
+  if (Number.isFinite(Number(info.tax_rate))) storefrontTaxRate = Number(info.tax_rate);
+  if (Number.isFinite(Number(info.free_shipping_threshold))) {
+    freeShippingThreshold = Number(info.free_shipping_threshold);
+  }
+  renderCart();
+}).catch(() => {});
 observeCards();

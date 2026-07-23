@@ -60,6 +60,7 @@ const SEED_ADMIN_USERS = [...new Set(
   (process.env.ADMIN_USERS || "ogulcan,furkan").split(",").map((name) => name.trim().toLowerCase()).filter(Boolean).concat(ADMIN_USER.toLowerCase())
 )];
 const KDV_RATE = 20; // Ürün fiyatları KDV dahildir; faturada bu oranla ayrıştırılır.
+const FREE_SHIPPING_THRESHOLD = 599; // İndirim sonrası KDV dâhil ürün toplamı.
 
 /* Şifreler scrypt ile saklanır: her hesaba rastgele salt, sabit-zamanlı karşılaştırma.
    Biçim: scrypt$<salt-hex>$<hash-hex>. Düz metin şifre hiçbir yere yazılmaz. */
@@ -1154,6 +1155,12 @@ async function seoHead(req, slug) {
 async function renderHeader(active) {
   const link = (href, label, key) => `<a${active === key ? ' class="active"' : ""} href="${href}">${label}</a>`;
   return `
+    <div class="top-strip">
+      <div class="container top-strip__inner">
+        <span>599 TL ve üzeri siparişlerde ücretsiz kargo</span>
+        <span>Güvenli alışveriş · Siparişe özel üretim</span>
+      </div>
+    </div>
     <header class="site-header">
       <div class="container header-main">
         <a class="logo printable-logo" href="/" aria-label="Printable ana sayfa">
@@ -1208,7 +1215,7 @@ function renderCartPanel() {
       <div id="cart-items" class="cart-items"></div>
       <div class="cart-panel__footer" id="cart-footer" hidden>
         <div class="cart-subtotal"><span>Ara toplam</span><strong id="cart-subtotal">0.00 TL</strong></div>
-        <p class="cart-note">Fiyatlara KDV eklenir · Kargo alıcı ödemeli</p>
+        <p class="cart-note" id="cart-shipping-note">599 TL ve üzeri ücretsiz kargo</p>
         <a class="cart-checkout" href="/odeme">Ödemeye geç</a>
         <button type="button" class="cart-continue" id="cart-continue">Alışverişe devam et</button>
       </div>
@@ -3639,6 +3646,7 @@ app.post("/api/checkout", async (req, res) => {
 
     const taxAmount = round2(uygulananNet * taxRate / 100);
     const grandTotal = round2(uygulananNet + taxAmount);
+    const shippingMethod = grandTotal >= FREE_SHIPPING_THRESHOLD ? "free" : "recipient_paid";
     // Compose the structured address (mahalle / ilçe / il / posta kodu) into one line.
     const locality = [
       customer.neighborhood?.trim() && `${customer.neighborhood.trim()} Mah.`,
@@ -3657,7 +3665,7 @@ app.post("/api/checkout", async (req, res) => {
         tax_rate, tax_amount, shipping_method, campaign_summary)
       VALUES (@order_number, @customer_id, 'new', 'pending', @shipping_address, @subtotal, @discount, @total, @notes,
         @invoice_type, @tc_no, @tax_office, @tax_number, @company_name, @billing_address, @payment_method,
-        @tax_rate, @tax_amount, 'recipient_paid', @campaign_summary)
+        @tax_rate, @tax_amount, @shipping_method, @campaign_summary)
     `).run({
       order_number: generatedNumber,
       customer_id: cust.lastInsertRowid,
@@ -3678,7 +3686,8 @@ app.post("/api/checkout", async (req, res) => {
       billing_address: billingAddress,
       payment_method: paymentMethod,
       tax_rate: taxRate,
-      tax_amount: taxAmount
+      tax_amount: taxAmount,
+      shipping_method: shippingMethod
     });
 
     const insertItem = tx.prepare(`
@@ -3729,10 +3738,10 @@ app.post("/api/checkout", async (req, res) => {
       for (const item of normalized) await dus.run(item.quantity, item.product_id);
     }
 
-    return generatedNumber;
+    return { order_number: generatedNumber, shipping_method: shippingMethod };
   });
 
-  res.status(201).json({ order_number: orderNumber });
+  res.status(201).json(orderNumber);
 });
 
 app.patch("/api/orders/:id", requireAdmin, async (req, res) => {
@@ -3765,7 +3774,8 @@ app.get("/api/site-info", async (req, res) => {
     working_hours: site.working_hours || "",
     social_links: site.social_links || "",
     show_stock: site.show_stock ?? 1,
-    min_cart_total: Number(site.min_cart_total ?? 0)
+    min_cart_total: Number(site.min_cart_total ?? 0),
+    free_shipping_threshold: FREE_SHIPPING_THRESHOLD
   });
 });
 
