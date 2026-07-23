@@ -3559,7 +3559,10 @@ app.post("/api/checkout", async (req, res) => {
     if (!isValidVKN(invoice.tax_number)) return res.status(400).json({ error: "Geçerli bir vergi numarası girin (10 hane)." });
   }
 
-  const paymentMethod = ["havale", "kapida", "kart"].includes(body.payment_method) ? body.payment_method : "havale";
+  if (body.payment_method !== "kart") {
+    return res.status(400).json({ error: "Yalnızca kredi veya banka kartıyla ödeme kabul edilir." });
+  }
+  const paymentMethod = "kart";
 
   // Fiyatlama ve kampanya hesabı transaction'dan ÖNCE: bunlar salt-okunur
   // sorgular, yazma kilidini gereksiz yere tutmasınlar.

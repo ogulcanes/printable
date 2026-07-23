@@ -9,6 +9,11 @@
   const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ESC[c]);
   const panels = [...document.querySelectorAll(".checkout-panel")];
   const stepItems = [...document.querySelectorAll("#checkout-steps li")];
+  const cartNotice = qs("#cart-notice");
+  if (cartNotice) {
+    cartNotice.hidden = true;
+    cartNotice.style.display = "none";
+  }
   let step = 1;
   const LAST = 4;
 
@@ -31,7 +36,7 @@
     }
     box.innerHTML = cart.map((item) => `
       <article class="checkout-item">
-        <img src="${item.image || "/assets/printable-logo.svg"}" alt="">
+        <img src="${item.image || "/assets/printable-logo.svg"}" alt="" onerror="this.onerror=null;this.src='/assets/printable-logo.svg'">
         <div class="checkout-item__info">
           <h3>${item.name}</h3>
           ${item.scale ? `<span class="cart-item__scale">${escapeHtml(item.scale)}</span>` : ""}
@@ -267,7 +272,7 @@
         same_as_shipping: sameAddress,
         billing_address: sameAddress ? "" : inv.billing_address.value.trim()
       },
-      payment_method: qs('input[name="payment_method"]:checked').value,
+      payment_method: "kart",
       // Only the code travels — the server prices the campaign itself.
       coupon_code: qs("#coupon-code")?.value.trim() || "",
       items: cart.map((i) => ({ product_id: i.id, scale_id: i.scale_id || null, quantity: i.quantity }))
@@ -293,7 +298,7 @@
         <div class="checkout-success">
           <strong>Siparişiniz alındı! 🎉</strong>
           <p>Sipariş numaranız: <b>${data.order_number}</b></p>
-          <p>${payload.payment_method === "havale" ? "Havale/EFT bilgileri e-posta ile paylaşılacaktır." : payload.payment_method === "kapida" ? "Teslimatta ödeme alınacaktır." : ""}</p>
+          <p>Ödeme yöntemi: Kredi / banka kartı</p>
           <p class="checkout-success__note">Kargo ücreti teslimatta alıcı tarafından ödenir.</p>
           <a class="btn-outline" href="/urunler">Alışverişe devam et</a>
         </div>`;
@@ -324,12 +329,14 @@
 
     const degisenler = [];
     const kalkanlar = [];
+    let sepetDegisti = false;
     for (let i = cart.length - 1; i >= 0; i -= 1) {
       const satir = cart[i];
       const urun = katalog.find((p) => p.id === satir.id && p.is_active);
       if (!urun) {
         kalkanlar.push(satir.name);
         cart.splice(i, 1);
+        sepetDegisti = true;
         continue;
       }
       /* Ölçekli üründe fiyat ölçekten gelir. Sepetteki ölçek silinmişse en
@@ -354,14 +361,19 @@
       } else if (olcekDegisti) {
         degisenler.push({ ad: etiket, eski: Number(satir.price), yeni: guncel });
       }
-      satir.name = urun.name;   // ad da değişmiş olabilir
+      const guncelGorsel = urun.image_path || null;
+      if (satir.name !== urun.name || satir.image !== guncelGorsel) {
+        satir.name = urun.name;
+        satir.image = guncelGorsel;
+        sepetDegisti = true;
+      }
     }
 
-    if (!degisenler.length && !kalkanlar.length) return;
+    if (!degisenler.length && !kalkanlar.length && !sepetDegisti) return;
     if (typeof saveCart === "function") saveCart();
 
     const kutu = qs("#cart-notice");
-    if (kutu) {
+    if (kutu && (degisenler.length || kalkanlar.length)) {
       kutu.innerHTML = [
         ...degisenler.map((d) =>
           `<span><strong>${escapeHtml(d.ad)}</strong> fiyatı güncellendi: ${money(d.eski)} → <strong>${money(d.yeni)}</strong></span>`),
@@ -369,6 +381,7 @@
           `<span><strong>${escapeHtml(ad)}</strong> artık satışta olmadığı için sepetinizden çıkarıldı.</span>`)
       ].join("");
       kutu.hidden = false;
+      kutu.style.removeProperty("display");
     }
     refreshCartViews();
     showStep(step);

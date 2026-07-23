@@ -5125,6 +5125,7 @@ body {
   font-size: 15px;
   line-height: 1.6;
 }
+.cart-notice[hidden] { display: none; }
 
 /* ---------- Ürün galerisi (detay sayfası) ----------
    Çerçeve artık kapsayıcıda değil ana görselde: aksi halde kenarlık küçük
