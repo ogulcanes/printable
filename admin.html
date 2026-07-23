@@ -492,9 +492,11 @@
 
         <div class="admin-card">
           <div class="card-title"><h2>Maliyeti Bir Ürüne Ata</h2></div>
-          <p class="form-note">Hesapladığın <strong>toplam net mâliyet</strong> seçtiğin ürünlere kaydedilir. Birden fazla ürün seçebilirsin — kartlara tıkla. Ürünler listesinde her ürünün maliyeti ve kâr marjı görünür.</p>
+          <p class="form-note">Hesapladığın <strong>toplam net mâliyet</strong> seçtiğin ürünlere kaydedilir, <strong>kârlı satış fiyatı</strong> da o ölçeğin mağazadaki fiyatı olur. Birden fazla ürün seçebilirsin — kartlara tıkla. Ürünler listesinde her ürünün maliyeti ve kâr marjı görünür.</p>
 
-          <p class="form-note">Bir ürünün birden fazla <strong>ölçeği</strong> olabilir (küçük/büyük boy gibi) — her biri ayrı maliyet. Formdaki <strong>Ölçek</strong> alanına etiket yazıp ata; aynı ürüne farklı etiketle atarsan yeni ölçek eklenir, aynı etikete atarsan güncellenir.</p>
+          <p class="form-note">Bir ürünün birden fazla <strong>ölçeği</strong> olabilir (küçük/büyük boy gibi) — her biri ayrı maliyet <em>ve ayrı fiyat</em>. Formdaki <strong>Ölçek</strong> alanına etiket yazıp ata; aynı ürüne farklı etiketle atarsan yeni ölçek eklenir, aynı etikete atarsan güncellenir. Müşteri ürün sayfasında bu ölçeklerden birini seçer ve seçtiği boyun fiyatını öder; ürün kartında en ucuz ölçeğin fiyatı <em>“…’den itibaren”</em> olarak görünür.</p>
+
+          <p class="form-note">Fiyat <strong>KDV hariç</strong> yazılır — vitrindeki bütün fiyatlar öyle (“Fiyata KDV eklenir · Kargo alıcı ödemeli”). Hedef kâr marjını 0 bırakırsan fiyat yazılmaz, ölçek yalnızca iç maliyet kaydı olarak kalır ve mağazada görünmez.</p>
 
           <div class="cost-pick-toolbar">
             <input type="search" id="cost-pick-search" placeholder="Ürün adı veya koda göre ara..." autocomplete="off">

@@ -15,12 +15,16 @@
     onSale: false,
     sort: "new"
   };
-  const isOnSale = (p) => p.sale_price && p.price > p.sale_price;
+  // Ölçekli üründe sale_price uygulanmıyor (bkz. script.js displayPrice), o
+  // yüzden "indirimdekiler" filtresine de girmiyor.
+  const isOnSale = (p) => !(p.scales || []).length && p.sale_price && p.price > p.sale_price;
   let products = [];
   let categories = [];
   let colors = [];
 
-  const priceOf = (p) => Number(p.sale_price || p.price) || 0;
+  // Fiyat filtresi ve sıralaması ölçekli üründe EN UCUZ ölçeğin fiyatına bakar
+  // — kartta gösterilen fiyat da o (script.js: displayPrice).
+  const priceOf = (p) => Number(displayPrice(p)) || 0;
 
   function renderCategoryFilters() {
     qs("#filter-categories").innerHTML = categories.map((category) => `

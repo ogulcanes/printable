@@ -12,6 +12,24 @@ function saveCart() {
   try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch { /* ignore quota/privacy errors */ }
 }
 const cart = loadCart();
+
+/* Sepet satırının kimliği ÜRÜN + ÖLÇEK. Aynı katlacın küçük ve büyük boyu iki
+   ayrı satır, iki ayrı fiyat; yalnızca ürün id'siyle eşleştirseydik biri
+   diğerinin adedine eklenir ve müşteri yanlış boydan sipariş verirdi.
+   Ölçeksiz ürünlerde (ve ölçekler eklenmeden önce doldurulmuş eski
+   sepetlerde) anahtar "12:" olur — eski satırlar bozulmadan çalışır. */
+const lineKey = (item) => `${item.id}:${item.scale_id || ""}`;
+
+// Ürünün müşteriye açık ölçekleri: fiyatı girilmiş, ucuzdan pahalıya sıralı.
+const productScales = (product) => (product && product.scales) || [];
+
+/* Karttaki fiyat: ölçekli üründe EN UCUZ ölçeğin fiyatı ("… TL'den başlayan"),
+   ölçeksizde varsa indirimli fiyat. Ölçekli üründe sale_price uygulanmaz —
+   sunucu da öyle hesaplıyor (normalizeCartItems). */
+const displayPrice = (product) => {
+  const scales = productScales(product);
+  return scales.length ? scales[0].price : (product.sale_price || product.price);
+};
 const storeProducts = document.querySelector("#store-products");
 const cartPanel = document.querySelector("#cart-panel");
 const cartCount = document.querySelector("#cart-count");
@@ -36,17 +54,30 @@ const ratingHTML = (product) => product.rating?.count
 
 function productCardHTML(product) {
   const off = discountPercent(product);
+  const scales = productScales(product);
+  /* Ölçekli üründe indirim rozeti ve üstü çizili fiyat gösterilmiyor: fiyat
+     ölçekten geliyor, sale_price o üründe uygulanmıyor (bkz. displayPrice). */
+  const priceHTML = scales.length
+    ? `${money(scales[0].price)}${scales.length > 1 ? `<span class="price-from">'den itibaren</span>` : ""}`
+    : `${money(product.sale_price || product.price)}${product.sale_price ? ` <s>${money(product.price)}</s>` : ""}`;
+  /* Birden fazla ölçek varsa karttan doğrudan sepete atmıyoruz — hangi boyu
+     istediğini müşteri seçmeli; buton ürün sayfasına götürür (bkz. aşağıdaki
+     data-add-product işleyicisi). Kartın görünümü değişmesin diye yine
+     <button>: .product-card button'un stili dört ayrı katmanda tanımlı,
+     yeni bir sınıf onların hepsini yeniden yazmayı gerektirirdi. */
+  const action = `<button data-add-product="${product.id}">${
+    scales.length > 1 ? "Ölçek seçin" : "Sepete ekle"}</button>`;
   return `
     <article class="product-card">
-      ${off ? `<span class="discount-badge">-%${off}</span>` : ""}
+      ${off && !scales.length ? `<span class="discount-badge">-%${off}</span>` : ""}
       <a class="product-card__link" href="/urun/${product.id}">
         <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" loading="lazy">
         <h3>${product.name}</h3>
       </a>
       ${ratingHTML(product)}
-      <p>${money(product.sale_price || product.price)}${product.sale_price ? ` <s>${money(product.price)}</s>` : ""} <span class="price-tax">+ KDV</span></p>
+      <p>${priceHTML} <span class="price-tax">+ KDV</span></p>
       <div class="swatches">${(product.colors || []).map((color) => `<span style="background:${color.hex}" title="${color.name}"></span>`).join("")}</div>
-      <button data-add-product="${product.id}">Sepete ekle</button>
+      ${action}
     </article>
   `;
 }
@@ -68,16 +99,17 @@ function renderCart() {
       <img src="${item.image || "/assets/printable-logo.svg"}" alt="">
       <div class="cart-item__info">
         <h3>${item.name}</h3>
+        ${item.scale ? `<span class="cart-item__scale">${item.scale}</span>` : ""}
         <p>${money(item.price)}</p>
         <div class="cart-qty">
-          <button type="button" data-dec="${item.id}" aria-label="Azalt">−</button>
+          <button type="button" data-dec="${lineKey(item)}" aria-label="Azalt">−</button>
           <span>${item.quantity}</span>
-          <button type="button" data-inc="${item.id}" aria-label="Artır">+</button>
+          <button type="button" data-inc="${lineKey(item)}" aria-label="Artır">+</button>
         </div>
       </div>
       <div class="cart-item__end">
         <strong>${money(item.price * item.quantity)}</strong>
-        <button type="button" class="cart-remove" data-remove-product="${item.id}">Kaldır</button>
+        <button type="button" class="cart-remove" data-remove-product="${lineKey(item)}">Kaldır</button>
       </div>
     </article>
   `).join("") || "<p class='cart-empty'>Sepetiniz boş.</p>";
@@ -159,10 +191,11 @@ function renderFeaturePanel(product) {
   if (!product) { panel.hidden = true; return; }
 
   const off = discountPercent(product);
-  const price = product.sale_price || product.price;
+  const scales = productScales(product);
+  const price = displayPrice(product);
   panel.innerHTML = `
     <a class="feature-panel__media" href="/urun/${product.id}">
-      ${off ? `<span class="discount-badge">-%${off}</span>` : ""}
+      ${off && !scales.length ? `<span class="discount-badge">-%${off}</span>` : ""}
       <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" loading="lazy">
     </a>
     <div class="feature-panel__body">
@@ -170,10 +203,12 @@ function renderFeaturePanel(product) {
       <h3><a href="/urun/${product.id}">${product.name}</a></h3>
       ${ratingHTML(product)}
       <p class="feature-panel__price">
-        ${money(price)}${product.sale_price ? ` <s>${money(product.price)}</s>` : ""}
+        ${money(price)}${scales.length > 1
+          ? `<span class="price-from">'den itibaren</span>`
+          : (!scales.length && product.sale_price ? ` <s>${money(product.price)}</s>` : "")}
         <span class="price-tax">+ KDV</span>
       </p>
-      <button type="button" data-add-product="${product.id}">Sepete ekle</button>
+      <button type="button" data-add-product="${product.id}">${scales.length > 1 ? "Ölçek seçin" : "Sepete ekle"}</button>
     </div>`;
   panel.hidden = false;
 }
@@ -224,38 +259,52 @@ async function loadProducts() {
   }
 }
 
-// Add a product to the cart (used by every "Sepete ekle" button across the site).
-function addToCart(product, quantity = 1) {
-  const existing = cart.find((item) => item.id === product.id);
-  if (existing) existing.quantity += quantity;
-  else cart.push({
+/* Add a product to the cart (used by every "Sepete ekle" button across the site).
+   scale: müşterinin seçtiği ölçek nesnesi ({id, scale, price}). Verilmezse ve
+   ürünün TEK ölçeği varsa o kullanılır — tek seçenekli bir listeden seçim
+   istemek gereksiz. Birden fazlaysa çağıran taraf (ürün sayfası) seçtirmek
+   zorunda; kartlar bu durumda zaten sepete ekleme butonu göstermiyor. */
+function addToCart(product, quantity = 1, scale = null) {
+  const scales = productScales(product);
+  const secili = scale || (scales.length === 1 ? scales[0] : null);
+  const satir = {
     id: product.id,
+    scale_id: secili ? secili.id : null,
+    scale: secili ? secili.scale : null,
     name: product.name,
-    price: product.sale_price || product.price,
+    price: secili ? secili.price : (product.sale_price || product.price),
     image: product.image_path || null,
     quantity
-  });
+  };
+  const existing = cart.find((item) => lineKey(item) === lineKey(satir));
+  if (existing) existing.quantity += quantity;
+  else cart.push(satir);
   saveCart();
   renderCart();
 }
 
 document.addEventListener("click", (event) => {
   const addId = event.target.dataset.addProduct;
-  const removeId = event.target.dataset.removeProduct;
-  const incId = event.target.dataset.inc;
-  const decId = event.target.dataset.dec;
+  const removeKey = event.target.dataset.removeProduct;
+  const incKey = event.target.dataset.inc;
+  const decKey = event.target.dataset.dec;
   if (addId) {
     const product = (window.printableProducts || []).find((item) => item.id === Number(addId));
     if (!product) return;
+    // Ölçek seçilmeden sepete atılamaz: müşteriyi ürün sayfasına gönder.
+    if (productScales(product).length > 1) {
+      location.href = `/urun/${product.id}`;
+      return;
+    }
     addToCart(product);
     cartPanel?.classList.add("open");
   }
-  if (incId) {
-    const item = cart.find((entry) => entry.id === Number(incId));
+  if (incKey) {
+    const item = cart.find((entry) => lineKey(entry) === incKey);
     if (item) { item.quantity += 1; saveCart(); renderCart(); }
   }
-  if (decId) {
-    const item = cart.find((entry) => entry.id === Number(decId));
+  if (decKey) {
+    const item = cart.find((entry) => lineKey(entry) === decKey);
     if (item) {
       item.quantity -= 1;
       if (item.quantity <= 0) cart.splice(cart.indexOf(item), 1);
@@ -263,8 +312,8 @@ document.addEventListener("click", (event) => {
       renderCart();
     }
   }
-  if (removeId) {
-    const index = cart.findIndex((item) => item.id === Number(removeId));
+  if (removeKey) {
+    const index = cart.findIndex((item) => lineKey(item) === removeKey);
     if (index >= 0) { cart.splice(index, 1); saveCart(); renderCart(); }
   }
 });

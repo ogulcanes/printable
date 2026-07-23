@@ -3189,6 +3189,67 @@ body {
   font-size: 18px;
   margin-left: 8px;
 }
+/* Ölçek seçici — küçük/büyük boy gibi, her biri kendi fiyatıyla. Renk
+   noktalarının aksine fiyatı değiştirdiği için okunur bir kart olarak
+   gösteriliyor: müşteri neyi seçtiğini ve ne ödeyeceğini bir arada görmeli. */
+.product-detail__scales {
+  margin-bottom: 18px;
+}
+.product-detail__scales-title {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.scale-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.scale-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 108px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.scale-option strong { font-size: 14px; font-weight: 700; }
+.scale-option span { font-size: 13px; font-weight: 700; color: var(--accent); }
+.scale-option:hover { border-color: var(--accent); }
+.scale-option.active {
+  border-color: var(--accent);
+  background: #fff6f2;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.product-detail__scale-single {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 14px;
+}
+/* "120.00 TL'den itibaren" — ölçekli üründe kartta en ucuz fiyat yazıyor. */
+.price-from {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+/* Sepette satırın hangi boy olduğu; ürün adının hemen altında. */
+.cart-item__scale {
+  display: inline-block;
+  margin-bottom: 3px;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--soft);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
 .product-detail__colors {
   display: flex;
   align-items: center;
@@ -3549,6 +3610,8 @@ body {
 .checkout-summary h2 { font-size: 18px; margin-bottom: 16px; }
 .summary-items { display: grid; gap: 8px; margin-bottom: 16px; }
 .summary-item { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; color: var(--text); }
+/* Özetteki ölçek adı — "2 × Ejderha (Büyük boy)". */
+.summary-item em { font-style: normal; color: var(--muted); }
 .summary-empty { color: var(--muted); }
 .summary-line { display: flex; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--line); }
 .summary-total strong { font-size: 20px; color: var(--accent); }

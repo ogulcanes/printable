@@ -34,16 +34,17 @@
         <img src="${item.image || "/assets/printable-logo.svg"}" alt="">
         <div class="checkout-item__info">
           <h3>${item.name}</h3>
+          ${item.scale ? `<span class="cart-item__scale">${escapeHtml(item.scale)}</span>` : ""}
           <p>${money(item.price)}</p>
           <div class="cart-qty">
-            <button type="button" data-co-dec="${item.id}" aria-label="Azalt">−</button>
+            <button type="button" data-co-dec="${lineKey(item)}" aria-label="Azalt">−</button>
             <span>${item.quantity}</span>
-            <button type="button" data-co-inc="${item.id}" aria-label="Artır">+</button>
+            <button type="button" data-co-inc="${lineKey(item)}" aria-label="Artır">+</button>
           </div>
         </div>
         <div class="checkout-item__end">
           <strong>${money(item.price * item.quantity)}</strong>
-          <button type="button" class="cart-remove" data-co-remove="${item.id}">Kaldır</button>
+          <button type="button" class="cart-remove" data-co-remove="${lineKey(item)}">Kaldır</button>
         </div>
       </article>
     `).join("");
@@ -62,7 +63,8 @@
     const net = subtotal - discount;
     const tax = net * taxRate / 100;
     qs("#summary-items").innerHTML = cart.map((i) =>
-      `<div class="summary-item"><span>${i.quantity} × ${i.name}</span><span>${money(i.price * i.quantity)}</span></div>`
+      `<div class="summary-item"><span>${i.quantity} × ${i.name}${
+        i.scale ? ` <em>(${escapeHtml(i.scale)})</em>` : ""}</span><span>${money(i.price * i.quantity)}</span></div>`
     ).join("") || `<p class="summary-empty">Sepet boş</p>`;
 
     const rows = [
@@ -94,7 +96,7 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           code: qs("#coupon-code")?.value || "",
-          items: cart.map((i) => ({ product_id: i.id, quantity: i.quantity }))
+          items: cart.map((i) => ({ product_id: i.id, scale_id: i.scale_id || null, quantity: i.quantity }))
         })
       });
       campaigns = await res.json();
@@ -214,12 +216,14 @@
     const inc = event.target.dataset.coInc;
     const dec = event.target.dataset.coDec;
     const rem = event.target.dataset.coRemove;
-    const id = Number(inc || dec || rem);
-    if (!id) return;
-    const item = cart.find((i) => i.id === id);
+    // Satır kimliği ürün + ölçek (script.js: lineKey) — aynı ürünün iki boyu
+    // sepette iki ayrı satır, biri diğerinin adedini değiştirmemeli.
+    const key = inc || dec || rem;
+    if (!key) return;
+    const item = cart.find((i) => lineKey(i) === key);
     if (inc && item) item.quantity += 1;
     if (dec && item) { item.quantity -= 1; if (item.quantity <= 0) cart.splice(cart.indexOf(item), 1); }
-    if (rem) { const idx = cart.findIndex((i) => i.id === id); if (idx >= 0) cart.splice(idx, 1); }
+    if (rem) { const idx = cart.findIndex((i) => lineKey(i) === key); if (idx >= 0) cart.splice(idx, 1); }
     saveCart();
     refreshCartViews();
     qs("#co-next").disabled = cart.length === 0;
@@ -266,7 +270,7 @@
       payment_method: qs('input[name="payment_method"]:checked').value,
       // Only the code travels — the server prices the campaign itself.
       coupon_code: qs("#coupon-code")?.value.trim() || "",
-      items: cart.map((i) => ({ product_id: i.id, quantity: i.quantity }))
+      items: cart.map((i) => ({ product_id: i.id, scale_id: i.scale_id || null, quantity: i.quantity }))
     };
 
     const button = qs("#co-submit");
@@ -328,10 +332,27 @@
         cart.splice(i, 1);
         continue;
       }
-      const guncel = Number(urun.sale_price || urun.price);
+      /* Ölçekli üründe fiyat ölçekten gelir. Sepetteki ölçek silinmişse en
+         ucuğuna düşülür (sunucu da öyle yapıyor) ve müşteriye söylenir —
+         sessizce başka bir boyun fiyatını uygulamak olmaz. */
+      const olcekler = urun.scales || [];
+      const olcek = olcekler.length
+        ? olcekler.find((s) => s.id === satir.scale_id) || olcekler[0]
+        : null;
+      // Satırın etiketi: ölçek değiştiyse "eski → yeni", yoksa sadece ölçek adı.
+      const olcekDegisti = olcek && satir.scale_id && olcek.id !== satir.scale_id;
+      const etiket = olcekDegisti
+        ? `${urun.name} (${satir.scale || "ölçek"} → ${olcek.scale})`
+        : urun.name + (olcek ? ` (${olcek.scale})` : "");
+      satir.scale_id = olcek ? olcek.id : null;
+      satir.scale = olcek ? olcek.scale : null;
+
+      const guncel = Number(olcek ? olcek.price : (urun.sale_price || urun.price));
       if (Number.isFinite(guncel) && guncel !== Number(satir.price)) {
-        degisenler.push({ ad: urun.name, eski: Number(satir.price), yeni: guncel });
+        degisenler.push({ ad: etiket, eski: Number(satir.price), yeni: guncel });
         satir.price = guncel;
+      } else if (olcekDegisti) {
+        degisenler.push({ ad: etiket, eski: Number(satir.price), yeni: guncel });
       }
       satir.name = urun.name;   // ad da değişmiş olabilir
     }

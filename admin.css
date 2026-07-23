@@ -750,6 +750,37 @@ textarea { resize: vertical; }
   font-weight: 400;
   color: #171722;
 }
+/* Katlacın vitrindeki karşılığı: durum rozeti, fiyat ve kısayollar. */
+.katlac-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0 2px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: #f3f7ff;
+  border: 1px solid #d8e4fb;
+  font-size: 12px;
+}
+.katlac-link--none { background: #fafbfe; border-color: var(--line, #e8eaf0); color: var(--muted, #6c7180); }
+.katlac-link__badge {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.katlac-link__badge.on { background: #e4f6ec; color: #1f8f67; }
+.katlac-link__badge.off { background: #fdeced; color: #b4232a; }
+.katlac-link__name { font-weight: 700; color: var(--ink, #181a22); }
+.katlac-link__price { color: var(--orange, #ff6542); font-variant-numeric: tabular-nums; }
+.katlac-link__warn { color: #b4232a; font-weight: 600; }
+/* Bağlıyken fiyat alanı yerine geçen açıklama. */
+.katlac-price-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted, #6c7180);
+}
 .katlac-card__actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .katlac-card__actions .small-button.danger { color: #b4232a; border-color: #f3c2c5; }
 .katlac-status { font-size: 12px; color: #1f9254; font-weight: 600; }
@@ -875,6 +906,18 @@ textarea { resize: vertical; }
     color: #b4aea4;
     font-style: italic;
   }
+  /* Ölçekli üründe her boy alt alta: "Küçük 59.76 TL / Büyük 131.28 TL". */
+  .katlac-row__scale {
+    display: block;
+    font-size: 9.5pt;
+    line-height: 1.35;
+  }
+  .katlac-row__scale em {
+    font-style: normal;
+    font-weight: 600;
+    color: #6b6862;
+    margin-right: 2mm;
+  }
 
   /* --- alt bilgi --- */
   .katlac-print-foot {
@@ -944,6 +987,25 @@ textarea { resize: vertical; }
 .cost-cell--loss { background: #fdeced; border-color: #f3c2c5; }
 .cost-cell--loss span { color: #8a4145; }
 .cost-cell--loss strong { color: #b4232a; }
+/* Mağazaya yazılan rakam: ölçeğin satış fiyatı. Diğer çıktılar bilgi, bu
+   ölçek atandığında müşterinin gördüğü fiyat olacak — ayrışsın. */
+.cost-cell--price { background: #fff2eb; border-color: #ffd6c7; }
+.cost-cell--price span { color: #a8482c; }
+.cost-cell--price strong { color: #ff6542; }
+/* İki sınıf: yukarıdaki ".cost-cell--price span" bu span'i de yakalıyor ve
+   tek sınıflı bir seçici onun rengini geri alamazdı. */
+.cost-cell .cost-cell__tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: #ff6542;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+}
 
 .cost-warning {
   margin: 16px 0 0;
@@ -1098,6 +1160,17 @@ textarea { resize: vertical; }
   font-weight: 700;
   justify-self: start;
 }
+/* "3 boy satışta" — ölçeklerin kaçının müşteriye açık olduğu. */
+.cost-pick__variant {
+  margin: 2px 10px 0;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: #fff2eb;
+  color: #ff6542;
+  font-size: 11px;
+  font-weight: 700;
+  justify-self: start;
+}
 /* Seçim tiki — yalnızca seçiliyken görünür. */
 .cost-pick__check {
   position: absolute;
@@ -1142,5 +1215,9 @@ textarea { resize: vertical; }
 }
 .cost-scale-row__name { font-weight: 700; flex: 1 1 120px; }
 .cost-scale-row__cost { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--ink, #181a22); }
+/* Ölçeğin mağazadaki satış fiyatı — maliyetten ayırt edilsin diye turuncu. */
+.cost-scale-row__sale { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--orange, #ff6542); }
+.cost-scale-row__sale em { font-style: normal; font-weight: 600; font-size: 12px; color: var(--muted, #6c7180); }
 .cost-scale-row__marj { font-size: 12px; font-weight: 600; color: #1f8f67; }
 .cost-scale-row__marj.loss { color: #b4232a; }
+.cost-scales__head small { font-weight: 600; color: var(--muted, #6c7180); }

@@ -92,7 +92,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "11";
+const SCHEMA_VERSION = "13";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -389,14 +389,27 @@ async function initDb() {
     source_url TEXT,
     model_key TEXT,
     model_name TEXT,
+    /* Vitrine çıkarıldıysa üretilen ürünün id'si. Bağ tek yönlü ve gevşek:
+       FOREIGN KEY YOK, çünkü bu kolon var olan veritabanlarına ALTER TABLE ile
+       ekleniyor ve migration listesi kısıt ekleyemiyor — kısıtı yalnızca yeni
+       kurulumlara koymak, iki ortamı sessizce farklı davranan hâle getirirdi.
+       Ürün silinirse id boşta kalır; okuyan taraf ürünü bulamayınca katlacı
+       "vitrinde değil" sayar ve yeniden çıkarmaya izin verir. */
+    product_id INTEGER,
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
-  /* Ürün başına ÖLÇEK başına maliyet. Bir katlaç büyük/küçük boyda farklı
-     filament ve süre tükettiği için tek maliyet yetmiyor. Her satır bir
-     ölçeğin (etiket) girdileri ve hesaplanan net maliyeti.
+  /* Ürün başına ÖLÇEK başına maliyet VE satış fiyatı. Bir katlaç büyük/küçük
+     boyda farklı filament ve süre tükettiği için tek maliyet yetmiyor. Her
+     satır bir ölçeğin (etiket) girdileri, hesaplanan net maliyeti ve o
+     maliyetten çıkan kârlı satış fiyatı.
+
+     price DOLUYSA ölçek müşteriye açık bir VARYANT olur: ürün sayfasında
+     seçilir, sepete o ölçeğin fiyatıyla girer (tekstildeki beden/renk gibi).
+     Boşsa ölçek yalnızca iç maliyet kaydıdır ve mağazada görünmez.
+
      products.unit_cost bu satırların EN DÜŞÜĞÜ olarak özetleniyor — liste
      rozeti ve public gizleme onu kullandığı için bozmuyoruz. */
   CREATE TABLE IF NOT EXISTS product_cost_scales (
@@ -404,6 +417,7 @@ async function initDb() {
     product_id INTEGER NOT NULL,
     scale TEXT NOT NULL DEFAULT 'Standart',
     unit_cost REAL NOT NULL DEFAULT 0,
+    price REAL,
     inputs TEXT,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (product_id, scale),
@@ -497,6 +511,9 @@ async function initDb() {
     order_id INTEGER NOT NULL,
     product_id INTEGER,
     product_name TEXT NOT NULL,
+    -- Sipariş edilen ölçek ADI, kopyalanarak. Ölçek sonradan silinse ya da adı
+    -- değişse bile atölye ne bastığını sipariş kaleminden okuyabilsin.
+    scale TEXT,
     quantity INTEGER NOT NULL DEFAULT 1,
     unit_price REAL NOT NULL DEFAULT 0,
     line_total REAL NOT NULL DEFAULT 0,
@@ -527,6 +544,10 @@ for (const [table, column, type] of [
   ["products", "unit_cost", "REAL"],
   ["products", "cost_inputs", "TEXT"],
   ["products", "cost_updated_at", "TIMESTAMPTZ"],
+  /* Ölçeğin satış fiyatı (maliyet + hedef kâr marjı). Doluysa ölçek müşteriye
+     açık bir varyanttır; sipariş kalemine hangi ölçeğin gittiği yazılır. */
+  ["product_cost_scales", "price", "REAL"],
+  ["order_items", "scale", "TEXT"],
   ["products", "meta_title", "TEXT"],
   ["products", "meta_description", "TEXT"],
   ["products", "meta_keywords", "TEXT"],
@@ -567,6 +588,8 @@ for (const [table, column, type] of [
   ["katlac_items", "source_url", "TEXT"],
   ["katlac_items", "model_key", "TEXT"],
   ["katlac_items", "model_name", "TEXT"],
+  // Katlaçtan üretilen vitrin ürünü (bkz. tablo tanımındaki not).
+  ["katlac_items", "product_id", "INTEGER"],
   ["site_settings", "min_cart_total", "REAL NOT NULL DEFAULT 0"],
   /* Satıcı kimliği — mesafeli satış sözleşmesi ve iade sayfaları bunlardan
      üretilir. Boş bırakılırsa sayfalar eksik olduklarını açıkça yazar. */
@@ -1376,7 +1399,15 @@ async function productMetaTags(req, product) {
   const description = product.meta_description || product.description || site.description || "";
   const canonical = absoluteUrl(req, `/urun/${product.id}`, site.site_url);
   const image = absoluteUrl(req, product.image_path || site.default_og_image, site.site_url);
-  const price = Number(product.sale_price || product.price || 0).toFixed(2);
+  /* Ölçekli ürünün tek bir fiyatı yok. Böyle ürünlerde teklif AggregateOffer
+     olur: arama sonucunda "120–260 TL" aralığı görünür, tek fiyat yazıp
+     müşteriyi yanıltmamış oluruz. */
+  const olcekler = satisOlcekleri(await db.prepare(
+    "SELECT id, scale, price FROM product_cost_scales WHERE product_id = ?"
+  ).all(product.id));
+  const price = Number(
+    (olcekler.length ? olcekler[0].price : product.sale_price || product.price) || 0
+  ).toFixed(2);
 
   const tags = [
     `<title>${escapeHtml(title)}</title>`,
@@ -1406,13 +1437,23 @@ async function productMetaTags(req, product) {
     ...(description ? { description } : {}),
     ...(product.sku ? { sku: product.sku } : {}),
     brand: { "@type": "Brand", name: site.site_name || "Printable" },
-    offers: {
-      "@type": "Offer",
-      price,
-      priceCurrency: "TRY",
-      availability: product.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
-      url: canonical
-    }
+    offers: olcekler.length > 1
+      ? {
+          "@type": "AggregateOffer",
+          lowPrice: price,
+          highPrice: Number(olcekler[olcekler.length - 1].price).toFixed(2),
+          offerCount: olcekler.length,
+          priceCurrency: "TRY",
+          availability: product.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+          url: canonical
+        }
+      : {
+          "@type": "Offer",
+          price,
+          priceCurrency: "TRY",
+          availability: product.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+          url: canonical
+        }
   };
   tags.push(`<script type="application/ld+json">${JSON.stringify(jsonLd).replace(/</g, "\\u003c")}</script>`);
 
@@ -1629,34 +1670,61 @@ app.put("/api/cost-settings", requireAdmin, async (req, res) => {
    "bu 25,48 nereden çıktı" sorusunun yanıtı ve hesabı yeniden açmak için. */
 /* products.unit_cost'u ölçeklerin EN DÜŞÜĞÜ olarak özetler; hiç ölçek yoksa
    NULL yapar. Liste rozeti, kâr marjı ve public gizleme hâlâ bu sütuna
-   baktığı için her ölçek değişikliğinden sonra çağrılıyor. */
+   baktığı için her ölçek değişikliğinden sonra çağrılıyor.
+
+   products.price da burada özetleniyor: fiyatı girilmiş ölçeklerin EN DÜŞÜĞÜ.
+   Ürün kartında tek bir fiyat gösterilebiliyor, o yüzden orada BAŞLANGIÇ
+   fiyatı yazıyor; müşteri ürün sayfasında ölçeği seçince kendi fiyatına
+   geçiyor. Hiçbir ölçeğin fiyatı yoksa ürünün elle girilmiş fiyatına
+   dokunulmuyor — maliyet kaydı fiyatı sıfırlamamalı.
+
+   Değişiklik price_history'ye de düşer: fiyat maliyetten türetilse bile
+   "ne zaman ne oldu" zincirinin kopmaması gerekiyor. */
 async function ozetMaliyet(productId) {
+  const oncesi = await db.prepare("SELECT price, sale_price FROM products WHERE id = ?").get(productId);
   const ozet = await db.prepare(
     "SELECT MIN(unit_cost) AS enaz, COUNT(*)::int AS adet FROM product_cost_scales WHERE product_id = ?"
   ).get(productId);
   const enucuz = ozet.adet
     ? await db.prepare("SELECT inputs FROM product_cost_scales WHERE product_id = ? ORDER BY unit_cost ASC LIMIT 1").get(productId)
     : null;
+  // price > 0 aynı zamanda NULL'ları eler (NULL > 0 → NULL, satır düşer).
+  const satis = await db.prepare(
+    "SELECT MIN(price) AS enaz FROM product_cost_scales WHERE product_id = ? AND price > 0"
+  ).get(productId);
+  const yeniFiyat = Number(satis?.enaz) > 0 ? round2(Number(satis.enaz)) : null;
+
   await db.prepare(`
     UPDATE products SET unit_cost = @unit_cost, cost_inputs = @cost_inputs,
-      cost_updated_at = @stamp, updated_at = CURRENT_TIMESTAMP WHERE id = @id
+      cost_updated_at = @stamp, price = COALESCE(@price, price),
+      updated_at = CURRENT_TIMESTAMP WHERE id = @id
   `).run({
     id: productId,
     unit_cost: ozet.adet ? round2(ozet.enaz) : null,
     cost_inputs: enucuz?.inputs || null,
+    price: yeniFiyat,
     stamp: ozet.adet ? new Date().toISOString() : null
   });
+
+  if (yeniFiyat !== null && oncesi && priceChanged(oncesi, yeniFiyat, oncesi.sale_price)) {
+    await logPrice(productId, yeniFiyat, oncesi.sale_price ?? null);
+  }
+  return { price: yeniFiyat, previous_price: oncesi ? Number(oncesi.price) : null };
 }
 
 // Bir ürünün tüm ölçek kayıtları (en ucuzdan pahalıya).
 app.get("/api/products/:id/costs", requireAdmin, async (req, res) => {
   res.json(await db.prepare(
-    "SELECT id, scale, unit_cost, inputs, updated_at FROM product_cost_scales WHERE product_id = ? ORDER BY unit_cost ASC, id ASC"
+    "SELECT id, scale, unit_cost, price, inputs, updated_at FROM product_cost_scales WHERE product_id = ? ORDER BY unit_cost ASC, id ASC"
   ).all(req.params.id));
 });
 
 /* Bir ölçek ekler ya da günceller. Aynı ürün + aynı ölçek etiketi ikinci kez
-   atanınca üzerine yazılır (upsert); farklı etiket yeni bir ölçek olur. */
+   atanınca üzerine yazılır (upsert); farklı etiket yeni bir ölçek olur.
+
+   price gönderilirse (hesabın "kârlı satış fiyatı" çıktısı) ölçek mağazada
+   seçilebilir bir varyanta dönüşür ve ürünün fiyatı ozetMaliyet içinde
+   güncellenir. Gönderilmezse ölçek yalnızca iç maliyet kaydı olarak kalır. */
 app.post("/api/products/:id/cost", requireAdmin, async (req, res) => {
   const urun = await db.prepare("SELECT id FROM products WHERE id = ?").get(req.params.id);
   if (!urun) return res.status(404).json({ error: "Ürün bulunamadı." });
@@ -1665,24 +1733,32 @@ app.post("/api/products/:id/cost", requireAdmin, async (req, res) => {
   if (!Number.isFinite(maliyet) || maliyet < 0) {
     return res.status(400).json({ error: "Maliyet 0 veya daha büyük bir sayı olmalı." });
   }
+  const bosFiyat = req.body.price === null || req.body.price === undefined || req.body.price === "";
+  const fiyat = bosFiyat ? null : Number(req.body.price);
+  if (fiyat !== null && (!Number.isFinite(fiyat) || fiyat < 0)) {
+    return res.status(400).json({ error: "Satış fiyatı 0 veya daha büyük bir sayı olmalı." });
+  }
   const olcek = String(req.body.scale || "").trim() || "Standart";
 
   await db.prepare(`
-    INSERT INTO product_cost_scales (product_id, scale, unit_cost, inputs)
-    VALUES (@product_id, @scale, @unit_cost, @inputs)
+    INSERT INTO product_cost_scales (product_id, scale, unit_cost, price, inputs)
+    VALUES (@product_id, @scale, @unit_cost, @price, @inputs)
     ON CONFLICT (product_id, scale) DO UPDATE
-      SET unit_cost = EXCLUDED.unit_cost, inputs = EXCLUDED.inputs, updated_at = NOW()
+      SET unit_cost = EXCLUDED.unit_cost, price = EXCLUDED.price,
+          inputs = EXCLUDED.inputs, updated_at = NOW()
   `).run({
     product_id: urun.id,
     scale: olcek,
     unit_cost: round2(maliyet),
+    price: fiyat === null ? null : round2(fiyat),
     inputs: req.body.inputs && typeof req.body.inputs === "object" ? JSON.stringify(req.body.inputs) : null
   });
 
-  await ozetMaliyet(urun.id);
+  const fiyatlama = await ozetMaliyet(urun.id);
   res.json({
     product: await withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(urun.id)),
-    scales: await db.prepare("SELECT id, scale, unit_cost, inputs FROM product_cost_scales WHERE product_id = ? ORDER BY unit_cost ASC").all(urun.id)
+    pricing: fiyatlama,
+    scales: await db.prepare("SELECT id, scale, unit_cost, price, inputs FROM product_cost_scales WHERE product_id = ? ORDER BY unit_cost ASC").all(urun.id)
   });
 });
 
@@ -1702,10 +1778,92 @@ app.delete("/api/products/:id/cost", requireAdmin, async (req, res) => {
 /* ---------- Katlaç kataloğu (yalnızca panel) ----------
    Her rota requireAdmin arkasında; bu listenin herkese açık bir ucu YOK. */
 
+/* Katlaç listesi, vitrindeki karşılığıyla birlikte. Fiyat iki yerde
+   tutulmuyor: katlaç bir ürüne bağlıysa geçerli fiyat ÜRÜNÜN fiyatıdır
+   (ölçeklerden hesaplanan), katlac_items.price yalnızca henüz vitrine
+   çıkmamış kayıtlar için elle girilen tahmindir. Panel ve PDF listesi
+   ikisini de bu alandan okur, böylece iki farklı fiyat gösterme ihtimali
+   ortadan kalkar. */
 app.get("/api/katlac", requireAdmin, async (req, res) => {
-  res.json(await db.prepare(
+  const liste = await db.prepare(
     "SELECT * FROM katlac_items ORDER BY sort_order ASC, id ASC"
-  ).all());
+  ).all();
+
+  const idler = [...new Set(liste.map((k) => k.product_id).filter(Boolean))];
+  if (!idler.length) return res.json(liste.map((k) => ({ ...k, product: null })));
+
+  // Tek sorguda: katlaç başına ürün sorgusu N+1 olurdu.
+  const urunler = await decorateProducts(await db.prepare(
+    `SELECT * FROM products WHERE id IN (${idler.map(() => "?").join(",")})`
+  ).all(...idler));
+  const esle = Object.fromEntries(urunler.map((u) => [u.id, u]));
+
+  res.json(liste.map((k) => {
+    const urun = esle[k.product_id];
+    return {
+      ...k,
+      // Ürün silinmişse bağ boşta: katlaç "vitrinde değil" sayılır.
+      product: urun
+        ? {
+            id: urun.id, name: urun.name, price: Number(urun.price) || 0,
+            is_active: urun.is_active, scales: urun.scales, unit_cost: urun.unit_cost
+          }
+        : null
+    };
+  }));
+});
+
+/* Katlacı vitrine çıkarır: kayıttan bir ÜRÜN üretir ve ikisini bağlar.
+
+   Neden kopyalama, taşıma değil: katlaç kaydı modelin kendisidir — kaynak
+   linki ve basılacak STL/3MF orada durur ve orada kalmalı. Ürün ise onun
+   satılabilir hâli. Atölye "bu siparişi hangi dosyadan basacağım" sorusunu
+   bağ üzerinden yanıtlar; ürün formuna dosya alanı eklemek katlaç tablosunu
+   gereksiz kılardı ve "sadece ben göreyim" listesi vitrine sızardı.
+
+   Ürün fiyatsız (0) açılırsa PASİF başlar: 0 TL'lik bir ürünü vitrine
+   koymak sipariş kabul etmek demek. Maliyet sekmesinden ölçek atandığında
+   fiyat oluşur, yayına almak yöneticinin kararı olarak kalır. */
+app.post("/api/katlac/:id/publish", requireAdmin, async (req, res) => {
+  const katlac = await db.prepare("SELECT * FROM katlac_items WHERE id = ?").get(req.params.id);
+  if (!katlac) return res.status(404).json({ error: "Katlaç bulunamadı." });
+
+  if (katlac.product_id) {
+    const mevcut = await db.prepare("SELECT id, name FROM products WHERE id = ?").get(katlac.product_id);
+    if (mevcut) {
+      return res.status(400).json({ error: `Bu katlaç zaten "${mevcut.name}" ürününe bağlı.` });
+    }
+    // Ürün silinmiş: boşta kalan bağı temizleyip yeniden çıkarmaya izin ver.
+  }
+
+  const fiyat = Math.max(0, Number(katlac.price) || 0);
+  const sonuc = await db.prepare(`
+    INSERT INTO products (name, description, price, stock, image_path, image_alt, is_active)
+    VALUES (@name, @description, @price, 0, @image_path, @image_alt, @is_active)
+  `).run({
+    name: katlac.name,
+    description: katlac.note || null,
+    price: fiyat,
+    image_path: katlac.image_path,
+    image_alt: katlac.name,
+    is_active: fiyat > 0 ? 1 : 0
+  });
+
+  await logPrice(sonuc.lastInsertRowid, fiyat, null);
+  await db.prepare("UPDATE katlac_items SET product_id = ?, updated_at = NOW() WHERE id = ?")
+    .run(sonuc.lastInsertRowid, katlac.id);
+
+  const urun = await withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(sonuc.lastInsertRowid));
+  res.status(201).json({ product: urun, published: urun.is_active === 1 });
+});
+
+/* Bağı koparır — ürünü SİLMEZ. Yanlış katlaca bağlanmışsa ya da ürün elle
+   yönetilmek isteniyorsa kullanılır; ürünü silmek ayrı ve bilinçli bir iş. */
+app.delete("/api/katlac/:id/publish", requireAdmin, async (req, res) => {
+  const katlac = await db.prepare("SELECT id FROM katlac_items WHERE id = ?").get(req.params.id);
+  if (!katlac) return res.status(404).json({ error: "Katlaç bulunamadı." });
+  await db.prepare("UPDATE katlac_items SET product_id = NULL, updated_at = NOW() WHERE id = ?").run(katlac.id);
+  res.status(204).end();
 });
 
 app.post("/api/katlac", requireAdmin, upload.single("image"), async (req, res) => {
@@ -1988,7 +2146,7 @@ async function decorateProducts(products) {
     `).all(...ids),
     // Maliyet ölçekleri de toplu; public'te maliyetiGizle bunu siler.
     db.prepare(`
-      SELECT id, product_id, scale, unit_cost, inputs FROM product_cost_scales
+      SELECT id, product_id, scale, unit_cost, price, inputs FROM product_cost_scales
       WHERE product_id IN ${list} ORDER BY unit_cost ASC, id ASC
     `).all(...ids)
   ]);
@@ -2010,9 +2168,18 @@ async function decorateProducts(products) {
     colors: colors[product.id] || [],
     categories: categories[product.id] || [],
     images: images[product.id] || [],
-    cost_scales: scales[product.id] || []
+    cost_scales: scales[product.id] || [],
+    scales: satisOlcekleri(scales[product.id])
   }));
 }
+
+/* Ölçeklerin MÜŞTERİYE açık hâli: yalnızca fiyatı girilmiş olanlar, yalnızca
+   ad ve fiyat. unit_cost ve inputs ticari sır olduğu için bu listeye hiç
+   girmiyor — maliyetiGizle'nin unutulması durumunda bile sızmasın. */
+const satisOlcekleri = (rows) => (rows || [])
+  .filter((s) => Number(s.price) > 0)
+  .map((s) => ({ id: s.id, scale: s.scale, price: round2(Number(s.price)) }))
+  .sort((a, b) => a.price - b.price);
 
 // Tek ürün için: POST/PUT sonrası dönen kayıtta kullanılır.
 const imagesOfProduct = db.prepare(`
@@ -2021,16 +2188,20 @@ const imagesOfProduct = db.prepare(`
   ORDER BY sort_order ASC, id ASC
 `);
 
-const withColors = async (product) => ({
-  ...product,
-  rating: (await ratingOfProduct.get(product.id)) || { average: null, count: 0 },
-  colors: await colorsOfProduct.all(product.id),
-  categories: await categoriesOfProduct.all(product.id),
-  images: await imagesOfProduct.all(product.id),
-  cost_scales: await db.prepare(
-    "SELECT id, scale, unit_cost, inputs FROM product_cost_scales WHERE product_id = ? ORDER BY unit_cost ASC, id ASC"
-  ).all(product.id)
-});
+const withColors = async (product) => {
+  const olcekler = await db.prepare(
+    "SELECT id, scale, unit_cost, price, inputs FROM product_cost_scales WHERE product_id = ? ORDER BY unit_cost ASC, id ASC"
+  ).all(product.id);
+  return {
+    ...product,
+    rating: (await ratingOfProduct.get(product.id)) || { average: null, count: 0 },
+    colors: await colorsOfProduct.all(product.id),
+    categories: await categoriesOfProduct.all(product.id),
+    images: await imagesOfProduct.all(product.id),
+    cost_scales: olcekler,
+    scales: satisOlcekleri(olcekler)
+  };
+};
 
 // A multi-select posts one value per checked box; multer/urlencoded gives a string
 // when exactly one is checked and an array when several are.
@@ -2067,7 +2238,11 @@ const priceChanged = (before, price, salePrice) =>
 /* Maliyet verisi TİCARİ SIR: /api/products herkese açık, ürünün kaça mal
    olduğu müşteriye ya da rakibe gitmemeli. Yalnızca giriş yapmış yöneticiye
    dönüyor. Ayrı bir uç açmak yerine burada süzmek yeterli — panel zaten bu
-   listeyi kullanıyor. */
+   listeyi kullanıyor.
+
+   `scales` BİLEREK kalıyor: o, satisOlcekleri'nden geçmiş hâli, yalnızca ölçek
+   adı ve satış fiyatı. Müşteri zaten bu ikisini görmek zorunda — seçtiği
+   varyant ve ödeyeceği tutar. Silinen `cost_scales` ise maliyeti taşıyor. */
 const maliyetiGizle = (urun) => {
   const { unit_cost, cost_inputs, cost_updated_at, cost_scales, ...kalan } = urun;
   return kalan;
@@ -2871,6 +3046,9 @@ app.post("/api/orders", requireAdmin, async (req, res) => {
     return {
       product_id: product?.id || null,
       product_name: product?.name || item.product_name || "Özel ürün",
+      // Elle açılan siparişte ölçek serbest bir not: panel bir ölçek adı
+      // gönderirse kaleme yazılır, göndermezse boş kalır.
+      scale: String(item.scale || "").trim() || null,
       quantity,
       unit_price: unitPrice,
       line_total: quantity * unitPrice
@@ -2900,8 +3078,8 @@ app.post("/api/orders", requireAdmin, async (req, res) => {
     });
 
     const insertItem = tx.prepare(`
-      INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price, line_total)
-      VALUES (@order_id, @product_id, @product_name, @quantity, @unit_price, @line_total)
+      INSERT INTO order_items (order_id, product_id, product_name, scale, quantity, unit_price, line_total)
+      VALUES (@order_id, @product_id, @product_name, @scale, @quantity, @unit_price, @line_total)
     `);
     for (const item of normalized) await insertItem.run({ ...item, order_id: result.lastInsertRowid });
     return result.lastInsertRowid;
@@ -3059,10 +3237,31 @@ async function normalizeCartItems(items) {
     const product = await db.prepare("SELECT * FROM products WHERE id = ? AND is_active = 1").get(item.product_id);
     if (!product) return null;
     const quantity = Math.min(999, Math.max(1, toInt(item.quantity)));
-    const unitPrice = Math.max(0, money(product.sale_price || product.price));
+
+    /* Ölçekli üründe birim fiyat ÖLÇEĞİN fiyatıdır. Tarayıcıdan gelen tek şey
+       ölçeğin id'si; fiyat burada veritabanından okunuyor — sepetteki tutara
+       da, gönderilen scale_id'nin gerçekten o ürüne ait olduğuna da güvenmiyoruz.
+       Ölçek gelmemişse (ölçekler eklenmeden önce doldurulmuş eski bir sepet)
+       en ucuz ölçek seçilir: müşteriyi ödeme adımında boş çevirmek yerine
+       kartta gördüğü başlangıç fiyatını uygulamak doğru olan. */
+    const olcekler = satisOlcekleri(await db.prepare(
+      "SELECT id, scale, price FROM product_cost_scales WHERE product_id = ?"
+    ).all(product.id));
+    const olcek = olcekler.length
+      ? olcekler.find((s) => s.id === toInt(item.scale_id)) || olcekler[0]
+      : null;
+
+    /* Ölçekli üründe sale_price uygulanmıyor: indirimli fiyat ürünün tamamına
+       ait tek bir sayı, ölçek başına fiyatla birlikte hangisinin geçerli
+       olduğu belirsizleşirdi. */
+    const unitPrice = olcek
+      ? Math.max(0, money(olcek.price))
+      : Math.max(0, money(product.sale_price || product.price));
     return {
       product_id: product.id,
       product_name: product.name,
+      scale: olcek ? olcek.scale : null,
+      scale_id: olcek ? olcek.id : null,
       quantity,
       unit_price: unitPrice,
       line_total: money(quantity * unitPrice)
@@ -3202,7 +3401,11 @@ app.get("/api/catalog", async (req, res) => {
       return true;   // scope === "all"
     })
     .map(({ kampanya }) => {
-      const birim = Number(urun.sale_price || urun.price) || 0;
+      /* Ölçekli üründe kademe EN UCUZ ölçeğin fiyatından hesaplanır (kartta
+         gösterilen başlangıç fiyatı); o üründe sale_price uygulanmıyor. */
+      const birim = urun.scales?.length
+        ? Number(urun.scales[0].price) || 0
+        : Number(urun.sale_price || urun.price) || 0;
       const yuzde = kampanya.discount_type === "percent";
       /* Sabit indirim sepete BİR KEZ uygulanır (evaluateOne), adet başına
          değil. Kademe adedine bölüp birim fiyat göstermek yalnızca TAM o
@@ -3243,6 +3446,8 @@ app.get("/api/catalog", async (req, res) => {
       image_path: p.image_path, image_alt: p.image_alt,
       price: Number(p.price), sale_price: p.sale_price == null ? null : Number(p.sale_price),
       stock: p.stock, colors: p.colors, categories: p.categories,
+      // Seçilebilir ölçekler (varsa): katalogdaki fiyat en ucuz ölçeğinkidir.
+      scales: p.scales,
       tiers: kademeler(p)
     })),
     /* Adet koşulu olmayan kampanyalar. KOD YAYINLANMIYOR: bu uç herkese
@@ -3474,8 +3679,8 @@ app.post("/api/checkout", async (req, res) => {
     });
 
     const insertItem = tx.prepare(`
-      INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price, line_total)
-      VALUES (@order_id, @product_id, @product_name, @quantity, @unit_price, @line_total)
+      INSERT INTO order_items (order_id, product_id, product_name, scale, quantity, unit_price, line_total)
+      VALUES (@order_id, @product_id, @product_name, @scale, @quantity, @unit_price, @line_total)
     `);
     for (const item of normalized) {
       await insertItem.run({ ...item, order_id: order.lastInsertRowid });
@@ -3488,6 +3693,7 @@ app.post("/api/checkout", async (req, res) => {
         order_id: order.lastInsertRowid,
         product_id: gift.product_id,
         product_name: `${gift.product_name} (Hediye)`,
+        scale: null,
         quantity: gift.quantity,
         unit_price: 0,
         line_total: 0

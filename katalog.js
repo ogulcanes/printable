@@ -11,7 +11,9 @@
   const durum = { arama: "", kategori: "", sadeceToplu: false };
   let veri = { products: [], general_campaigns: [] };
 
-  const birimFiyat = (p) => Number(p.sale_price || p.price) || 0;
+  /* Ölçekli üründe birim fiyat EN UCUZ ölçeğinkidir; o üründe sale_price
+     uygulanmıyor (bkz. script.js displayPrice, sunucuda normalizeCartItems). */
+  const birimFiyat = (p) => Number(displayPrice(p)) || 0;
 
   /* Kademe etiketi. "10 adet %15 indirim" ile "10 adet 1.700,00 TL" farklı
      bilgiler: ilki kuralı, ikincisi cebinden çıkacak parayı söylüyor. İkisini
@@ -43,7 +45,8 @@
   }
 
   function urunKarti(p) {
-    const indirimli = p.sale_price && p.price > p.sale_price;
+    const olcekler = p.scales || [];
+    const indirimli = !olcekler.length && p.sale_price && p.price > p.sale_price;
     const renkler = (p.colors || []).length
       ? `<div class="catalog-colors">
            ${p.colors.map((c) => `<span class="catalog-color"><span class="color-dot" style="background:${kacir(c.hex)}"></span>${kacir(c.name)}</span>`).join("")}
@@ -76,7 +79,7 @@
             <p class="catalog-price">
               ${money(birimFiyat(p))}
               ${indirimli ? `<s>${money(p.price)}</s>` : ""}
-              <small>tek adet</small>
+              <small>${olcekler.length > 1 ? `tek adet · ${olcekler.length} ölçek` : "tek adet"}</small>
             </p>
           </div>
           ${p.description ? `<p class="catalog-desc">${kacir(p.description)}</p>` : ""}

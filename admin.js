@@ -152,20 +152,31 @@ function renderProductFilterOptions() {
 function maliyetRozeti(p) {
   const olcekler = p.cost_scales || [];
   if (!olcekler.length) return "";
-  const fiyat = Number(p.sale_price || p.price) || 0;
+  const urunFiyat = Number(p.sale_price || p.price) || 0;
+  /* Ölçeğin kendi satış fiyatı varsa marj ONDAN hesaplanır — müşteri o boyu o
+     fiyattan alıyor. Fiyatı girilmemiş ölçek (yalnızca iç maliyet kaydı) için
+     ürünün genel fiyatına düşülür. */
+  const fiyatOf = (s) => (Number(s.price) > 0 ? Number(s.price) : urunFiyat);
+  const marjOf = (s) => {
+    const f = fiyatOf(s);
+    return f > 0 ? ((f - Number(s.unit_cost)) / f) * 100 : null;
+  };
 
   // Birden fazla ölçek: aralık göster, tek tek marj listeye sığmaz.
   if (olcekler.length > 1) {
-    const enaz = Math.min(...olcekler.map((s) => Number(s.unit_cost)));
-    const encok = Math.max(...olcekler.map((s) => Number(s.unit_cost)));
-    const aralik = `<span class="badge">${olcekler.length} ölçek · maliyet ${money(enaz)}–${money(encok)}</span>`;
-    if (!fiyat) return `${aralik}<span class="badge orange">Fiyat girilmemiş</span>`;
-    // En düşük maliyet üzerinden en yüksek marjı göster (fiyat sabit).
-    const marj = ((fiyat - enaz) / fiyat) * 100;
-    return `${aralik}<span class="badge ${marj < 0 ? "orange" : "green"}">en fazla %${marj.toFixed(1)} marj</span>`;
+    const maliyetler = olcekler.map((s) => Number(s.unit_cost));
+    const aralik = `<span class="badge">${olcekler.length} ölçek · maliyet ${
+      money(Math.min(...maliyetler))}–${money(Math.max(...maliyetler))}</span>`;
+    const marjlar = olcekler.map(marjOf).filter((m) => m !== null);
+    if (!marjlar.length) return `${aralik}<span class="badge orange">Fiyat girilmemiş</span>`;
+    const enaz = Math.min(...marjlar);
+    const encok = Math.max(...marjlar);
+    return `${aralik}<span class="badge ${enaz < 0 ? "orange" : "green"}">marj %${
+      enaz.toFixed(1)}${encok.toFixed(1) === enaz.toFixed(1) ? "" : `–%${encok.toFixed(1)}`}</span>`;
   }
 
   const maliyet = Number(olcekler[0].unit_cost);
+  const fiyat = fiyatOf(olcekler[0]);
   const rozet = `<span class="badge">Maliyet ${money(maliyet)}</span>`;
   if (!fiyat) return `${rozet}<span class="badge orange">Fiyat girilmemiş</span>`;
   const kar = fiyat - maliyet;
@@ -191,8 +202,14 @@ function renderProducts() {
           ${(product.categories || []).map((category) => `<span class="badge">${escapeHtml(category.name)}</span>`).join("") || '<span class="badge">Kategori yok</span>'}
           <span class="badge">${escapeHtml(product.color) || "Renk yok"}</span>
           <span class="badge ${product.stock > 0 ? "green" : "orange"}">Stok ${product.stock}</span>
-          <span class="badge blue">${money(product.sale_price || product.price)}${product.sale_price ? ` / <s>${money(product.price)}</s>` : ""}</span>
-          ${product.sale_price && product.price > 0 ? `<span class="badge orange">%${Math.round((1 - product.sale_price / product.price) * 100)} indirim</span>` : ""}
+          ${(product.scales || []).length
+            ? /* Ölçekli üründe fiyatı ölçek belirliyor; ürün formuna elle
+                 yazılan fiyat mağazada kullanılmaz. Rozet bunu söylüyor. */
+              `<span class="badge blue">${money(product.price)}${
+                product.scales.length > 1 ? "'den itibaren" : ""}</span>
+               <span class="badge">fiyat ${product.scales.length} ölçekten</span>`
+            : `<span class="badge blue">${money(product.sale_price || product.price)}${product.sale_price ? ` / <s>${money(product.price)}</s>` : ""}</span>
+               ${product.sale_price && product.price > 0 ? `<span class="badge orange">%${Math.round((1 - product.sale_price / product.price) * 100)} indirim</span>` : ""}`}
           ${product.rating?.count ? `<span class="badge">${product.rating.average} ★ (${product.rating.count} yorum)</span>` : ""}
           ${maliyetRozeti(product)}
           <span class="badge">Eklendi: ${formatDateTime(product.created_at)}</span>
@@ -447,7 +464,8 @@ function renderOrders() {
       <span class="brand-mark">#</span>
       <div>
         <h3>${escapeHtml(order.order_number)} - ${escapeHtml(order.customer_name)}</h3>
-        <p>${order.items.map((item) => `${item.quantity} adet ${escapeHtml(item.product_name)}`).join(", ")}</p>
+        <p>${order.items.map((item) => `${item.quantity} adet ${escapeHtml(item.product_name)}${
+          item.scale ? ` <em>(${escapeHtml(item.scale)})</em>` : ""}`).join(", ")}</p>
         <div class="meta-line">
           <span class="badge ${statusClass[order.status] || ""}">${statusLabels[order.status] || order.status}</span>
           <span class="badge blue">${money(order.total)}</span>
@@ -860,7 +878,9 @@ function renderCost() {
     satir("Toplam elektrik mâliyeti", h.elektrik),
     satir("Toplam işçilik ve amortisman", h.iscilikAmortisman),
     satir("Toplam net mâliyet", h.netMaliyet, "cost-cell--strong"),
-    satir("Kârlı satış fiyatı", h.karliFiyat),
+    // Ürüne atanan fiyat BU satır — hangi rakamın mağazaya gittiği görünsün.
+    satir(`Kârlı satış fiyatı <span class="cost-cell__tag">ölçeğin satış fiyatı</span>`,
+      h.karliFiyat, "cost-cell--price"),
     satir("Kargo dâhil", h.kargoDahil),
     satir("KDV tutarı", h.kdvTutari),
     satir("KDV dâhil", h.kdvDahil),
@@ -942,6 +962,11 @@ function renderCostProducts() {
       const encok = Math.max(...olcekler.map((s) => Number(s.unit_cost)));
       rozet = `<span class="cost-pick__cost">${olcekler.length} ölçek · ${money(enaz)}–${money(encok)}</span>`;
     }
+    // Mağazada seçilebilir ölçekler: fiyatı girilmiş olanlar (satisOlcekleri).
+    const satistakiler = (p.scales || []).length;
+    const varyantRozeti = satistakiler > 1
+      ? `<span class="cost-pick__variant">${satistakiler} boy satışta</span>`
+      : "";
     return `
       <button type="button" class="cost-pick ${secili ? "active" : ""}" data-cost-pick="${p.id}" aria-pressed="${secili}">
         <span class="cost-pick__check">✓</span>
@@ -949,6 +974,7 @@ function renderCostProducts() {
         <span class="cost-pick__name">${escapeHtml(p.name)}</span>
         <span class="cost-pick__price">${fiyat > 0 ? money(fiyat) : "fiyat yok"}</span>
         ${rozet}
+        ${varyantRozeti}
       </button>`;
   }).join("") || "<p class='field-note'>Aramanıza uyan ürün yok.</p>";
 
@@ -968,15 +994,22 @@ function renderCostScales() {
   const olcekler = urun?.cost_scales || [];
   kutu.hidden = false;
   kutu.innerHTML = `
-    <div class="cost-scales__head">${escapeHtml(urun.name)} — kayıtlı ölçekler</div>
+    <div class="cost-scales__head">${escapeHtml(urun.name)} — kayıtlı ölçekler
+      <small>ölçek · maliyet · satış fiyatı · marj</small></div>
     ${olcekler.length
       ? olcekler.map((s) => {
-          const fiyat = Number(urun.sale_price || urun.price) || 0;
+          /* Satış fiyatı ölçeğin kendi fiyatı; müşteri ürün sayfasında bu boyu
+             seçince bu tutarı öder. Fiyatı olmayan ölçek mağazada görünmez,
+             yalnızca iç maliyet kaydıdır — marj ürünün genel fiyatına göre. */
+          const kendi = Number(s.price) > 0 ? Number(s.price) : null;
+          const fiyat = kendi ?? (Number(urun.sale_price || urun.price) || 0);
           const marj = fiyat > 0 ? ((fiyat - Number(s.unit_cost)) / fiyat) * 100 : null;
           return `
             <div class="cost-scale-row">
               <span class="cost-scale-row__name">${escapeHtml(s.scale)}</span>
               <span class="cost-scale-row__cost">${money(s.unit_cost)}</span>
+              <span class="cost-scale-row__sale">${
+                kendi === null ? "<em>satışta değil</em>" : money(kendi)}</span>
               <span class="cost-scale-row__marj ${marj !== null && marj < 0 ? "loss" : ""}">${
                 marj === null ? "fiyat yok" : `%${marj.toFixed(1)} marj`}</span>
               <button type="button" class="small-button" data-scale-load="${s.id}">Yükle</button>
@@ -1061,6 +1094,13 @@ qs("#cost-assign").addEventListener("click", async () => {
   const g = costGirdileri();
   const h = costHesapla(g);
   const maliyet = yuvarla(h.netMaliyet);
+  /* Hesabın "Kârlı satış fiyatı" satırı doğrudan bu ölçeğin satış fiyatı olur:
+     müşteri ürün sayfasında bu boyu seçince bu tutarı öder. KDV ve kargo
+     bilerek dışarıda — vitrindeki bütün fiyatlar KDV hariç ve kargo alıcı
+     ödemeli ("Fiyata KDV eklenir · Kargo alıcı ödemeli").
+     Kâr marjı 0 ise fiyat maliyete eşit olurdu; böyle bir fiyatı mağazaya
+     yazmıyoruz — ölçek yalnızca iç maliyet kaydı olarak kalır. */
+  const fiyat = g.karMarji > 0 ? yuvarla(h.karliFiyat) : null;
   const olcek = g.olcek || "Standart";
   const idler = [...costSecili];
 
@@ -1068,23 +1108,29 @@ qs("#cost-assign").addEventListener("click", async () => {
     await api(`/api/products/${id}/cost`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scale: olcek, unit_cost: maliyet, inputs: g })
+      body: JSON.stringify({ scale: olcek, unit_cost: maliyet, price: fiyat, inputs: g })
     });
   }
   await refresh();
   renderCostProducts();
 
+  const marj = fiyat && fiyat > 0 ? ((fiyat - maliyet) / fiyat) * 100 : null;
+  const fiyatCumlesi = fiyat === null
+    ? " Hedef kâr marjı 0 olduğu için satış fiyatı yazılmadı — ölçek yalnızca maliyet kaydı."
+    : ` Satış fiyatı ${money(fiyat)} (KDV hariç), kâr marjı %${marj.toFixed(1)}.`;
+
   if (idler.length === 1) {
     const urun = state.products.find((p) => p.id === idler[0]);
-    const fiyat = Number(urun?.sale_price || urun?.price) || 0;
-    const marj = fiyat > 0 ? ((fiyat - maliyet) / fiyat) * 100 : null;
+    const olcekSayisi = (urun?.scales || []).length;
     costDurum(
-      `${urun?.name || "Ürün"} · "${olcek}" ölçeği ${money(maliyet)} olarak kaydedildi.`
-      + (marj === null ? " Ürünün satış fiyatı girilmemiş." : ` Satış fiyatı ${money(fiyat)}, kâr marjı %${marj.toFixed(1)}.`),
+      `${urun?.name || "Ürün"} · "${olcek}" ölçeği ${money(maliyet)} maliyetle kaydedildi.` + fiyatCumlesi
+      + (olcekSayisi > 1
+        ? ` Ürün ${olcekSayisi} boyda satışta; kartta ${money(Number(urun.price))}'den itibaren görünüyor.`
+        : ""),
       marj !== null && marj < 0 ? "zarar" : "tamam"
     );
   } else {
-    costDurum(`${idler.length} ürüne "${olcek}" ölçeği ${money(maliyet)} olarak eklendi.`, "tamam");
+    costDurum(`${idler.length} ürüne "${olcek}" ölçeği ${money(maliyet)} maliyetle eklendi.` + fiyatCumlesi, "tamam");
   }
 });
 
@@ -1114,6 +1160,31 @@ async function loadCostSettings() {
 /* ---------- Katlaç kataloğu (yalnızca panel) ----------
    Her kart kendi başına kaydediliyor: 9 katlaçlık listede tek bir "hepsini
    kaydet" düğmesi, bir alandaki hatada diğerlerini de belirsiz bırakırdı. */
+/* Katlacın vitrindeki durumu. Fiyat bağlı üründen okunur — katlaç kaydındaki
+   fiyat, henüz vitrine çıkmamışken kullanılan elle girilmiş tahmindir. */
+function katlacDurumu(k) {
+  const urun = k.product;
+  if (!urun) {
+    return `<div class="katlac-link katlac-link--none">
+      <span>Vitrinde değil</span>
+      <button type="button" class="small-button" data-katlac-publish="${k.id}">Vitrine çıkar</button>
+    </div>`;
+  }
+  const olcekler = urun.scales || [];
+  const fiyat = olcekler.length
+    ? `${money(olcekler[0].price)}${olcekler.length > 1 ? `'den itibaren · ${olcekler.length} ölçek` : ""}`
+    : (Number(urun.price) > 0 ? money(urun.price) : "fiyat yok");
+  return `<div class="katlac-link">
+    <span class="katlac-link__badge ${urun.is_active ? "on" : "off"}">${urun.is_active ? "Vitrinde" : "Pasif"}</span>
+    <span class="katlac-link__name">${escapeHtml(urun.name)}</span>
+    <strong class="katlac-link__price">${fiyat}</strong>
+    ${olcekler.length ? "" : '<span class="katlac-link__warn">ölçek/maliyet atanmamış</span>'}
+    <button type="button" class="small-button" data-katlac-goto-cost="${urun.id}">Maliyet ata</button>
+    <button type="button" class="small-button" data-katlac-goto-product="${urun.id}">Ürünü düzenle</button>
+    <button type="button" class="small-button danger" data-katlac-unlink="${k.id}">Bağı kopar</button>
+  </div>`;
+}
+
 function renderKatlac() {
   const liste = state.katlac || [];
   qs("#katlac-count").textContent = `${liste.length} katlaç`;
@@ -1124,9 +1195,11 @@ function renderKatlac() {
         <label>Ad
           <input type="text" data-katlac-name="${k.id}" value="${escapeHtml(k.name)}">
         </label>
-        <label>Fiyat (TL)
-          <input type="number" min="0" step="0.01" data-katlac-price="${k.id}" value="${Number(k.price) || 0}">
-        </label>
+        ${k.product
+          ? `<p class="katlac-price-note">Fiyat artık üründen geliyor — maliyet sekmesinden ölçek atayarak değiştir.</p>`
+          : `<label>Fiyat (TL)
+               <input type="number" min="0" step="0.01" data-katlac-price="${k.id}" value="${Number(k.price) || 0}">
+             </label>`}
         <label>Not
           <input type="text" data-katlac-note="${k.id}" value="${escapeHtml(k.note) || ""}" placeholder="İsteğe bağlı">
         </label>
@@ -1144,6 +1217,7 @@ function renderKatlac() {
                </label>`}
           <span class="katlac-model__status" data-katlac-model-status="${k.id}"></span>
         </div>
+        ${katlacDurumu(k)}
         <div class="katlac-card__actions">
           <button type="button" class="small-button" data-katlac-save="${k.id}">Kaydet</button>
           <button type="button" class="small-button danger" data-katlac-delete="${k.id}">Sil</button>
@@ -1171,6 +1245,20 @@ const pdfGorseli = (url) => {
   return `${url.replace("/object/public/", "/render/image/public/")}?width=500&resize=contain&quality=80`;
 };
 
+/* Listedeki fiyat TEK kaynaktan: katlaç vitrine çıkarılmışsa ürünün ölçek
+   fiyatları, çıkarılmamışsa katlaç kaydındaki elle girilen tahmin. Ölçekli
+   üründe her boy ayrı satır olarak yazılıyor — müşteriye uzatılan kâğıtta
+   "hangi boy kaç para" sorusunun cevabı olmalı. */
+function katlacListeFiyati(k) {
+  const olcekler = k.product?.scales || [];
+  if (olcekler.length) {
+    return olcekler.map((s) =>
+      `<span class="katlac-row__scale"><em>${escapeHtml(s.scale)}</em>${money(s.price)}</span>`).join("");
+  }
+  const fiyat = Number(k.product ? k.product.price : k.price) || 0;
+  return fiyat > 0 ? money(fiyat) : '<span class="katlac-row__nofiyat">fiyat belirtilmedi</span>';
+}
+
 function renderKatlacPrint() {
   const liste = state.katlac || [];
   // Satır düzeni: görsel | ad + not | fiyat. Numara, telefonda okurken
@@ -1183,9 +1271,7 @@ function renderKatlacPrint() {
         <h2>${escapeHtml(k.name)}</h2>
         ${k.note ? `<p>${escapeHtml(k.note)}</p>` : ""}
       </div>
-      <span class="katlac-row__price">${Number(k.price) > 0
-        ? money(k.price)
-        : '<span class="katlac-row__nofiyat">fiyat belirtilmedi</span>'}</span>
+      <span class="katlac-row__price">${katlacListeFiyati(k)}</span>
     </article>
   `).join("");
 
@@ -1217,12 +1303,14 @@ qs("#katlac-grid").addEventListener("click", async (event) => {
   if (kaydet) {
     const durum = qs(`[data-katlac-status="${kaydet}"]`);
     durum.textContent = "Kaydediliyor…";
+    // Bağlı katlaçta fiyat alanı yok: fiyat üründen geliyor, göndermiyoruz.
+    const fiyatAlani = qs(`[data-katlac-price="${kaydet}"]`);
     await api(`/api/katlac/${kaydet}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: qs(`[data-katlac-name="${kaydet}"]`).value,
-        price: qs(`[data-katlac-price="${kaydet}"]`).value,
+        ...(fiyatAlani ? { price: fiyatAlani.value } : {}),
         note: qs(`[data-katlac-note="${kaydet}"]`).value,
         source_url: qs(`[data-katlac-source="${kaydet}"]`).value
       })
@@ -1233,11 +1321,45 @@ qs("#katlac-grid").addEventListener("click", async (event) => {
     const kayit = state.katlac.find((k) => String(k.id) === kaydet);
     if (kayit) {
       kayit.name = qs(`[data-katlac-name="${kaydet}"]`).value;
-      kayit.price = Number(qs(`[data-katlac-price="${kaydet}"]`).value) || 0;
+      if (fiyatAlani) kayit.price = Number(fiyatAlani.value) || 0;
       kayit.note = qs(`[data-katlac-note="${kaydet}"]`).value;
       kayit.source_url = qs(`[data-katlac-source="${kaydet}"]`).value;
     }
     setTimeout(() => { durum.textContent = ""; }, 2500);
+  } else if (event.target.dataset.katlacPublish) {
+    /* Vitrine çıkarma geri alınabilir değil (ürün oluşur, fiyat geçmişine
+       satır düşer) — bu yüzden onay soruluyor. */
+    const id = event.target.dataset.katlacPublish;
+    const kayit = state.katlac.find((k) => String(k.id) === id);
+    if (!confirm(`"${kayit?.name}" vitrine ürün olarak çıkarılsın mı? Görsel, ad ve not ürüne kopyalanır; model dosyası katlaçta kalır.`)) return;
+    const durum = qs(`[data-katlac-status="${id}"]`);
+    durum.textContent = "Çıkarılıyor…";
+    const sonuc = await api(`/api/katlac/${id}/publish`, { method: "POST" });
+    await refresh();
+    renderKatlac();
+    alert(sonuc.published
+      ? `"${sonuc.product.name}" vitrinde yayında. Maliyet sekmesinden ölçek atayarak fiyatı maliyete bağlayabilirsin.`
+      : `"${sonuc.product.name}" ürünü PASİF olarak oluşturuldu — fiyatı olmayan ürün vitrine konmaz. Maliyet sekmesinden ölçek atayıp Ürünler'den yayına al.`);
+  } else if (event.target.dataset.katlacUnlink) {
+    const id = event.target.dataset.katlacUnlink;
+    if (!confirm("Katlaç ile ürün arasındaki bağ koparılsın mı? Ürün SİLİNMEZ, sadece bağ kalkar.")) return;
+    await api(`/api/katlac/${id}/publish`, { method: "DELETE" });
+    await refresh();
+    renderKatlac();
+  } else if (event.target.dataset.katlacGotoCost) {
+    // Maliyet sekmesine geç ve ürünü seçili getir: ölçek atamak tek tıkla başlasın.
+    const id = Number(event.target.dataset.katlacGotoCost);
+    showTab("cost");
+    costSecili.clear();
+    costSecili.add(id);
+    costArama = "";
+    qs("#cost-pick-search").value = "";
+    renderCostProducts();
+    qs("#cost-product-grid").querySelector(`[data-cost-pick="${id}"]`)?.scrollIntoView({ block: "center" });
+  } else if (event.target.dataset.katlacGotoProduct) {
+    showTab("products");
+    const satir = qs(`[data-edit-product="${event.target.dataset.katlacGotoProduct}"]`);
+    satir?.click();
   } else if (sil) {
     if (!confirm("Bu katlaç listeden silinsin mi?")) return;
     await api(`/api/katlac/${sil}`, { method: "DELETE" });

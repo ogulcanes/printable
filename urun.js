@@ -45,6 +45,15 @@
      (ölçek, ambalaj, kullanım); onları gizlemek bilgi kaybı olurdu. */
   let seciliRenkId = null;
 
+  /* Seçili ölçek (küçük/büyük boy gibi). Ölçek yalnızca bir etiket değil, kendi
+     fiyatı olan bir varyant: seçim değişince sayfadaki fiyat da, sepete giden
+     satır da değişir. Varsayılan en ucuzu — kartta gördüğü fiyat bu, sayfa
+     açılınca aynı rakamı görmeli. Ölçeksiz ürünlerde null kalır. */
+  let seciliOlcekId = null;
+  const olceklerOf = (product) => product.scales || [];
+  const seciliOlcek = (product) =>
+    olceklerOf(product).find((s) => s.id === seciliOlcekId) || olceklerOf(product)[0] || null;
+
   function galeriKareleri(product) {
     const kapak = product.image_path
       ? [{ src: product.image_path, alt: product.image_alt || product.name, colorId: null }]
@@ -79,14 +88,36 @@
   }
 
   function render(product) {
-    const price = product.sale_price || product.price;
+    const olcekler = olceklerOf(product);
+    const olcek = seciliOlcek(product);
+    // Ölçekli üründe fiyat ölçekten gelir; sale_price o üründe uygulanmıyor
+    // (sunucu da öyle hesaplıyor — normalizeCartItems).
+    const price = olcek ? olcek.price : (product.sale_price || product.price);
     const inStock = product.stock > 0;
-    const onSale = product.sale_price && product.price > product.sale_price;
+    const onSale = !olcekler.length && product.sale_price && product.price > product.sale_price;
     const off = onSale ? Math.round((1 - product.sale_price / product.price) * 100) : 0;
     const cats = (product.categories || [])
       .map((c) => `<a class="chip" href="/urunler?kategori=${c.id}">${escapeHtml(c.name)}</a>`).join("");
     // Rengin kendi fotoğrafı varsa nokta tıklanabilir olur; yoksa sade kalır
     // — tıklayınca hiçbir şey olmayan bir düğme kullanıcıyı yanıltır.
+    /* Ölçek seçimi. Birden fazla ölçek varsa fiyatlı butonlar; tek ölçek varsa
+       seçtirecek bir şey yok, yalnızca hangi boy olduğu yazılıyor. */
+    const olcekSecici = olcekler.length > 1
+      ? `<div class="product-detail__scales">
+           <span class="product-detail__scales-title">Ölçek</span>
+           <div class="scale-picker" role="radiogroup" aria-label="Ölçek seçin">
+             ${olcekler.map((s) => `
+               <button type="button" class="scale-option ${s.id === olcek.id ? "active" : ""}"
+                       role="radio" aria-checked="${s.id === olcek.id}" data-scale-pick="${s.id}">
+                 <strong>${escapeHtml(s.scale)}</strong>
+                 <span>${money(s.price)}</span>
+               </button>`).join("")}
+           </div>
+         </div>`
+      : olcek
+        ? `<p class="product-detail__scale-single">Ölçek: <strong>${escapeHtml(olcek.scale)}</strong></p>`
+        : "";
+
     const renkliFotoVar = (renkId) => (product.images || []).some((g) => g.color_id === renkId);
     const swatches = (product.colors || [])
       .map((c) => renkliFotoVar(c.id)
@@ -125,6 +156,7 @@
           <p class="product-detail__price">${money(price)} <span class="price-tax">+ KDV</span>${onSale ? ` <s>${money(product.price)}</s> <span class="discount-badge">-%${off}</span>` : ""}</p>
           ${onSale ? `<p class="product-detail__save">${money(product.price - product.sale_price)} tasarruf edin</p>` : ""}
           <p class="product-detail__tax">Fiyata KDV eklenir · Kargo alıcı ödemeli</p>
+          ${olcekSecici}
           ${swatches ? `<div class="product-detail__colors"><span>Renkler</span><div class="swatches">${swatches}</div></div>` : ""}
           ${product.description ? `<p class="product-detail__desc">${escapeHtml(product.description)}</p>` : ""}
           <ul class="product-detail__specs">
@@ -157,9 +189,17 @@
       });
     });
 
+    // Ölçek değişince fiyat, seçili buton ve sepete gidecek satır değişir.
+    detail.querySelectorAll("[data-scale-pick]").forEach((buton) => {
+      buton.addEventListener("click", () => {
+        seciliOlcekId = Number(buton.dataset.scalePick);
+        render(product);
+      });
+    });
+
     document.querySelector("#detail-add")?.addEventListener("click", () => {
       const qty = Math.max(1, parseInt(document.querySelector("#detail-qty").value, 10) || 1);
-      addToCart(product, qty);
+      addToCart(product, qty, seciliOlcek(product));
       if (typeof cartPanel !== "undefined" && cartPanel) cartPanel.classList.add("open");
     });
   }
