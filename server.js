@@ -2357,6 +2357,18 @@ app.post("/api/products", requireAdmin, upload.single("image"), async (req, res)
 
 app.patch("/api/products/:id/active", requireAdmin, async (req, res) => {
   const isActive = req.body.is_active === true || req.body.is_active === 1 || req.body.is_active === "1";
+  if (isActive) {
+    const product = await db.prepare("SELECT price FROM products WHERE id = ?").get(req.params.id);
+    if (!product) return res.status(404).json({ error: "Ürün bulunamadı." });
+    const pricedScale = await db.prepare(
+      "SELECT id FROM product_cost_scales WHERE product_id = ? AND price > 0 LIMIT 1"
+    ).get(req.params.id);
+    if (!(Number(product.price) > 0) && !pricedScale) {
+      return res.status(400).json({
+        error: "Ürünü aktif etmek için önce satış fiyatı olan en az bir ölçek ekleyin."
+      });
+    }
+  }
   const result = await db.prepare(`
     UPDATE products SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
   `).run(isActive ? 1 : 0, req.params.id);

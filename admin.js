@@ -192,7 +192,10 @@ function renderProducts() {
   qs("#product-count").textContent = suzuluyor
     ? `${gosterilen.length} / ${state.products.length} ürün`
     : `${state.products.length} ürün`;
-  qs("#product-list").innerHTML = gosterilen.map((product) => `
+  qs("#product-list").innerHTML = gosterilen.map((product) => {
+    const satilabilir = Number(product.price) > 0
+      || (product.scales || []).some((scale) => Number(scale.price) > 0);
+    return `
     <article class="row">
       <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="">
       <div>
@@ -212,13 +215,15 @@ function renderProducts() {
                ${product.sale_price && product.price > 0 ? `<span class="badge orange">%${Math.round((1 - product.sale_price / product.price) * 100)} indirim</span>` : ""}`}
           ${product.rating?.count ? `<span class="badge">${product.rating.average} ★ (${product.rating.count} yorum)</span>` : ""}
           ${maliyetRozeti(product)}
+          ${satilabilir ? "" : '<span class="badge orange">Ölçek/fiyat eksik</span>'}
           <span class="badge">Eklendi: ${formatDateTime(product.created_at)}</span>
         </div>
         <div class="price-history" data-history-for="${product.id}" hidden></div>
       </div>
       <div class="row-actions">
         <label class="product-active-toggle" title="Ürünü mağazada göster veya gizle">
-          <input type="checkbox" data-product-active="${product.id}" ${product.is_active ? "checked" : ""}>
+          <input type="checkbox" data-product-active="${product.id}" ${product.is_active ? "checked" : ""}
+                 ${!product.is_active && !satilabilir ? "disabled" : ""}>
           <span>Aktif</span>
         </label>
         <button data-edit-product="${product.id}">Düzenle</button>
@@ -226,7 +231,7 @@ function renderProducts() {
         <button class="danger" data-delete-product="${product.id}">Sil</button>
       </div>
     </article>
-  `).join("") || (state.products.length
+  `}).join("") || (state.products.length
     ? "<p>Aramanıza uyan ürün yok. <button type='button' class='link-button' id='product-empty-clear'>Filtreleri temizle</button></p>"
     : "<p>Henüz ürün yok.</p>");
 
