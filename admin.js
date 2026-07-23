@@ -856,8 +856,22 @@ function costHesapla(g) {
   const komisyonlaFiyat = kdvDahil + komisyonFiyati + komisyonKdv;
   const fark = g.belirlenen - komisyonlaFiyat;
 
+  /* Belirlenen fiyat artık yalnızca karşılaştırma değil: doluysa ölçeğin
+     satış fiyatı O olur (bkz. atama). "Kaça mal oluyor" değil, "kaça
+     satacağım" ile başlayan fiyatlama da meşru — elden ve eş dost satışında
+     fiyat çoğu zaman yuvarlak bir rakam olarak belirlenir, marj sonucudur.
+
+     Marj SATIŞ FİYATI üzerinden: 10 TL maliyeti 62 TL'ye satmak %84 marj
+     demek (%513 markup değil). Panelin geri kalanı da marjı böyle gösteriyor,
+     iki farklı tanım aynı ekranda olmamalı. */
+  const belirlenenKar = g.belirlenen - netMaliyet;
+  const belirlenenMarj = g.belirlenen > 0 ? (belirlenenKar / g.belirlenen) * 100 : null;
+  // Vitrindeki fiyatlar KDV hariç; müşterinin ödeyeceği tutar bu.
+  const belirlenenKdvli = g.belirlenen * (1 + g.kdv / 100);
+
   return { malzeme, elektrik, iscilikAmortisman, netMaliyet, karliFiyat, kargoDahil,
-    kdvTutari, kdvDahil, komisyonFiyati, komisyonKdv, komisyonlaFiyat, fark };
+    kdvTutari, kdvDahil, komisyonFiyati, komisyonKdv, komisyonlaFiyat, fark,
+    belirlenenKar, belirlenenMarj, belirlenenKdvli };
 }
 
 function renderCost() {
@@ -873,14 +887,19 @@ function renderCost() {
     : "";
   qs("#cost-scale-label").hidden = !g.olcek;
 
+  /* Ölçeğe hangi rakamın yazılacağı: belirlenen fiyat doluysa O, boşsa
+     maliyetten türeyen kârlı fiyat. Etiket hangisinin gideceğini gösteriyor —
+     iki fiyat satırı yan yanayken tahmin ettirmemek gerekiyor. */
+  const belirlenenSecili = g.belirlenen > 0;
+  const etiket = '<span class="cost-cell__tag">ölçeğin satış fiyatı</span>';
+
   qs("#cost-results").innerHTML = [
     satir("Toplam malzeme mâliyeti", h.malzeme),
     satir("Toplam elektrik mâliyeti", h.elektrik),
     satir("Toplam işçilik ve amortisman", h.iscilikAmortisman),
     satir("Toplam net mâliyet", h.netMaliyet, "cost-cell--strong"),
-    // Ürüne atanan fiyat BU satır — hangi rakamın mağazaya gittiği görünsün.
-    satir(`Kârlı satış fiyatı <span class="cost-cell__tag">ölçeğin satış fiyatı</span>`,
-      h.karliFiyat, "cost-cell--price"),
+    satir(`Kârlı satış fiyatı${belirlenenSecili ? "" : ` ${etiket}`}`,
+      h.karliFiyat, belirlenenSecili ? "" : "cost-cell--price"),
     satir("Kargo dâhil", h.kargoDahil),
     satir("KDV tutarı", h.kdvTutari),
     satir("KDV dâhil", h.kdvDahil),
@@ -888,7 +907,15 @@ function renderCost() {
     satir("Pazar yeri komisyonunun KDV'si", h.komisyonKdv),
     satir("Pazar yeri komisyonla fiyatı", h.komisyonlaFiyat, "cost-cell--strong"),
     satir("Belirlenen fiyattan gelen ek kâr/zarar", h.fark,
-      h.fark < 0 ? "cost-cell--loss" : "cost-cell--gain")
+      h.fark < 0 ? "cost-cell--loss" : "cost-cell--gain"),
+    /* Belirlenen fiyatla çalışıldığında asıl merak edilen üç şey: bu fiyat
+       ölçeğe yazılacak mı, elde ne kâr kalıyor, müşteri kasada ne ödüyor. */
+    ...(belirlenenSecili ? [
+      satir(`Belirlenen satış fiyatı ${etiket}`, g.belirlenen, "cost-cell--price"),
+      satir(`Belirlenen fiyatta kâr <small>%${h.belirlenenMarj.toFixed(1)} marj</small>`,
+        h.belirlenenKar, h.belirlenenKar < 0 ? "cost-cell--loss" : "cost-cell--gain"),
+      satir(`Müşteri öder <small>KDV %${g.kdv} dâhil</small>`, h.belirlenenKdvli)
+    ] : [])
   ].join("");
 
   /* Komisyonlu fiyat, komisyonu KDV DÂHİL fiyatın üstüne ekliyor. Ama pazar
@@ -1094,13 +1121,23 @@ qs("#cost-assign").addEventListener("click", async () => {
   const g = costGirdileri();
   const h = costHesapla(g);
   const maliyet = yuvarla(h.netMaliyet);
-  /* Hesabın "Kârlı satış fiyatı" satırı doğrudan bu ölçeğin satış fiyatı olur:
-     müşteri ürün sayfasında bu boyu seçince bu tutarı öder. KDV ve kargo
-     bilerek dışarıda — vitrindeki bütün fiyatlar KDV hariç ve kargo alıcı
-     ödemeli ("Fiyata KDV eklenir · Kargo alıcı ödemeli").
-     Kâr marjı 0 ise fiyat maliyete eşit olurdu; böyle bir fiyatı mağazaya
-     yazmıyoruz — ölçek yalnızca iç maliyet kaydı olarak kalır. */
-  const fiyat = g.karMarji > 0 ? yuvarla(h.karliFiyat) : null;
+  /* Ölçeğin satış fiyatı iki yoldan biriyle belirlenir:
+
+     1. "Belirlenen satış fiyatı" doluysa O yazılır. Fiyatlamanın her zaman
+        maliyetten başlaması gerekmiyor — elden ve eş dost satışında fiyat
+        yuvarlak bir rakam olarak belirlenir (62 TL), marj onun sonucudur.
+     2. Boşsa maliyetten türeyen "kârlı satış fiyatı" yazılır.
+
+     İkisi de boşsa (marj da 0) fiyat yazılmaz: ölçek yalnızca iç maliyet
+     kaydı olur ve mağazada görünmez.
+
+     KDV ve kargo bilerek dışarıda: vitrindeki bütün fiyatlar KDV hariç ve
+     kargo alıcı ödemeli ("Fiyata KDV eklenir · Kargo alıcı ödemeli"). Yani
+     buraya 62 yazarsan müşteri kasada 74.40 öder. */
+  const belirlenen = yuvarla(g.belirlenen);
+  const fiyat = belirlenen > 0
+    ? belirlenen
+    : (g.karMarji > 0 ? yuvarla(h.karliFiyat) : null);
   const olcek = g.olcek || "Standart";
   const idler = [...costSecili];
 
@@ -1115,9 +1152,11 @@ qs("#cost-assign").addEventListener("click", async () => {
   renderCostProducts();
 
   const marj = fiyat && fiyat > 0 ? ((fiyat - maliyet) / fiyat) * 100 : null;
+  const kdvli = fiyat === null ? null : fiyat * (1 + g.kdv / 100);
   const fiyatCumlesi = fiyat === null
-    ? " Hedef kâr marjı 0 olduğu için satış fiyatı yazılmadı — ölçek yalnızca maliyet kaydı."
-    : ` Satış fiyatı ${money(fiyat)} (KDV hariç), kâr marjı %${marj.toFixed(1)}.`;
+    ? " Belirlenen fiyat ve hedef kâr marjı boş olduğu için satış fiyatı yazılmadı — ölçek yalnızca maliyet kaydı."
+    : ` Satış fiyatı ${money(fiyat)} (${belirlenen > 0 ? "belirlenen fiyat" : "maliyetten hesaplandı"}, KDV hariç)`
+      + `, kâr ${money(fiyat - maliyet)} · %${marj.toFixed(1)} marj. Müşteri KDV dâhil ${money(kdvli)} öder.`;
 
   if (idler.length === 1) {
     const urun = state.products.find((p) => p.id === idler[0]);

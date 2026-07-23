@@ -478,7 +478,7 @@
               <label>Kargo ücreti <small>TL</small><input type="number" name="kargo" min="0" step="0.01" value="0"></label>
               <label>KDV <small>%</small><input type="number" name="kdv" min="0" step="0.1" value="0"></label>
               <label>Pazar yeri komisyonu <small>%</small><input type="number" name="komisyon" min="0" step="0.1" value="0"></label>
-              <label>Belirlenen satış fiyatı <small>TL</small><input type="number" name="belirlenen" min="0" step="0.01" value="0"></label>
+              <label>Belirlenen satış fiyatı <small>TL · doluysa ölçeğe bu yazılır</small><input type="number" name="belirlenen" min="0" step="0.01" value="0"></label>
             </fieldset>
           </form>
         </div>
@@ -496,7 +496,9 @@
 
           <p class="form-note">Bir ürünün birden fazla <strong>ölçeği</strong> olabilir (küçük/büyük boy gibi) — her biri ayrı maliyet <em>ve ayrı fiyat</em>. Formdaki <strong>Ölçek</strong> alanına etiket yazıp ata; aynı ürüne farklı etiketle atarsan yeni ölçek eklenir, aynı etikete atarsan güncellenir. Müşteri ürün sayfasında bu ölçeklerden birini seçer ve seçtiği boyun fiyatını öder; ürün kartında en ucuz ölçeğin fiyatı <em>“…’den itibaren”</em> olarak görünür.</p>
 
-          <p class="form-note">Fiyat <strong>KDV hariç</strong> yazılır — vitrindeki bütün fiyatlar öyle (“Fiyata KDV eklenir · Kargo alıcı ödemeli”). Hedef kâr marjını 0 bırakırsan fiyat yazılmaz, ölçek yalnızca iç maliyet kaydı olarak kalır ve mağazada görünmez.</p>
+          <p class="form-note">Fiyat iki yoldan biriyle belirlenir: <strong>Belirlenen satış fiyatı</strong> doluysa o yazılır (“bu katlacı 62 TL’ye satıyorum” dersin, marj sonuçtan çıkar); boşsa maliyet + hedef kâr marjından hesaplanan <strong>kârlı satış fiyatı</strong> yazılır. İkisi de boşsa fiyat yazılmaz, ölçek yalnızca iç maliyet kaydı olur ve mağazada görünmez.</p>
+
+          <p class="form-note">Yazılan fiyat <strong>KDV hariçtir</strong> — vitrindeki bütün fiyatlar öyle (“Fiyata KDV eklenir · Kargo alıcı ödemeli”). 62 TL yazarsan müşteri kasada <strong>74.40 TL</strong> öder. Müşterinin tam 62 TL ödemesini istiyorsan 51.67 yazmalısın; sonuçlardaki <em>“Müşteri öder”</em> satırı bunu her zaman gösterir.</p>
 
           <div class="cost-pick-toolbar">
             <input type="search" id="cost-pick-search" placeholder="Ürün adı veya koda göre ara..." autocomplete="off">
