@@ -2355,6 +2355,15 @@ app.post("/api/products", requireAdmin, upload.single("image"), async (req, res)
   res.status(201).json(await withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(result.lastInsertRowid)));
 });
 
+app.patch("/api/products/:id/active", requireAdmin, async (req, res) => {
+  const isActive = req.body.is_active === true || req.body.is_active === 1 || req.body.is_active === "1";
+  const result = await db.prepare(`
+    UPDATE products SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+  `).run(isActive ? 1 : 0, req.params.id);
+  if (!result.changes) return res.status(404).json({ error: "Ürün bulunamadı." });
+  res.json({ id: Number(req.params.id), is_active: isActive ? 1 : 0 });
+});
+
 app.put("/api/products/:id", requireAdmin, upload.single("image"), async (req, res) => {
   const current = await db.prepare("SELECT * FROM products WHERE id = ?").get(req.params.id);
   if (!current) return res.status(404).json({ error: "Ürün bulunamadı." });

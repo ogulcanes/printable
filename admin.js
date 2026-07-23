@@ -217,6 +217,10 @@ function renderProducts() {
         <div class="price-history" data-history-for="${product.id}" hidden></div>
       </div>
       <div class="row-actions">
+        <label class="product-active-toggle" title="Ürünü mağazada göster veya gizle">
+          <input type="checkbox" data-product-active="${product.id}" ${product.is_active ? "checked" : ""}>
+          <span>Aktif</span>
+        </label>
         <button data-edit-product="${product.id}">Düzenle</button>
         <button data-history-product="${product.id}">Fiyat geçmişi</button>
         <button class="danger" data-delete-product="${product.id}">Sil</button>
@@ -1894,6 +1898,28 @@ qs("#product-list").addEventListener("click", async (event) => {
     panel.innerHTML = "<p>Yükleniyor…</p>";
     const rows = await api(`/api/products/${historyId}/price-history`);
     panel.innerHTML = renderPriceHistory(rows);
+  }
+});
+
+qs("#product-list").addEventListener("change", async (event) => {
+  const id = event.target.dataset.productActive;
+  if (!id) return;
+  const checkbox = event.target;
+  const yeniDurum = checkbox.checked;
+  checkbox.disabled = true;
+  try {
+    await api(`/api/products/${id}/active`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: yeniDurum })
+    });
+    const product = state.products.find((item) => item.id === Number(id));
+    if (product) product.is_active = yeniDurum ? 1 : 0;
+    renderProducts();
+  } catch (error) {
+    checkbox.checked = !yeniDurum;
+    checkbox.disabled = false;
+    alert(error.message);
   }
 });
 

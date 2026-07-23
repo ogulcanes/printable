@@ -420,6 +420,32 @@ textarea { resize: vertical; }
   gap: 8px;
   align-items: center;
 }
+.product-active-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 37px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.product-active-toggle:has(input:checked) {
+  border-color: rgba(31,143,103,.35);
+  background: rgba(31,143,103,.08);
+  color: var(--green);
+}
+.product-active-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--green);
+}
+.product-active-toggle:has(input:disabled) { opacity: .55; cursor: wait; }
 .row-actions button,
 .row-actions select,
 .small-button {
