@@ -1411,7 +1411,7 @@ async function productMetaTags(req, product) {
      müşteriyi yanıltmamış oluruz. */
   const olcekler = satisOlcekleri(await db.prepare(
     "SELECT id, scale, price FROM product_cost_scales WHERE product_id = ?"
-  ).all(product.id));
+  ).all(product.id), product.sale_price || product.price);
   const price = Number(
     (olcekler.length ? olcekler[0].price : product.sale_price || product.price) || 0
   ).toFixed(2);
@@ -2176,16 +2176,23 @@ async function decorateProducts(products) {
     categories: categories[product.id] || [],
     images: images[product.id] || [],
     cost_scales: scales[product.id] || [],
-    scales: satisOlcekleri(scales[product.id])
+    scales: satisOlcekleri(scales[product.id], product.sale_price || product.price)
   }));
 }
 
-/* Ölçeklerin MÜŞTERİYE açık hâli: yalnızca fiyatı girilmiş olanlar, yalnızca
-   ad ve fiyat. unit_cost ve inputs ticari sır olduğu için bu listeye hiç
-   girmiyor — maliyetiGizle'nin unutulması durumunda bile sızmasın. */
-const satisOlcekleri = (rows) => (rows || [])
-  .filter((s) => Number(s.price) > 0)
-  .map((s) => ({ id: s.id, scale: s.scale, price: round2(Number(s.price)) }))
+/* Ölçeklerin MÜŞTERİYE açık hâli: ölçeğin özel fiyatı varsa onu, yoksa ürünün
+   ana satış fiyatını kullanır. Eski %75 / %100 kayıtları maliyet ölçeği olarak
+   oluşturulmuş ve fiyatları ürün üzerinde tutulmuştu; onları gizlemek yerine
+   aynı ürün fiyatıyla seçilebilir varyant olarak gösteriyoruz.
+
+   unit_cost ve inputs ticari sır olduğu için bu listeye hiç girmiyor. */
+const satisOlcekleri = (rows, fallbackPrice = null) => (rows || [])
+  .map((s) => ({
+    id: s.id,
+    scale: s.scale,
+    price: Number(s.price) > 0 ? round2(Number(s.price)) : round2(Number(fallbackPrice))
+  }))
+  .filter((s) => s.price > 0)
   .sort((a, b) => a.price - b.price);
 
 // Tek ürün için: POST/PUT sonrası dönen kayıtta kullanılır.
@@ -2206,7 +2213,7 @@ const withColors = async (product) => {
     categories: await categoriesOfProduct.all(product.id),
     images: await imagesOfProduct.all(product.id),
     cost_scales: olcekler,
-    scales: satisOlcekleri(olcekler)
+    scales: satisOlcekleri(olcekler, product.sale_price || product.price)
   };
 };
 
@@ -3274,7 +3281,7 @@ async function normalizeCartItems(items) {
        kartta gördüğü başlangıç fiyatını uygulamak doğru olan. */
     const olcekler = satisOlcekleri(await db.prepare(
       "SELECT id, scale, price FROM product_cost_scales WHERE product_id = ?"
-    ).all(product.id));
+    ).all(product.id), product.sale_price || product.price);
     const olcek = olcekler.length
       ? olcekler.find((s) => s.id === toInt(item.scale_id)) || olcekler[0]
       : null;
