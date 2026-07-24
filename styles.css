@@ -637,6 +637,17 @@ img { display: block; max-width: 100%; }
   font-size: 24px;
   color: var(--blue);
 }
+.footer-brand-logo {
+  display: block;
+  width: min(220px, 100%);
+  margin-bottom: 16px;
+}
+.footer-brand-logo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
 /* Phone / WhatsApp / e-mail lines under the footer wordmark. Declared after
    `.footer a` above, which would otherwise force block layout and grey text. */
 .footer-contact {

@@ -804,7 +804,7 @@ if (!existingSite) {
     site_name: "Printable",
     site_url: "",
     description: "Özel 3D baskı figür, oyuncak ve anahtarlık ürünleri; STL baskı hizmeti.",
-    logo_path: "/assets/printable-logo.svg",
+    logo_path: "/assets/printable-logo.png",
     default_og_image: "",
     ...SITE_CONTACT
   });
@@ -1295,7 +1295,9 @@ async function renderFooter() {
         <div><h3>Müşteri Desteği</h3><a href="/iletisim">Bize ulaşın</a><a href="/iade">İade & Değişim</a><a href="/sss">Kargo</a><a href="/sss">S.S.S.</a></div>
         <div><h3>Yasal</h3><a href="/mesafeli-satis">Mesafeli Satış Sözleşmesi</a><a href="/iade">İade ve Cayma Hakkı</a><a href="/gizlilik">Gizlilik ve KVKK</a></div>
         <div class="footer-logo printable-wordmark">
-          <strong>Printable</strong>
+          <a class="footer-brand-logo" href="/" aria-label="Printable ana sayfa">
+            <img src="/assets/printable-logo.png" alt="Printable">
+          </a>
           <p>Özel 3D baskı ürünleri ve STL baskı hizmeti.</p>
           <p>Türkiye</p>
           <div class="footer-contact">${contactRow}</div>

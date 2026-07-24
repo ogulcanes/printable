@@ -77,6 +77,15 @@ button { cursor: pointer; }
 }
 .brand strong { display: block; font-size: 22px; line-height: 1; }
 .brand small { display: block; margin-top: 5px; color: #b8bac3; font-size: 12px; }
+.brand-logo {
+  display: block;
+  width: 150px;
+  height: auto;
+  border-radius: 7px;
+}
+.brand-logo--login {
+  width: min(280px, 100%);
+}
 .brand-mark {
   width: 44px;
   height: 44px;
