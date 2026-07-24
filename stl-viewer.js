@@ -11,6 +11,7 @@ const fileNameEl = document.querySelector("#stl-file-name");
 const dimensionsEl = document.querySelector("#stl-dimensions");
 const platesEl = document.querySelector("#stl-plates");
 const volumeEl = document.querySelector("#stl-volume");
+const weightEl = document.querySelector("#stl-weight");
 const priceEl = document.querySelector("#stl-price");
 const breakdownEl = document.querySelector("#stl-breakdown");
 const stepsEl = document.querySelector("#stl-steps");
@@ -969,9 +970,11 @@ async function refreshPrice() {
     if (requestId !== priceRequestId) return;   // arada daha yeni bir istek başladı
     if (price.error || !price.material) return;
     priceEl.textContent = money(price.total);
+    if (weightEl) weightEl.textContent = `${Number(price.estimated_weight_g || 0).toFixed(1)} g`;
 
     const lines = [
-      `${price.material.name} · %${price.infill} dolgu · ${Number(price.used_volume_cm3 || 0).toFixed(2)} cm³ kullanılıyor`,
+      `${price.material.name} · %${price.infill} dolgu · yaklaşık ${Number(price.estimated_weight_g || 0).toFixed(1)} g`,
+      `${Number(price.used_volume_cm3 || 0).toFixed(2)} cm³ kullanılan hacim · ${Number(price.material.density_g_cm3 || 1.24).toFixed(2)} g/cm³ yoğunluk`,
       `hazırlık ${money(price.setup_fee)} + ${price.quantity} x ${money(price.unit_price)}`
     ];
     if (price.color_fee > 0) {

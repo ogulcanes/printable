@@ -282,6 +282,7 @@ function renderMaterials() {
         <p>${escapeHtml(material.description) || "Açıklama yok."}</p>
         <div class="meta-line">
           <span class="badge blue">${money(material.price_per_cm3)} / cm³</span>
+          <span class="badge">${Number(material.density_g_cm3 || 1.24).toFixed(2)} g/cm³</span>
           <span class="badge ${material.is_active ? "green" : "orange"}">${material.is_active ? "Kullanımda" : "Pasif"}</span>
           <span class="badge">Sıra ${material.sort_order}</span>
         </div>
@@ -1982,7 +1983,7 @@ qs("#material-list").addEventListener("click", async (event) => {
   if (editId) {
     const material = state.materials.find((item) => item.id === Number(editId));
     const form = qs("#material-form");
-    ["id", "name", "description", "price_per_cm3", "sort_order"].forEach((key) => {
+    ["id", "name", "description", "price_per_cm3", "density_g_cm3", "sort_order"].forEach((key) => {
       form.elements[key].value = material[key] ?? "";
     });
     form.is_active.checked = Boolean(material.is_active);

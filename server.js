@@ -177,6 +177,7 @@ async function initDb() {
     name TEXT NOT NULL,
     description TEXT,
     price_per_cm3 REAL NOT NULL DEFAULT 0,
+    density_g_cm3 REAL NOT NULL DEFAULT 1.24,
     sort_order INTEGER NOT NULL DEFAULT 0,
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -607,6 +608,8 @@ for (const [table, column, type] of [
   ["pricing_settings", "min_order_total", "REAL NOT NULL DEFAULT 150"],
   // Each extra colour means a filament swap: purge waste plus machine time.
   ["pricing_settings", "color_change_fee", "REAL NOT NULL DEFAULT 35"],
+  // Used for the customer's approximate filament/resin weight calculation.
+  ["materials", "density_g_cm3", "REAL"],
   // Per-part STL the workshop can drop straight into a slicer.
   ["quote_parts", "file_path", "TEXT"],
   ["quote_parts", "name", "TEXT"],
@@ -616,18 +619,28 @@ for (const [table, column, type] of [
   if (!(await hasColumn(table, column))) await db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
 }
 
+await db.exec(`
+  UPDATE materials SET density_g_cm3 = CASE
+    WHEN LOWER(name) LIKE '%petg%' THEN 1.27
+    WHEN LOWER(name) LIKE '%abs%' THEN 1.04
+    WHEN LOWER(name) LIKE '%reçine%' OR LOWER(name) LIKE '%resin%' THEN 1.10
+    ELSE 1.24
+  END
+  WHERE density_g_cm3 IS NULL
+`);
+
 const existingMaterials = (await db.prepare("SELECT COUNT(*) count FROM materials").get()).count;
 if (!existingMaterials) {
   const seedMaterial = db.prepare(`
-    INSERT INTO materials (name, description, price_per_cm3, sort_order)
-    VALUES (@name, @description, @price_per_cm3, @sort_order)
+    INSERT INTO materials (name, description, price_per_cm3, density_g_cm3, sort_order)
+    VALUES (@name, @description, @price_per_cm3, @density_g_cm3, @sort_order)
   `);
   // PLA keeps the 8.50 TL/cm3 rate the old hardcoded formula used, so prices do not move.
   const materials = [
-    { name: "PLA", description: "Standart, ekonomik, iç mekan kullanımı", price_per_cm3: 8.5 },
-    { name: "PETG", description: "Dayanıklı, ısıya ve neme daha dirençli", price_per_cm3: 11 },
-    { name: "ABS", description: "Mekanik parçalar, yüksek sıcaklık dayanımı", price_per_cm3: 10 },
-    { name: "Reçine (SLA)", description: "Yüksek detay, pürüzsüz yüzey", price_per_cm3: 18 }
+    { name: "PLA", description: "Standart, ekonomik, iç mekan kullanımı", price_per_cm3: 8.5, density_g_cm3: 1.24 },
+    { name: "PETG", description: "Dayanıklı, ısıya ve neme daha dirençli", price_per_cm3: 11, density_g_cm3: 1.27 },
+    { name: "ABS", description: "Mekanik parçalar, yüksek sıcaklık dayanımı", price_per_cm3: 10, density_g_cm3: 1.04 },
+    { name: "Reçine (SLA)", description: "Yüksek detay, pürüzsüz yüzey", price_per_cm3: 18, density_g_cm3: 1.10 }
   ];
   for (const [index, material] of materials.entries()) {
     await seedMaterial.run({ ...material, sort_order: index + 1 });
@@ -2658,6 +2671,7 @@ async function priceQuote({ volume_cm3, max_dim_mm, material_id, infill, quantit
   // The shell is always printed solid, so only the interior scales with infill.
   const usedVolume = volume * (settings.shell_share + (1 - settings.shell_share) * infillRatio);
   const materialFee = usedVolume * material.price_per_cm3;
+  const estimatedWeight = usedVolume * (Number(material.density_g_cm3) || 1.24);
   const sizeFee = (maxDim / 10) * settings.size_fee_per_cm;
   // Per piece. Setup is charged once per order, and the floor applies to the
   // order total — putting the floor on the unit price would swallow the whole
@@ -2672,9 +2686,15 @@ async function priceQuote({ volume_cm3, max_dim_mm, material_id, infill, quantit
   const total = Math.max(settings.min_order_total, settings.setup_fee + unitPrice * qty + colorFee);
 
   return {
-    material: { id: material.id, name: material.name, price_per_cm3: material.price_per_cm3 },
+    material: {
+      id: material.id,
+      name: material.name,
+      price_per_cm3: material.price_per_cm3,
+      density_g_cm3: Number(material.density_g_cm3) || 1.24
+    },
     volume_cm3: volume,
     used_volume_cm3: usedVolume,
+    estimated_weight_g: estimatedWeight,
     infill: Math.round(infillRatio * 100),
     quantity: qty,
     setup_fee: settings.setup_fee,
@@ -2703,6 +2723,7 @@ function materialPayload(body) {
     name: body.name?.trim(),
     description: body.description?.trim() || null,
     price_per_cm3: Math.max(0, Number(body.price_per_cm3) || 0),
+    density_g_cm3: Math.max(0.01, Number(body.density_g_cm3) || 1.24),
     sort_order: toInt(body.sort_order),
     is_active: body.is_active === "0" ? 0 : 1
   };
@@ -2712,8 +2733,8 @@ app.post("/api/materials", requireAdmin, async (req, res) => {
   const material = materialPayload(req.body);
   if (!material.name) return res.status(400).json({ error: "Malzeme adı zorunludur." });
   const result = await db.prepare(`
-    INSERT INTO materials (name, description, price_per_cm3, sort_order, is_active)
-    VALUES (@name, @description, @price_per_cm3, @sort_order, @is_active)
+    INSERT INTO materials (name, description, price_per_cm3, density_g_cm3, sort_order, is_active)
+    VALUES (@name, @description, @price_per_cm3, @density_g_cm3, @sort_order, @is_active)
   `).run(material);
   res.status(201).json(await db.prepare("SELECT * FROM materials WHERE id = ?").get(result.lastInsertRowid));
 });
@@ -2726,6 +2747,7 @@ app.put("/api/materials/:id", requireAdmin, async (req, res) => {
   material.id = current.id;
   await db.prepare(`
     UPDATE materials SET name=@name, description=@description, price_per_cm3=@price_per_cm3,
+      density_g_cm3=@density_g_cm3,
       sort_order=@sort_order, is_active=@is_active WHERE id=@id
   `).run(material);
   res.json(await db.prepare("SELECT * FROM materials WHERE id = ?").get(current.id));
