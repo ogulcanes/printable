@@ -53,6 +53,7 @@ if (ADMIN_LOCKED) {
   console.error("UYARI: ADMIN_PASSWORD veya SESSION_SECRET tanımlı değil — admin paneli kilitlendi.");
 }
 const SESSION_COOKIE = "printable_admin";
+const CUSTOMER_SESSION_COOKIE = "printable_customer";
 /* İlk kurulumda açılacak panel hesapları. Sadece admin_users tablosu boşken
    kullanılır; sonrası panelden yönetilir. ADMIN_USER da listeye katılır ki
    eski tek-hesap kurulumları giriş yapabilmeye devam etsin. */
@@ -93,7 +94,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "13";
+const SCHEMA_VERSION = "14";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -143,6 +144,27 @@ async function initDb() {
     city TEXT,
     notes TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE TABLE IF NOT EXISTS customer_accounts (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    phone TEXT,
+    password_hash TEXT NOT NULL,
+    password_version INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE TABLE IF NOT EXISTS customer_password_resets (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    account_id INTEGER NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    used_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    FOREIGN KEY(account_id) REFERENCES customer_accounts(id) ON DELETE CASCADE
   );
 
   CREATE TABLE IF NOT EXISTS orders (
@@ -1202,7 +1224,7 @@ async function renderHeader(active) {
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 8h14l-1.4 7.2a2 2 0 0 1-2 1.6H9a2 2 0 0 1-2-1.7L5.8 4H3"/><path d="M9.5 20.5h.01M17.5 20.5h.01"/></svg>
             <strong id="cart-count">0</strong>
           </a>
-          <a class="admin-link icon-button" href="/admin" aria-label="Yönetim paneli">
+          <a class="admin-link icon-button" href="/hesap" aria-label="Müşteri hesabım">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
           </a>
         </nav>
@@ -1409,6 +1431,7 @@ app.get("/urunler", async (req, res) => await sendPage(req, res, "urunler.html",
 app.get("/stl-teklif", async (req, res) => await sendPage(req, res, "stl-teklif.html", "stl-teklif"));
 app.get("/hakkinda", async (req, res) => await sendPage(req, res, "hakkinda.html", "hakkinda"));
 app.get("/iletisim", async (req, res) => await sendPage(req, res, "iletisim.html", "iletisim"));
+app.get("/hesap", async (req, res) => await sendPage(req, res, "hesap.html", "hesap"));
 app.get("/sss", async (req, res) => await sendPage(req, res, "sss.html", "sss"));
 app.get("/mesafeli-satis", async (req, res) => await sendPage(req, res, "mesafeli-satis.html", "mesafeli-satis"));
 app.get("/iade", async (req, res) => await sendPage(req, res, "iade.html", "iade"));
@@ -1521,7 +1544,7 @@ app.get("/robots.txt", async (req, res) => {
   const site = await db.prepare("SELECT site_url FROM site_settings WHERE id = 1").get() || {};
   const base = (site.site_url || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
   res.type("text/plain").send(
-    ["User-agent: *", "Allow: /", "Disallow: /admin", "Disallow: /login", "Disallow: /api/", "Disallow: /odeme", "", `Sitemap: ${base}/sitemap.xml`, ""].join("\n")
+    ["User-agent: *", "Allow: /", "Disallow: /admin", "Disallow: /login", "Disallow: /hesap", "Disallow: /api/", "Disallow: /odeme", "", `Sitemap: ${base}/sitemap.xml`, ""].join("\n")
   );
 });
 
@@ -1561,7 +1584,7 @@ app.get("/sitemap.xml", async (req, res) => {
   );
 });
 
-["styles.css", "script.js", "stl-viewer.js", "admin.css", "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js", "katalog.js"].forEach((file) => {
+["styles.css", "script.js", "stl-viewer.js", "admin.css", "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js", "katalog.js", "hesap.js"].forEach((file) => {
   app.get(`/${file}`, async (req, res) => res.sendFile(path.join(ROOT, file)));
 });
 
@@ -1645,6 +1668,198 @@ app.post("/api/logout", async (req, res) => {
 app.get("/api/session", async (req, res) => {
   const admin = await currentAdmin(req);
   res.json({ authed: Boolean(admin), user: admin ? admin.username : null });
+});
+
+/* ---------- Müşteri hesabı ----------
+   Admin ve müşteri çerezleri tamamen ayrıdır. Şifre sürümü çerezde taşınır;
+   şifre yenilenince açık müşteri oturumlarının tamamı anında geçersizleşir. */
+const normalizeCustomerEmail = (value) => String(value || "").trim().toLowerCase();
+const validCustomerEmail = (value) => /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(value);
+
+async function currentCustomer(req) {
+  const raw = parseCookies(req)[CUSTOMER_SESSION_COOKIE];
+  if (!raw) return null;
+  const [id, version, expires, signature] = raw.split(".");
+  if (!id || !version || !expires || !signature || Number(expires) < Date.now()) return null;
+  const expected = signSession(`${id}.${version}.${expires}`);
+  try {
+    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+  } catch {
+    return null;
+  }
+  const account = await db.prepare(`
+    SELECT id, name, email, phone, password_version, created_at
+    FROM customer_accounts WHERE id = ?
+  `).get(id);
+  return account && String(account.password_version) === version ? account : null;
+}
+
+function setCustomerSessionCookie(res, account) {
+  const expires = Date.now() + 1000 * 60 * 60 * 24 * 30;
+  const value = `${account.id}.${account.password_version}.${expires}`;
+  const secure = IS_PRODUCTION ? " Secure;" : "";
+  res.setHeader(
+    "Set-Cookie",
+    `${CUSTOMER_SESSION_COOKIE}=${encodeURIComponent(`${value}.${signSession(value)}`)}; HttpOnly;${secure} SameSite=Lax; Path=/; Max-Age=2592000`
+  );
+}
+
+function clearCustomerSessionCookie(res) {
+  const secure = IS_PRODUCTION ? " Secure;" : "";
+  res.setHeader(
+    "Set-Cookie",
+    `${CUSTOMER_SESSION_COOKIE}=; HttpOnly;${secure} SameSite=Lax; Path=/; Max-Age=0`
+  );
+}
+
+async function requireCustomer(req, res, next) {
+  const customer = await currentCustomer(req);
+  if (!customer) return res.status(401).json({ error: "Lütfen müşteri hesabınıza giriş yapın." });
+  req.customer = customer;
+  next();
+}
+
+app.post("/api/customer/register", async (req, res) => {
+  const name = String(req.body.name || "").trim().replace(/\s+/g, " ");
+  const email = normalizeCustomerEmail(req.body.email);
+  const phone = String(req.body.phone || "").trim();
+  const password = String(req.body.password || "");
+  if (name.length < 2) return res.status(400).json({ error: "Ad soyad en az 2 karakter olmalı." });
+  if (!validCustomerEmail(email) || email.length > 160) {
+    return res.status(400).json({ error: "Geçerli bir e-posta adresi girin." });
+  }
+  if (password.length < 8) return res.status(400).json({ error: "Şifre en az 8 karakter olmalı." });
+  const existing = await db.prepare("SELECT id FROM customer_accounts WHERE email = ?").get(email);
+  if (existing) return res.status(409).json({ error: "Bu e-posta adresiyle zaten bir hesap var." });
+
+  const result = await db.prepare(`
+    INSERT INTO customer_accounts (name, email, phone, password_hash)
+    VALUES (@name, @email, @phone, @password_hash)
+  `).run({ name, email, phone: phone || null, password_hash: hashPassword(password) });
+  const account = await db.prepare("SELECT * FROM customer_accounts WHERE id = ?").get(result.lastInsertRowid);
+  setCustomerSessionCookie(res, account);
+  res.status(201).json({ ok: true, customer: { id: account.id, name, email, phone } });
+});
+
+app.post("/api/customer/login", async (req, res) => {
+  const email = normalizeCustomerEmail(req.body.email);
+  const account = await db.prepare("SELECT * FROM customer_accounts WHERE email = ?").get(email);
+  const ok = verifyPassword(req.body.password, account ? account.password_hash : DUMMY_PASSWORD_HASH);
+  if (!account || !ok) return res.status(401).json({ error: "E-posta veya şifre hatalı." });
+  setCustomerSessionCookie(res, account);
+  res.json({ ok: true, customer: { id: account.id, name: account.name, email: account.email, phone: account.phone } });
+});
+
+app.post("/api/customer/logout", async (req, res) => {
+  clearCustomerSessionCookie(res);
+  res.json({ ok: true });
+});
+
+app.get("/api/customer/session", async (req, res) => {
+  const customer = await currentCustomer(req);
+  res.json({
+    authed: Boolean(customer),
+    customer: customer ? { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone } : null
+  });
+});
+
+app.get("/api/customer/orders", requireCustomer, async (req, res) => {
+  const orders = await db.prepare(`
+    SELECT o.id, o.order_number, o.status, o.payment_status, o.total, o.tracking_code,
+           o.shipping_method, o.created_at
+    FROM orders o
+    JOIN customers c ON c.id = o.customer_id
+    WHERE LOWER(c.email) = ?
+    ORDER BY o.created_at DESC
+    LIMIT 100
+  `).all(req.customer.email);
+  res.json(orders);
+});
+
+app.put("/api/customer/profile", requireCustomer, async (req, res) => {
+  const name = String(req.body.name || "").trim().replace(/\s+/g, " ");
+  const phone = String(req.body.phone || "").trim();
+  if (name.length < 2) return res.status(400).json({ error: "Ad soyad en az 2 karakter olmalı." });
+  await db.prepare(`
+    UPDATE customer_accounts SET name = ?, phone = ?, updated_at = NOW() WHERE id = ?
+  `).run(name, phone || null, req.customer.id);
+  res.json({ ok: true, customer: { id: req.customer.id, name, email: req.customer.email, phone } });
+});
+
+async function sendPasswordResetEmail({ to, name, resetUrl }) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.MAIL_FROM || "Printable <noreply@printable.com.tr>";
+  if (!apiKey) return false;
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from,
+      to: [to],
+      subject: "Printable şifre yenileme",
+      html: `<div style="font-family:Arial,sans-serif;color:#171c2c;line-height:1.6">
+        <h2>Şifrenizi yenileyin</h2>
+        <p>Merhaba ${escapeHtml(name)},</p>
+        <p>Printable hesabınız için şifre yenileme bağlantısı istendi.</p>
+        <p><a href="${escapeHtml(resetUrl)}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#ff6542;color:#fff;text-decoration:none;font-weight:700">Yeni şifre oluştur</a></p>
+        <p>Bu bağlantı 30 dakika geçerlidir. İsteği siz yapmadıysanız bu e-postayı yok sayabilirsiniz.</p>
+      </div>`
+    })
+  });
+  return response.ok;
+}
+
+app.post("/api/customer/forgot-password", async (req, res) => {
+  const email = normalizeCustomerEmail(req.body.email);
+  if (!validCustomerEmail(email)) return res.status(400).json({ error: "Geçerli bir e-posta adresi girin." });
+  if (IS_PRODUCTION && !process.env.RESEND_API_KEY) {
+    return res.status(503).json({ error: "Şifre e-postası servisi henüz yapılandırılmamış." });
+  }
+  const account = await db.prepare("SELECT id, name, email FROM customer_accounts WHERE email = ?").get(email);
+  if (account) {
+    const token = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    await db.prepare("DELETE FROM customer_password_resets WHERE account_id = ? OR expires_at < NOW()").run(account.id);
+    await db.prepare(`
+      INSERT INTO customer_password_resets (account_id, token_hash, expires_at)
+      VALUES (?, ?, NOW() + INTERVAL '30 minutes')
+    `).run(account.id, tokenHash);
+    const origin = `${req.protocol}://${req.get("host")}`;
+    const sent = await sendPasswordResetEmail({
+      to: account.email,
+      name: account.name,
+      resetUrl: `${origin}/hesap?reset=${token}`
+    });
+    if (!sent && !IS_PRODUCTION) {
+      console.log(`Customer password reset URL: ${origin}/hesap?reset=${token}`);
+    }
+  }
+  res.json({ ok: true, message: "Hesap bulunursa şifre yenileme bağlantısı e-posta adresine gönderildi." });
+});
+
+app.post("/api/customer/reset-password", async (req, res) => {
+  const token = String(req.body.token || "");
+  const password = String(req.body.password || "");
+  if (!/^[a-f0-9]{64}$/i.test(token)) return res.status(400).json({ error: "Şifre yenileme bağlantısı geçersiz." });
+  if (password.length < 8) return res.status(400).json({ error: "Şifre en az 8 karakter olmalı." });
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  const reset = await db.prepare(`
+    SELECT r.id, r.account_id, a.email
+    FROM customer_password_resets r
+    JOIN customer_accounts a ON a.id = r.account_id
+    WHERE r.token_hash = ? AND r.used_at IS NULL AND r.expires_at > NOW()
+  `).get(tokenHash);
+  if (!reset) return res.status(400).json({ error: "Bağlantı geçersiz veya süresi dolmuş." });
+  await db.transaction(async (tx) => {
+    await tx.prepare(`
+      UPDATE customer_accounts
+      SET password_hash = ?, password_version = password_version + 1, updated_at = NOW()
+      WHERE id = ?
+    `).run(hashPassword(password), reset.account_id);
+    await tx.prepare("UPDATE customer_password_resets SET used_at = NOW() WHERE id = ?").run(reset.id);
+  });
+  clearCustomerSessionCookie(res);
+  res.json({ ok: true });
 });
 
 /* ---------- Maliyet hesaplayıcı ayarları ----------

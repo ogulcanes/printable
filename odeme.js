@@ -17,6 +17,19 @@
   let step = 1;
   const LAST = 4;
 
+  // Giriş yapan müşterinin temel bilgilerini teslimat formuna taşı; adres yine
+  // siparişe özeldir ve müşteri tarafından doldurulur.
+  fetch("/api/customer/session")
+    .then((response) => response.json())
+    .then(({ authed, customer }) => {
+      if (!authed || !customer) return;
+      const form = qs("#delivery-form");
+      if (!form.name.value) form.name.value = customer.name || "";
+      if (!form.email.value) form.email.value = customer.email || "";
+      if (!form.phone.value) form.phone.value = customer.phone || "";
+    })
+    .catch(() => {});
+
   // Client-side TC check for instant feedback; the server validates authoritatively.
   function isValidTC(v) {
     const tc = String(v || "").trim();

@@ -38,6 +38,18 @@ const cartCount = document.querySelector("#cart-count");
 const cartItems = document.querySelector("#cart-items");
 const searchToggle = document.querySelector(".search-toggle");
 const searchPopover = document.querySelector(".search-popover");
+const customerAccountLink = document.querySelector('a[href="/hesap"].icon-button');
+
+if (customerAccountLink) {
+  fetch("/api/customer/session")
+    .then((response) => response.json())
+    .then(({ authed, customer }) => {
+      if (!authed) return;
+      customerAccountLink.classList.add("is-authenticated");
+      customerAccountLink.setAttribute("aria-label", `${customer.name} hesabı`);
+    })
+    .catch(() => {});
+}
 
 // Shared card markup — reused by every product row on the homepage and by /urunler.
 const discountPercent = (product) =>

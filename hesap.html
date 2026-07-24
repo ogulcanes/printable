@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <!--seo-->
+    <link rel="preload" href="/assets/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/assets/fonts/manrope-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <!--header-->
+
+    <main class="account-page">
+      <section class="container account-shell">
+        <div class="account-intro">
+          <span>Printable hesabım</span>
+          <h1>Siparişlerinize ve bilgilerinize tek yerden ulaşın.</h1>
+          <p>Kayıtlı e-posta adresinizle geçmiş siparişlerinizi görüntüleyebilir ve iletişim bilgilerinizi güncelleyebilirsiniz.</p>
+        </div>
+
+        <div class="account-card" id="account-auth">
+          <div class="account-tabs" role="tablist">
+            <button type="button" class="active" data-account-tab="login">Giriş yap</button>
+            <button type="button" data-account-tab="register">Kayıt ol</button>
+          </div>
+
+          <form class="account-form" id="customer-login-form">
+            <h2>Tekrar hoş geldiniz</h2>
+            <label>E-posta<input name="email" type="email" autocomplete="email" required></label>
+            <label>Şifre<input name="password" type="password" autocomplete="current-password" required></label>
+            <button type="submit">Giriş yap</button>
+            <button class="account-text-button" type="button" data-account-tab="forgot">Şifremi unuttum</button>
+            <p class="account-message" role="status"></p>
+          </form>
+
+          <form class="account-form" id="customer-register-form" hidden>
+            <h2>Hesap oluşturun</h2>
+            <label>Ad soyad<input name="name" autocomplete="name" required minlength="2"></label>
+            <label>E-posta<input name="email" type="email" autocomplete="email" required></label>
+            <label>Telefon <small>(isteğe bağlı)</small><input name="phone" autocomplete="tel"></label>
+            <label>Şifre<input name="password" type="password" autocomplete="new-password" required minlength="8"></label>
+            <label>Şifre tekrar<input name="password_confirm" type="password" autocomplete="new-password" required minlength="8"></label>
+            <button type="submit">Kayıt ol</button>
+            <p class="account-message" role="status"></p>
+          </form>
+
+          <form class="account-form" id="customer-forgot-form" hidden>
+            <h2>Şifrenizi yenileyin</h2>
+            <p>Kayıtlı e-posta adresinize 30 dakika geçerli bir bağlantı gönderelim.</p>
+            <label>E-posta<input name="email" type="email" autocomplete="email" required></label>
+            <button type="submit">Bağlantı gönder</button>
+            <button class="account-text-button" type="button" data-account-tab="login">Girişe dön</button>
+            <p class="account-message" role="status"></p>
+          </form>
+
+          <form class="account-form" id="customer-reset-form" hidden>
+            <h2>Yeni şifrenizi belirleyin</h2>
+            <label>Yeni şifre<input name="password" type="password" autocomplete="new-password" required minlength="8"></label>
+            <label>Şifre tekrar<input name="password_confirm" type="password" autocomplete="new-password" required minlength="8"></label>
+            <button type="submit">Şifreyi yenile</button>
+            <p class="account-message" role="status"></p>
+          </form>
+        </div>
+
+        <div class="account-dashboard" id="account-dashboard" hidden>
+          <section class="account-card">
+            <div class="account-card__head">
+              <div><span>Hesabım</span><h2 id="account-welcome">Hoş geldiniz</h2></div>
+              <button type="button" class="account-logout" id="customer-logout">Çıkış yap</button>
+            </div>
+            <form class="account-form account-profile" id="customer-profile-form">
+              <label>Ad soyad<input name="name" autocomplete="name" required></label>
+              <label>E-posta<input name="email" type="email" readonly></label>
+              <label>Telefon<input name="phone" autocomplete="tel"></label>
+              <button type="submit">Bilgileri kaydet</button>
+              <p class="account-message" role="status"></p>
+            </form>
+          </section>
+
+          <section class="account-card">
+            <div class="account-card__head"><div><span>Geçmiş</span><h2>Siparişlerim</h2></div></div>
+            <div class="account-orders" id="customer-orders"><p>Siparişler yükleniyor…</p></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <!--cart-->
+    <!--footer-->
+    <!--chat-->
+    <script src="/script.js"></script>
+    <script src="/hesap.js"></script>
+  </body>
+</html>
