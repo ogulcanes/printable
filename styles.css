@@ -5671,3 +5671,38 @@ body.catalog-view-table .catalog-table-view { display: block; overflow-x: auto; 
 @media (max-width: 520px) {
   .printable-logo > img { width: 158px; }
 }
+.stl-plates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  margin: 10px 12px 0;
+}
+
+.stl-plates[hidden] {
+  display: none;
+}
+
+.stl-plate-result {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid #f0ddd3;
+  border-radius: 10px;
+  background: #fffaf7;
+}
+
+.stl-plate-result strong {
+  color: #171c2c;
+  font-size: 13px;
+}
+
+.stl-plate-result span {
+  color: #171c2c;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.stl-plate-result small {
+  color: #81736c;
+  font-size: 11px;
+}

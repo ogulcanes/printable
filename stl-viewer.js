@@ -9,6 +9,7 @@ const input = document.querySelector("#stl-file");
 const dropZone = document.querySelector("#stl-drop");
 const fileNameEl = document.querySelector("#stl-file-name");
 const dimensionsEl = document.querySelector("#stl-dimensions");
+const platesEl = document.querySelector("#stl-plates");
 const volumeEl = document.querySelector("#stl-volume");
 const priceEl = document.querySelector("#stl-price");
 const breakdownEl = document.querySelector("#stl-breakdown");
@@ -57,6 +58,7 @@ const quote = {
   depth: 0,
   maxDim: 0,
   volumeCm3: 0,
+  plates: [],
   parts: [],          // { index, volumeCm3, colorId, colorName, hex, mesh }
   materialId: null,
   infill: 30,
@@ -316,6 +318,50 @@ function parseBambuSettings(xml) {
   return byObject;
 }
 
+function metadataValue(xml, key) {
+  const metadataRe = /<metadata\b([^>]*?)\/?>/gi;
+  let match;
+  while ((match = metadataRe.exec(xml || ""))) {
+    const attrs = match[1];
+    const foundKey = (attrs.match(/\bkey="([^"]*)"/i) || [])[1];
+    if (foundKey !== key) continue;
+    return (attrs.match(/\bvalue="([^"]*)"/i) || [])[1] || "";
+  }
+  return "";
+}
+
+// Bambu Studio keeps the authoritative object/instance -> build plate mapping
+// here. Measuring the root scene as one box also measures the gaps between
+// plates, which can make an otherwise small model appear hundreds of mm wide.
+function parseBambuPlates(xml) {
+  const plates = [];
+  if (!xml) return plates;
+
+  const plateRe = /<plate\b[^>]*>([\s\S]*?)<\/plate>/gi;
+  let plateMatch;
+  while ((plateMatch = plateRe.exec(xml))) {
+    const body = plateMatch[1];
+    const instances = [];
+    const instanceRe = /<model_instance\b[^>]*>([\s\S]*?)<\/model_instance>/gi;
+    let instanceMatch;
+    while ((instanceMatch = instanceRe.exec(body))) {
+      const objectId = metadataValue(instanceMatch[1], "object_id");
+      if (!objectId) continue;
+      instances.push({
+        objectId,
+        instanceId: Number(metadataValue(instanceMatch[1], "instance_id") || 0)
+      });
+    }
+    if (!instances.length) continue;
+    plates.push({
+      id: metadataValue(body, "plater_id") || String(plates.length + 1),
+      name: metadataValue(body, "plater_name") || null,
+      instances
+    });
+  }
+  return plates;
+}
+
 function parse3mf(buffer) {
   const zip = unzipSync(new Uint8Array(buffer));
   const read = (name) => (zip[name] ? strFromU8(zip[name]) : null);
@@ -333,7 +379,17 @@ function parse3mf(buffer) {
   } catch {
     filaments = [];
   }
-  const settings = parseBambuSettings(read("Metadata/model_settings.config"));
+  const modelSettings = read("Metadata/model_settings.config");
+  const settings = parseBambuSettings(modelSettings);
+  const configuredPlates = parseBambuPlates(modelSettings);
+  const plateByInstance = new Map();
+  const plateByObject = new Map();
+  configuredPlates.forEach((plate, plateIndex) => {
+    plate.instances.forEach(({ objectId, instanceId }) => {
+      plateByInstance.set(`${objectId}:${instanceId}`, plateIndex);
+      if (!plateByObject.has(objectId)) plateByObject.set(objectId, plateIndex);
+    });
+  });
 
   const meshCache = new Map();
   const meshesIn = (modelPath) => {
@@ -357,21 +413,34 @@ function parse3mf(buffer) {
   const pieces = [];
   let painted = false;
 
-  const addPiece = (positions, matrix, name, extruder) => {
+  const addPiece = (positions, matrix, name, extruder, plateIndex) => {
     if (!positions.length) return;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(positions.slice(), 3));
     geometry.applyMatrix4(matrix);
     const hex = extruder && filaments[extruder - 1] ? filaments[extruder - 1].slice(0, 7) : null;
-    pieces.push({ geometry, name: name || null, fileColor: hex });
+    const plateInfo = configuredPlates[plateIndex] || null;
+    pieces.push({
+      geometry,
+      name: name || null,
+      fileColor: hex,
+      plateId: plateInfo?.id || String(plateIndex + 1),
+      plateName: plateInfo?.name || null
+    });
   };
 
   const itemRe = /<item\s+([^>]*?)\/?>/g;
+  const objectInstanceCounts = new Map();
   let itemMatch;
   while ((itemMatch = itemRe.exec(rootXml))) {
     const attrs = itemMatch[1];
     const objectId = (attrs.match(/objectid="([^"]+)"/) || [])[1];
     if (!objectId) continue;
+    const instanceId = objectInstanceCounts.get(objectId) || 0;
+    objectInstanceCounts.set(objectId, instanceId + 1);
+    const plateIndex = plateByInstance.get(`${objectId}:${instanceId}`)
+      ?? plateByObject.get(objectId)
+      ?? 0;
     const itemMatrix = parseTransform((attrs.match(/transform="([^"]+)"/) || [])[1]);
     const partSettings = settings.get(objectId) || new Map();
     const body = rootObjects.get(objectId) || "";
@@ -393,7 +462,7 @@ function parse3mf(buffer) {
       const matrix = itemMatrix.clone()
         .multiply(parseTransform((componentAttrs.match(/transform="([^"]+)"/) || [])[1]));
       const info = partSettings.get(childId) || {};
-      addPiece(mesh.positions, matrix, info.name, info.extruder);
+      addPiece(mesh.positions, matrix, info.name, info.extruder, plateIndex);
     }
 
     // Case 2 — a plain object that carries its own mesh.
@@ -402,7 +471,7 @@ function parse3mf(buffer) {
       if (!mesh) continue;
       if (mesh.painted) painted = true;
       const info = partSettings.get(objectId) || {};
-      addPiece(mesh.positions, itemMatrix, info.name, info.extruder);
+      addPiece(mesh.positions, itemMatrix, info.name, info.extruder, plateIndex);
     }
   }
 
@@ -443,7 +512,13 @@ function loadModel(file) {
         painted = parsed.painted;
       } else {
         const whole = new STLLoader().parse(buffer);
-        pieces = splitIntoParts(whole).map((geometry) => ({ geometry, name: null, fileColor: null }));
+        pieces = splitIntoParts(whole).map((geometry) => ({
+          geometry,
+          name: null,
+          fileColor: null,
+          plateId: "1",
+          plateName: null
+        }));
       }
     } catch (error) {
       setFileNote(`<strong>Dosya okunamadı</strong><span>${escapeHtml(error.message)}</span>`, true);
@@ -460,7 +535,36 @@ function loadModel(file) {
     const zUpToYUp = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
     pieces.forEach(({ geometry }) => geometry.applyMatrix4(zUpToYUp));
 
-    // Measure the whole model before splitting responsibilities per part.
+    const measuredPieces = pieces.map((piece) => ({ ...piece, volume: volumeOf(piece.geometry) }));
+    const plateGroups = new Map();
+    measuredPieces.forEach((piece) => {
+      const plateKey = piece.plateId || "1";
+      if (!plateGroups.has(plateKey)) {
+        plateGroups.set(plateKey, { id: plateKey, name: piece.plateName, pieces: [] });
+      }
+      plateGroups.get(plateKey).pieces.push(piece);
+    });
+    const plateStats = [...plateGroups.values()].map((plateInfo) => {
+      const plateBounds = new THREE.Box3();
+      plateInfo.pieces.forEach(({ geometry }) => {
+        geometry.computeBoundingBox();
+        plateBounds.union(geometry.boundingBox);
+      });
+      const plateSize = new THREE.Vector3();
+      plateBounds.getSize(plateSize);
+      return {
+        id: plateInfo.id,
+        name: plateInfo.name,
+        width: plateSize.x,
+        depth: plateSize.z,
+        height: plateSize.y,
+        partCount: plateInfo.pieces.length,
+        volumeCm3: plateInfo.pieces.reduce((sum, piece) => sum + piece.volume / 1000, 0)
+      };
+    });
+
+    // Keep the combined bounds only for framing the preview. Customer-facing
+    // dimensions and pricing use the individual plate measurements below.
     const bounds = new THREE.Box3();
     pieces.forEach(({ geometry }) => {
       geometry.computeBoundingBox();
@@ -479,9 +583,7 @@ function loadModel(file) {
     group = new THREE.Group();
 
     // Biggest part first, so "Parça 1" is the one the customer thinks of first.
-    const sorted = pieces
-      .map((piece) => ({ ...piece, volume: volumeOf(piece.geometry) }))
-      .sort((a, b) => b.volume - a.volume);
+    const sorted = measuredPieces.sort((a, b) => b.volume - a.volume);
 
     quote.parts = sorted.map((piece, index) => {
       // The same offset for every part — that is what keeps them aligned.
@@ -502,6 +604,7 @@ function loadModel(file) {
       return {
         index,
         name: piece.name,
+        plateId: piece.plateId,
         volumeCm3: piece.volume / 1000,
         colorId: chosen?.id || null,
         colorName: chosen?.name || null,
@@ -514,7 +617,10 @@ function loadModel(file) {
     scene.add(group);
 
     // After the Z-up conversion: x = width, z = depth, y = print height.
-    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    const maxDim = Math.max(
+      ...plateStats.map((item) => Math.max(item.width, item.depth, item.height)),
+      1
+    );
     const footprint = Math.max(size.x, size.z);
     buildPlate(Math.max(120, Math.ceil((footprint * 1.15) / 20) * 20));
 
@@ -530,15 +636,20 @@ function loadModel(file) {
     controls.update();
 
     quote.file = file;
-    quote.width = size.x;
-    quote.depth = size.z;
-    quote.height = size.y;
+    quote.width = Math.max(...plateStats.map((item) => item.width), 0);
+    quote.depth = Math.max(...plateStats.map((item) => item.depth), 0);
+    quote.height = Math.max(...plateStats.map((item) => item.height), 0);
     quote.maxDim = maxDim;
     quote.volumeCm3 = quote.parts.reduce((sum, part) => sum + part.volumeCm3, 0);
+    quote.plates = plateStats;
 
     const count = quote.parts.length;
     const partNote = count > 1 ? `${count} parça` : "Tek parça";
-    const dims = `${size.x.toFixed(1)} x ${size.z.toFixed(1)} x ${size.y.toFixed(1)} mm`;
+    const formatPlateDims = (item) =>
+      `${item.width.toFixed(1)} x ${item.depth.toFixed(1)} x ${item.height.toFixed(1)} mm`;
+    const dims = plateStats.length > 1
+      ? `${plateStats.length} tabla · en büyük kenar ${maxDim.toFixed(1)} mm`
+      : formatPlateDims(plateStats[0]);
     const sizeMb = file.size / (1024 * 1024);
     setFileNote(`
       <span class="stl-file-card__tick" aria-hidden="true">✓</span>
@@ -549,7 +660,18 @@ function loadModel(file) {
         </span>
       </span>
       <span class="stl-file-card__change">Değiştir</span>`);
-    dimensionsEl.textContent = dims;
+    dimensionsEl.textContent = plateStats.length > 1 ? `${plateStats.length} tabla` : dims;
+    if (platesEl) {
+      platesEl.hidden = plateStats.length < 2;
+      platesEl.innerHTML = plateStats.length > 1
+        ? plateStats.map((item, index) => `
+          <div class="stl-plate-result">
+            <strong>${escapeHtml(item.name || `Tabla ${item.id || index + 1}`)}</strong>
+            <span>${formatPlateDims(item)}</span>
+            <small>${item.partCount} parça · ${item.volumeCm3.toFixed(2)} cm3</small>
+          </div>`).join("")
+        : "";
+    }
     volumeEl.textContent = `${quote.volumeCm3.toFixed(2)} cm3`;
 
     // Painted 3MFs carry colour per triangle, not per object. We cannot read those
