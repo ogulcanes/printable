@@ -596,3 +596,53 @@ fetch("/api/site-info").then((response) => response.json()).then((info) => {
   renderCart();
 }).catch(() => {});
 observeCards();
+
+/* Ana sayfa keşif kartı: ilk saniyelerde kullanıcıyı bölmez; biraz gezinince
+   veya sayfada yeterince kalınca görünür. Kapatılan kart yedi gün susar. */
+function setupDiscoveryPopup() {
+  const popup = document.querySelector("#discovery-popup");
+  if (!popup) return;
+
+  const storageKey = "printable_discovery_popup_dismissed";
+  const sevenDays = 7 * 24 * 60 * 60 * 1000;
+  try {
+    const dismissedAt = Number(localStorage.getItem(storageKey) || 0);
+    if (Date.now() - dismissedAt < sevenDays) return;
+  } catch {
+    /* Gizli modda depolama kapalıysa bu ziyaret için çalışmaya devam et. */
+  }
+
+  let minimumDelayPassed = false;
+  let shown = false;
+  const show = () => {
+    if (shown || !minimumDelayPassed) return;
+    shown = true;
+    popup.hidden = false;
+    requestAnimationFrame(() => popup.classList.add("is-visible"));
+    window.removeEventListener("scroll", onScroll);
+  };
+  const onScroll = () => {
+    const available = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+    if (window.scrollY / available >= 0.35) show();
+  };
+  const dismiss = () => {
+    popup.classList.remove("is-visible");
+    try { localStorage.setItem(storageKey, String(Date.now())); } catch { /* ignore */ }
+    setTimeout(() => { popup.hidden = true; }, 220);
+  };
+
+  popup.querySelector(".discovery-popup__close")?.addEventListener("click", dismiss);
+  popup.querySelectorAll("a").forEach((link) => link.addEventListener("click", () => {
+    try { localStorage.setItem(storageKey, String(Date.now())); } catch { /* ignore */ }
+  }));
+  window.addEventListener("scroll", onScroll, { passive: true });
+
+  setTimeout(() => {
+    minimumDelayPassed = true;
+    onScroll();
+  }, 8000);
+  // Sayfayı okumaya devam eden ama kaydırmayan kullanıcıya da nazikçe göster.
+  setTimeout(show, 14000);
+}
+
+setupDiscoveryPopup();
