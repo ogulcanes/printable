@@ -882,7 +882,7 @@ async function loadOptions() {
     </label>
   `).join("") || "<p>Renk tanımlı değil.</p>";
 
-  document.querySelector("#stl-infill").innerHTML = INFILL_OPTIONS.map((item) => `
+  document.querySelector("#stl-infill").innerHTML = `${INFILL_OPTIONS.map((item) => `
     <label class="stl-option">
       <input type="radio" name="infill" value="${item.value}" ${item.value === quote.infill ? "checked" : ""}>
       <span class="stl-option__body">
@@ -890,7 +890,19 @@ async function loadOptions() {
         <small>${item.note}</small>
       </span>
     </label>
-  `).join("");
+  `).join("")}
+    <label class="stl-option stl-option--custom-infill">
+      <input type="radio" name="infill" value="custom">
+      <span class="stl-option__body">
+        <strong>Özel dolgu</strong>
+        <small>İstediğiniz oranı girin</small>
+      </span>
+      <span class="stl-custom-infill">
+        <input id="stl-custom-infill" type="number" min="1" max="100" step="1"
+          value="${quote.infill}" inputmode="numeric" aria-label="Özel dolgu yüzdesi">
+        <b>%</b>
+      </span>
+    </label>`;
 }
 
 document.querySelector("#stl-materials").addEventListener("change", (event) => {
@@ -900,7 +912,27 @@ document.querySelector("#stl-materials").addEventListener("change", (event) => {
 });
 
 document.querySelector("#stl-infill").addEventListener("change", (event) => {
-  quote.infill = Number(event.target.value);
+  if (event.target.id === "stl-custom-infill") {
+    quote.infill = Math.min(100, Math.max(1, Number(event.target.value) || 1));
+    event.target.value = quote.infill;
+    refreshPrice();
+    return;
+  }
+  if (event.target.value === "custom") {
+    const customInput = document.querySelector("#stl-custom-infill");
+    quote.infill = Math.min(100, Math.max(1, Number(customInput.value) || 1));
+    customInput.value = quote.infill;
+  } else {
+    quote.infill = Number(event.target.value);
+  }
+  refreshPrice();
+});
+
+document.querySelector("#stl-infill").addEventListener("input", (event) => {
+  if (event.target.id !== "stl-custom-infill") return;
+  const customRadio = document.querySelector('input[name="infill"][value="custom"]');
+  customRadio.checked = true;
+  quote.infill = Math.min(100, Math.max(1, Number(event.target.value) || 1));
   refreshPrice();
 });
 

@@ -5706,3 +5706,39 @@ body.catalog-view-table .catalog-table-view { display: block; overflow-x: auto; 
   color: #81736c;
   font-size: 11px;
 }
+
+.stl-option--custom-infill {
+  grid-column: 1 / -1;
+}
+
+.stl-custom-infill {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 92px;
+}
+
+.stl-custom-infill input {
+  position: static;
+  width: 100%;
+  height: 42px;
+  opacity: 1;
+  padding: 0 30px 0 12px;
+  border: 1px solid #e5d6ce;
+  border-radius: 9px;
+  background: #fff;
+  color: #171c2c;
+  font: inherit;
+  font-weight: 700;
+}
+
+.stl-custom-infill b {
+  position: absolute;
+  right: 12px;
+  pointer-events: none;
+}
+
+.stl-option--custom-infill:has(input[name="infill"]:checked) .stl-custom-infill input {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgb(255 101 66 / 12%);
+}
