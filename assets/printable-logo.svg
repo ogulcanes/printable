@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="720" height="220" viewBox="0 0 720 220" role="img" aria-label="Printable">
   <rect width="720" height="220" fill="#f5f2ec"/>
-  <g transform="translate(54 48) rotate(-2 62 62)">
+  <g transform="translate(54 37) rotate(-2 62 73)">
     <rect x="3" y="3" width="118" height="45" rx="25" fill="#ff6542"/>
     <rect x="42" y="17" width="39" height="18" rx="9" fill="#1b1d27"/>
-    <rect x="12" y="40" width="106" height="45" rx="24" fill="#1b1d27"/>
-    <rect x="7" y="78" width="114" height="45" rx="25" fill="#ff6542"/>
+    <rect x="12" y="45" width="106" height="48" rx="24" fill="#1b1d27"/>
+    <rect x="7" y="90" width="114" height="48" rx="25" fill="#ff6542"/>
   </g>
   <text x="202" y="137" fill="#1b1d27" font-family="Manrope, Arial Rounded MT Bold, sans-serif" font-size="78" font-weight="800" letter-spacing="-5">Printable</text>
   <circle cx="270" cy="76" r="7" fill="#ff6542"/>
