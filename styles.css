@@ -5649,10 +5649,10 @@ body.catalog-view-table .catalog-table-view { display: block; overflow-x: auto; 
 .printable-logo > img {
   display: block;
   width: auto;
-  height: 58px;
+  height: 66px;
   max-width: 100%;
   border-radius: 8px;
 }
 @media (max-width: 520px) {
-  .printable-logo > img { height: 44px; }
+  .printable-logo > img { height: 50px; }
 }
