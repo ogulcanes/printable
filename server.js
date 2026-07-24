@@ -1164,7 +1164,7 @@ async function renderHeader(active) {
     <header class="site-header">
       <div class="container header-main">
         <a class="logo printable-logo" href="/" aria-label="Printable ana sayfa">
-          <img src="/assets/printable-logo.png" alt="Printable">
+          <img src="/assets/printable-logo-transparent.png" alt="Printable">
         </a>
         <!-- Yalnızca mobilde görünür; menüyü açar. -->
         <button class="nav-toggle" type="button" id="nav-toggle"
@@ -1296,7 +1296,7 @@ async function renderFooter() {
         <div><h3>Yasal</h3><a href="/mesafeli-satis">Mesafeli Satış Sözleşmesi</a><a href="/iade">İade ve Cayma Hakkı</a><a href="/gizlilik">Gizlilik ve KVKK</a></div>
         <div class="footer-logo printable-wordmark">
           <a class="footer-brand-logo" href="/" aria-label="Printable ana sayfa">
-            <img src="/assets/printable-logo.png" alt="Printable">
+            <img src="/assets/printable-logo-transparent.png" alt="Printable">
           </a>
           <p>Özel 3D baskı ürünleri ve STL baskı hizmeti.</p>
           <p>Türkiye</p>
