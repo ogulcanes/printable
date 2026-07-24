@@ -1063,7 +1063,7 @@ app.post("/api/uploads/sign", async (req, res) => {
 });
 app.use("/assets", express.static(path.join(ROOT, "assets")));
 // Tarayicinin otomatik istegi 404 uretmesin.
-app.get("/favicon.ico", async (req, res) => res.redirect(301, "/assets/favicon.svg"));
+app.get("/favicon.ico", async (req, res) => res.redirect(301, "/assets/favicon-32.png"));
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
 
@@ -1079,7 +1079,11 @@ function absoluteUrl(req, value, siteUrl) {
 // bots (WhatsApp, X, LinkedIn) do not run our JavaScript.
 /* Sekme ikonu. Tarayıcı istemesek de /favicon.ico istiyor; tanımlamazsak
    her sayfa yüklemesinde 404 üretiyor ve sekmede boş ikon görünüyor. */
-const FAVICON_TAGS = `<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">`;
+const FAVICON_TAGS = [
+  `<link rel="icon" href="/assets/favicon-32.png" type="image/png" sizes="32x32">`,
+  `<link rel="icon" href="/assets/favicon-512.png" type="image/png" sizes="512x512">`,
+  `<link rel="apple-touch-icon" href="/assets/favicon-180.png" sizes="180x180">`,
+].join("\n");
 
 async function seoHead(req, slug) {
   const page = await db.prepare("SELECT * FROM seo_pages WHERE slug = ?").get(slug) || {};
