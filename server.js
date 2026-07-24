@@ -1191,8 +1191,6 @@ async function renderHeader(active) {
         <nav class="main-links" id="main-links" aria-label="Ana menü">
           ${await link("/", "Ana Sayfa", "home")}
           ${await link("/urunler", "Ürünler", "urunler")}
-          ${await link("/katalog", "Katalog", "katalog")}
-          ${await link("/stl-teklif", "3D Baskı Teklifi", "stl-teklif")}
           ${await link("/hakkinda", "Hakkımızda", "hakkinda")}
           ${await link("/iletisim", "İletişim", "iletisim")}
         </nav>
@@ -1206,10 +1204,6 @@ async function renderHeader(active) {
           </a>
           <a class="admin-link icon-button" href="/admin" aria-label="Yönetim paneli">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
-          </a>
-          <a class="header-quote" href="/stl-teklif">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 7.2v9.6L12 21l7.5-4.2V7.2L12 3Z"/><path d="M12 12 4.8 7.4M12 12l7.2-4.6M12 12v8.5"/></svg>
-            <span>3D Baskı Teklifi</span>
           </a>
         </nav>
       </div>
@@ -1308,7 +1302,7 @@ async function renderFooter() {
       </div>
       <div class="container footer__grid">
         <div><h3>Kategoriler</h3><a href="/urunler">Figürler</a><a href="/urunler">Anahtarlıklar</a><a href="/urunler">Fidget & Stres</a><a href="/urunler">Düdükler</a></div>
-        <div><h3>Kurumsal</h3><a href="/katalog">Ürün kataloğu</a><a href="/hakkinda">Hakkımızda</a><a href="/iletisim">İletişim</a><a href="/stl-teklif">Özel 3D baskı</a><a href="/urunler">Tüm ürünler</a></div>
+        <div><h3>Kurumsal</h3><a href="/katalog">Katalog</a><a href="/hakkinda">Hakkımızda</a><a href="/iletisim">İletişim</a><a href="/stl-teklif">Özel 3D baskı</a><a href="/urunler">Tüm ürünler</a></div>
         <div><h3>Müşteri Desteği</h3><a href="/iletisim">Bize ulaşın</a><a href="/iade">İade & Değişim</a><a href="/sss">Kargo</a><a href="/sss">S.S.S.</a></div>
         <div><h3>Yasal</h3><a href="/mesafeli-satis">Mesafeli Satış Sözleşmesi</a><a href="/iade">İade ve Cayma Hakkı</a><a href="/gizlilik">Gizlilik ve KVKK</a></div>
         <div class="footer-logo printable-wordmark">
