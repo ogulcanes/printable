@@ -1089,6 +1089,45 @@ body {
   }
 }
 
+@media (max-width: 640px) {
+  .service-row {
+    margin: 18px 0;
+    padding: 16px 0;
+    background: transparent;
+  }
+
+  .service-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    border: 0;
+    background: transparent;
+  }
+
+  .service-grid div {
+    min-height: 82px;
+    padding: 12px 10px;
+    gap: 5px;
+    border: 1px solid #f0ddd3;
+    border-radius: 12px;
+    background: #fff;
+  }
+
+  .service-grid div:last-child {
+    grid-column: 1 / -1;
+    min-height: 68px;
+    border-right: 1px solid #f0ddd3;
+  }
+
+  .service-grid strong {
+    font-size: 13px;
+  }
+
+  .service-grid span {
+    font-size: 11px;
+    line-height: 1.4;
+  }
+}
+
 .hero__slider {
   min-height: 0;
   height: clamp(360px, 32vw, 500px);
