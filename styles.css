@@ -5640,3 +5640,19 @@ body.catalog-view-table .catalog-table-view { display: block; overflow-x: auto; 
     letter-spacing: -1.3px;
   }
 }
+
+/* Üretilen ana logoyu header'da da birebir kullan. */
+.printable-logo {
+  display: inline-flex;
+  width: fit-content;
+}
+.printable-logo > img {
+  display: block;
+  width: auto;
+  height: 54px;
+  max-width: 100%;
+  border-radius: 8px;
+}
+@media (max-width: 520px) {
+  .printable-logo > img { height: 44px; }
+}
