@@ -1164,7 +1164,10 @@ async function renderHeader(active) {
     <header class="site-header">
       <div class="container header-main">
         <a class="logo printable-logo" href="/" aria-label="Printable ana sayfa">
-          <span>Printable</span>
+          <span class="printable-logo__mark" aria-hidden="true">
+            <i></i><i></i><i></i>
+          </span>
+          <span class="printable-logo__word">Printable</span>
         </a>
         <!-- Yalnızca mobilde görünür; menüyü açar. -->
         <button class="nav-toggle" type="button" id="nav-toggle"
