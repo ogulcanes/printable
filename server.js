@@ -1309,7 +1309,7 @@ async function renderFooter() {
           <a class="footer-brand-logo" href="/" aria-label="Printable ana sayfa">
             <img src="/assets/printable-logo-transparent.png" alt="Printable">
           </a>
-          <p>Özel 3D baskı ürünleri ve STL baskı hizmeti.</p>
+          <p>Hazır 3D modellerden özenle üretilen baskı ürünleri.</p>
           <p>Türkiye</p>
           <div class="footer-contact">${contactRow}</div>
           ${socialRow}
