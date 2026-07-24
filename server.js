@@ -2059,7 +2059,51 @@ function resolveImagePath(body, file) {
   return body.image_url?.trim() || body.current_image || null;
 }
 
+const seoMetniKisalt = (value, max) => {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max + 1);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${cut.slice(0, lastSpace > max * .7 ? lastSpace : max).replace(/[.,;:!?-]+$/, "")}…`;
+};
+
+/* Ürün SEO alanları boş bırakılırsa tutarlı varsayılanlar üret.
+   Yönetici elle bir değer girdiyse asla üzerine yazılmaz. Böylece yeni ürün
+   eklemek için SEO uzmanlığı gerekmez; önemli ürünler yine tek tek özelleştirilebilir. */
+function otomatikUrunSeo(body) {
+  const name = String(body.name || "").replace(/\s+/g, " ").trim();
+  const description = String(body.description || "").replace(/\s+/g, " ").trim();
+  const color = String(body.color || "").replace(/\s+/g, " ").trim();
+  const category = String(body.category || "").replace(/\s+/g, " ").trim();
+  const title = seoMetniKisalt(`${name} | 3D Baskı Ürün | Printable`, 60);
+  const descriptionBase = description
+    ? `${description} Printable'da farklı renk ve ölçek seçeneklerini inceleyin.`
+    : `${name}, siparişe özel üretilen 3D baskı ürün. Renk ve ölçek seçeneklerini Printable'da inceleyin.`;
+  const stopWords = new Set(["olan", "olarak", "için", "veya", "ürünü", "ürün", "uygun", "farklı", "seçenekleri"]);
+  const descriptionWords = `${name} ${description}`.toLocaleLowerCase("tr")
+    .replace(/[^\p{L}\p{N}\s-]/gu, " ").split(/\s+/)
+    .filter((word) => word.length >= 4 && !stopWords.has(word))
+    .slice(0, 6);
+  const keywords = [...new Set([
+    name.toLocaleLowerCase("tr"),
+    category.toLocaleLowerCase("tr"),
+    color.toLocaleLowerCase("tr"),
+    ...descriptionWords,
+    "3d baskı",
+    "3d baskı ürün",
+    "printable"
+  ].filter(Boolean))].join(", ");
+
+  return {
+    meta_title: body.meta_title?.trim() || title,
+    meta_description: body.meta_description?.trim() || seoMetniKisalt(descriptionBase, 160),
+    meta_keywords: body.meta_keywords?.trim() || keywords,
+    image_alt: body.image_alt?.trim() || `${name} 3D baskı ürün görseli`
+  };
+}
+
 function productPayload(body, file) {
+  const seo = otomatikUrunSeo(body);
   return {
     name: body.name?.trim(),
     sku: body.sku?.trim() || null,
@@ -2074,10 +2118,10 @@ function productPayload(body, file) {
     weight: nullableMoney(body.weight),
     stock: toInt(body.stock),
     image_path: resolveImagePath(body, file),
-    image_alt: body.image_alt?.trim() || null,
-    meta_title: body.meta_title?.trim() || null,
-    meta_description: body.meta_description?.trim() || null,
-    meta_keywords: body.meta_keywords?.trim() || null,
+    image_alt: seo.image_alt,
+    meta_title: seo.meta_title,
+    meta_description: seo.meta_description,
+    meta_keywords: seo.meta_keywords,
     is_active: body.is_active === "0" ? 0 : 1
   };
 }
