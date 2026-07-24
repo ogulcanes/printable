@@ -1321,11 +1321,15 @@ async function renderFooter() {
 // Floating WhatsApp button — replaces the old inert "?" bubble on every page.
 async function renderChatButton() {
   const { wa } = await contactInfo();
-  if (!wa) return "";
+  const whatsapp = wa ? `
+      <a class="chat" href="https://wa.me/${wa}" target="_blank" rel="noopener" aria-label="WhatsApp'tan yazın">
+        <svg viewBox="0 0 24 24" aria-hidden="true">${SOCIAL_ICONS.whatsapp}</svg>
+      </a>` : "";
   return `
-    <a class="chat" href="https://wa.me/${wa}" target="_blank" rel="noopener" aria-label="WhatsApp'tan yazın">
-      <svg viewBox="0 0 24 24" aria-hidden="true">${SOCIAL_ICONS.whatsapp}</svg>
-    </a>`;
+    <div class="mobile-sticky-actions">
+      <a class="mobile-products-cta" href="/urunler">Ürünleri gör</a>
+      ${whatsapp}
+    </div>`;
 }
 
 async function injectShell(html, headActive) {
