@@ -1,4 +1,5 @@
 node_modules/
+.npm-cache/
 
 # Gizli anahtarlar — ASLA depoya girmemeli.
 # Supabase service_role anahtarı buradadır; sızarsa veritabanının tamamı okunup
