@@ -39,6 +39,7 @@ const cartItems = document.querySelector("#cart-items");
 const searchToggle = document.querySelector(".search-toggle");
 const searchPopover = document.querySelector(".search-popover");
 const customerAccountLink = document.querySelector('a[href="/hesap"].icon-button');
+const customerAccountLabel = customerAccountLink?.querySelector(".account-link__label");
 
 if (customerAccountLink) {
   fetch("/api/customer/session")
@@ -46,6 +47,7 @@ if (customerAccountLink) {
     .then(({ authed, customer }) => {
       if (!authed) return;
       customerAccountLink.classList.add("is-authenticated");
+      if (customerAccountLabel) customerAccountLabel.textContent = customer.name;
       customerAccountLink.setAttribute("aria-label", `${customer.name} hesabı`);
     })
     .catch(() => {});

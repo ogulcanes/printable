@@ -1226,6 +1226,7 @@ async function renderHeader(active) {
           </a>
           <a class="admin-link icon-button" href="/hesap" aria-label="Müşteri hesabım">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+            <span class="account-link__label">Hesabım</span>
           </a>
         </nav>
       </div>
