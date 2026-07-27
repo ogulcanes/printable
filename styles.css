@@ -2790,7 +2790,11 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 14px 0 11px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   gap: 7px;
   flex: 0 1 auto;
 }
@@ -2807,9 +2811,18 @@ body {
 }
 
 .admin-link.icon-button:hover {
-  color: #fff !important;
-  background: #ff6542;
-  box-shadow: 0 12px 24px rgba(255,101,66,.22);
+  color: #ff6542 !important;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.admin-link.icon-button.is-authenticated {
+  background: transparent;
+}
+
+.admin-link.icon-button.is-authenticated::after {
+  display: none;
 }
 
 /* Dar ekranlarda üst satırdaki kontrollerin taşmaması için hesap adı ikona iner. */
