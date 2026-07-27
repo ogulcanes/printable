@@ -2576,6 +2576,22 @@ body {
   font-size: 17px;
 }
 
+/* Geniş ekranlarda sol boşluk, metin kutusunun kendi genişliğinden düşülüyordu;
+   bu nedenle başlık tek kelimelik satırlara bölünüyordu. İçeriği sabit okunabilir
+   bir sütunda, görseldeki ürünlerden yeterince uzakta tutuyoruz. */
+@media (min-width: 1051px) {
+  .hero__copy {
+    box-sizing: content-box;
+    width: min(620px, calc(100vw - var(--page-inset) - 560px));
+    padding-right: 24px;
+  }
+
+  .hero__copy h1,
+  .hero__copy > span {
+    max-width: 100%;
+  }
+}
+
 .hero-actions {
   gap: 10px;
 }
