@@ -2912,8 +2912,10 @@ body {
   border-color: var(--accent);
 }
 
-.hero__arrow--prev { left: max(18px, calc(var(--page-inset) + 18px)); }
-.hero__arrow--next { right: max(18px, calc(var(--page-inset) + 18px)); }
+/* Banner tam ekran olduğu için oklar da görselin kenarında kalmalı. Sayfa
+   iç boşluğunu kullanmak, büyük monitörlerde sol oku başlığın üstüne taşıyordu. */
+.hero__arrow--prev { left: 18px; }
+.hero__arrow--next { right: 18px; }
 
 .hero__arrow:focus-visible,
 .hero__dots button:focus-visible {
