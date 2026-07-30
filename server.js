@@ -1102,6 +1102,15 @@ app.get("/favicon.ico", async (req, res) => res.redirect(301, "/assets/favicon-3
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
 
+// Google Analytics measurement IDs are public identifiers, not secrets. The
+// environment variable makes it easy to use another stream without a deploy;
+// the fallback keeps the production stream active on every public page.
+const GA_MEASUREMENT_ID = process.env.GA_MEASUREMENT_ID || "G-MSSH4XTMNC";
+const googleAnalyticsTag = /^G-[A-Z0-9]+$/.test(GA_MEASUREMENT_ID)
+  ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}"></script>
+    <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag("js",new Date());gtag("config","${GA_MEASUREMENT_ID}");</script>`
+  : "";
+
 // Absolute URLs — Open Graph and canonical are ignored by crawlers when relative.
 function absoluteUrl(req, value, siteUrl) {
   if (!value) return "";
@@ -1357,6 +1366,7 @@ async function renderChatButton() {
 
 async function injectShell(html, headActive) {
   return html
+    .replace("</head>", `${googleAnalyticsTag}\n  </head>`)
     .replace("<!--header-->", await renderHeader(headActive))
     .replace("<!--cart-->", renderCartPanel())
     .replace("<!--footer-->", await renderFooter())
