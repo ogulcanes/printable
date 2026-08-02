@@ -54,6 +54,8 @@ if (ADMIN_LOCKED) {
 }
 const SESSION_COOKIE = "printable_admin";
 const CUSTOMER_SESSION_COOKIE = "printable_customer";
+const STORE_NOTIFICATION_EMAILS = String(process.env.STORE_NOTIFICATION_EMAILS || "")
+  .split(",").map((email) => email.trim()).filter(Boolean);
 /* İlk kurulumda açılacak panel hesapları. Sadece admin_users tablosu boşken
    kullanılır; sonrası panelden yönetilir. ADMIN_USER da listeye katılır ki
    eski tek-hesap kurulumları giriş yapabilmeye devam etsin. */
@@ -1767,6 +1769,8 @@ app.post("/api/customer/register", async (req, res) => {
   `).run({ name, email, phone: phone || null, password_hash: hashPassword(password) });
   const account = await db.prepare("SELECT * FROM customer_accounts WHERE id = ?").get(result.lastInsertRowid);
   setCustomerSessionCookie(res, account);
+  const ownerNotified = await notifyNewCustomerAccount({ name, email, phone }).catch(() => false);
+  if (STORE_NOTIFICATION_EMAILS.length && !ownerNotified) console.error(`Yeni üyelik bildirimi gönderilemedi: ${email}`);
   res.status(201).json({ ok: true, customer: { id: account.id, name, email, phone } });
 });
 
@@ -1833,27 +1837,98 @@ app.put("/api/customer/profile", requireCustomer, async (req, res) => {
   res.json({ ok: true, customer: { id: req.customer.id, name, email: req.customer.email, phone } });
 });
 
-async function sendPasswordResetEmail({ to, name, resetUrl }) {
+const emailMoney = (value) => `${Number(value || 0).toFixed(2)} TL`;
+
+async function sendTransactionalEmail({ to, subject, html }) {
   const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.MAIL_FROM || "Printable <noreply@printable.com.tr>";
+  const from = process.env.MAIL_FROM || "Printable <info@printable.com.tr>";
   if (!apiKey) return false;
+  const recipients = (Array.isArray(to) ? to : [to]).map((email) => String(email).trim()).filter(Boolean);
+  if (!recipients.length) return false;
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      from,
-      to: [to],
-      subject: "Printable şifre yenileme",
-      html: `<div style="font-family:Arial,sans-serif;color:#171c2c;line-height:1.6">
+    body: JSON.stringify({ from, to: recipients, subject, html })
+  });
+  return response.ok;
+}
+
+async function sendPasswordResetEmail({ to, name, resetUrl }) {
+  return sendTransactionalEmail({
+    to,
+    subject: "Printable şifre yenileme",
+    html: `<div style="font-family:Arial,sans-serif;color:#171c2c;line-height:1.6">
         <h2>Şifrenizi yenileyin</h2>
         <p>Merhaba ${escapeHtml(name)},</p>
         <p>Printable hesabınız için şifre yenileme bağlantısı istendi.</p>
         <p><a href="${escapeHtml(resetUrl)}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#ff6542;color:#fff;text-decoration:none;font-weight:700">Yeni şifre oluştur</a></p>
         <p>Bu bağlantı 30 dakika geçerlidir. İsteği siz yapmadıysanız bu e-postayı yok sayabilirsiniz.</p>
       </div>`
-    })
   });
-  return response.ok;
+}
+
+async function sendOrderReceivedEmail({ to, name, orderNumber, items, total }) {
+  const lines = items.map((item) => `<li style="padding:7px 0;border-bottom:1px solid #eee"><strong>${escapeHtml(item.product_name)}</strong> · ${Number(item.quantity)} adet · ${emailMoney(item.line_total)}</li>`).join("");
+  return sendTransactionalEmail({
+    to,
+    subject: `Siparişiniz alındı · ${orderNumber}`,
+    html: `<div style="font-family:Arial,sans-serif;color:#171c2c;line-height:1.6;max-width:600px">
+      <h2>Siparişinizi aldık 🎉</h2>
+      <p>Merhaba ${escapeHtml(name)},</p>
+      <p><strong>${escapeHtml(orderNumber)}</strong> numaralı siparişiniz üretim sırasına alındı.</p>
+      <ul style="padding-left:18px">${lines}</ul>
+      <p style="font-size:18px"><strong>Toplam: ${emailMoney(total)}</strong></p>
+      <p>Ürününüz kargoya verildiğinde takip bilgilerini ayrıca paylaşacağız.</p>
+      <p><a href="https://printable.com.tr/hesap" style="color:#ff6542;font-weight:700">Siparişlerimi görüntüle</a></p>
+    </div>`
+  });
+}
+
+async function sendShippingUpdateEmail({ to, name, orderNumber, trackingCode }) {
+  return sendTransactionalEmail({
+    to,
+    subject: `Siparişiniz kargoda · ${orderNumber}`,
+    html: `<div style="font-family:Arial,sans-serif;color:#171c2c;line-height:1.6;max-width:600px">
+      <h2>Siparişiniz kargoya verildi</h2>
+      <p>Merhaba ${escapeHtml(name)},</p>
+      <p><strong>${escapeHtml(orderNumber)}</strong> numaralı siparişiniz yola çıktı.</p>
+      ${trackingCode ? `<p><strong>Kargo takip kodu:</strong> ${escapeHtml(trackingCode)}</p>` : ""}
+      <p><a href="https://printable.com.tr/hesap" style="color:#ff6542;font-weight:700">Sipariş detayını görüntüle</a></p>
+    </div>`
+  });
+}
+
+async function sendStoreNotification({ subject, html }) {
+  if (!STORE_NOTIFICATION_EMAILS.length) return false;
+  return sendTransactionalEmail({ to: STORE_NOTIFICATION_EMAILS, subject, html });
+}
+
+async function notifyNewCustomerAccount({ name, email, phone }) {
+  return sendStoreNotification({
+    subject: "Yeni Printable üyeliği",
+    html: `<div style="font-family:Arial,sans-serif;color:#171c2c;line-height:1.6">
+      <h2>Yeni üye kaydı</h2>
+      <p><strong>Ad soyad:</strong> ${escapeHtml(name)}</p>
+      <p><strong>E-posta:</strong> ${escapeHtml(email)}</p>
+      ${phone ? `<p><strong>Telefon:</strong> ${escapeHtml(phone)}</p>` : ""}
+      <p><a href="https://printable.com.tr/admin" style="color:#ff6542;font-weight:700">Yönetim panelini aç</a></p>
+    </div>`
+  });
+}
+
+async function notifyNewOrder({ name, email, phone, orderNumber, items, total }) {
+  const lines = items.map((item) => `<li>${escapeHtml(item.product_name)} · ${Number(item.quantity)} adet · ${emailMoney(item.line_total)}</li>`).join("");
+  return sendStoreNotification({
+    subject: `Yeni sipariş · ${orderNumber}`,
+    html: `<div style="font-family:Arial,sans-serif;color:#171c2c;line-height:1.6">
+      <h2>Yeni sipariş geldi 🎉</h2>
+      <p><strong>Sipariş:</strong> ${escapeHtml(orderNumber)}</p>
+      <p><strong>Müşteri:</strong> ${escapeHtml(name)}<br><strong>E-posta:</strong> ${escapeHtml(email || "Belirtilmedi")}<br><strong>Telefon:</strong> ${escapeHtml(phone || "Belirtilmedi")}</p>
+      <ul>${lines}</ul>
+      <p><strong>Toplam: ${emailMoney(total)}</strong></p>
+      <p><a href="https://printable.com.tr/admin" style="color:#ff6542;font-weight:700">Siparişi panelde aç</a></p>
+    </div>`
+  });
 }
 
 app.post("/api/customer/forgot-password", async (req, res) => {
@@ -4098,9 +4173,32 @@ app.post("/api/checkout", async (req, res) => {
       for (const item of normalized) await dus.run(item.quantity, item.product_id);
     }
 
-    return { order_number: generatedNumber, shipping_method: shippingMethod };
+    return { order_number: generatedNumber, shipping_method: shippingMethod, total: grandTotal };
   });
 
+  // E-posta teslimatı sipariş kaydını asla geri almamalı. Resend geçici olarak
+  // yanıt veremese bile sipariş panelde kalır ve atölye tarafından işlenebilir.
+  if (customer.email?.trim()) {
+    const sent = await sendOrderReceivedEmail({
+      to: customer.email.trim(),
+      name: customer.name.trim(),
+      orderNumber: orderNumber.order_number,
+      items: normalized,
+      total: orderNumber.total
+    }).catch(() => false);
+    if (!sent) console.error(`Sipariş e-postası gönderilemedi: ${orderNumber.order_number}`);
+  }
+  const ownerNotified = await notifyNewOrder({
+    name: customer.name.trim(),
+    email: customer.email?.trim(),
+    phone: customer.phone.trim(),
+    orderNumber: orderNumber.order_number,
+    items: normalized,
+    total: orderNumber.total
+  }).catch(() => false);
+  if (STORE_NOTIFICATION_EMAILS.length && !ownerNotified) {
+    console.error(`Yeni sipariş bildirimi gönderilemedi: ${orderNumber.order_number}`);
+  }
   res.status(201).json(orderNumber);
 });
 
@@ -4117,7 +4215,22 @@ app.patch("/api/orders/:id", requireAdmin, async (req, res) => {
     tracking_code: req.body.tracking_code ?? current.tracking_code,
     notes: req.body.notes ?? current.notes
   });
-  res.json(await db.prepare("SELECT * FROM orders WHERE id = ?").get(current.id));
+  const updated = await db.prepare("SELECT * FROM orders WHERE id = ?").get(current.id);
+  const shippingStarted = (current.status !== "shipped" && updated.status === "shipped") ||
+    (!current.tracking_code && updated.tracking_code);
+  if (shippingStarted) {
+    const customer = await db.prepare("SELECT name, email FROM customers WHERE id = ?").get(updated.customer_id);
+    if (customer?.email) {
+      const sent = await sendShippingUpdateEmail({
+        to: customer.email,
+        name: customer.name,
+        orderNumber: updated.order_number,
+        trackingCode: updated.tracking_code
+      }).catch(() => false);
+      if (!sent) console.error(`Kargo e-postası gönderilemedi: ${updated.order_number}`);
+    }
+  }
+  res.json(updated);
 });
 
 // Public site info — KDV oranı + iletişim bilgileri (storefront ve /iletisim kullanır).
