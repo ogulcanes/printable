@@ -47,11 +47,9 @@
     const box = document.querySelector("#customer-orders");
     const shippingLabels = { free: "Ücretsiz kargo", recipient_paid: "Alıcı ödemeli" };
     const paymentLabels = { pending: "Ödeme onayı bekleniyor", paid: "Ödendi", refunded: "İade edildi" };
-    const progressStates = ["new", "preparing", "printed", "shipped", "delivered"];
     try {
       const orders = await request("/api/customer/orders");
       box.innerHTML = orders.length ? orders.map((order) => {
-        const currentStep = progressStates.indexOf(order.status);
         const isCancelled = order.status === "cancelled";
         const productVisual = (item, compact = false) => {
           const image = item.product_image
@@ -64,27 +62,19 @@
         const orderItems = order.items || [];
         const items = orderItems.map((item) => `
           <li>${productVisual(item)}<span class="order-product__quantity">${Number(item.quantity)} adet</span><strong>${formatMoney(item.line_total)}</strong></li>`).join("");
-        const firstItem = orderItems[0];
-        const preview = firstItem ? `<span class="account-order__preview">${productVisual(firstItem, true)}<span><strong>${escapeHtml(firstItem.product_name)}</strong><small>${orderItems.length > 1 ? `+ ${orderItems.length - 1} ürün daha` : `${Number(firstItem.quantity)} adet`}</small></span></span>` : "";
-        const discount = Number(order.discount || 0);
-        return `<details class="account-order">
-          <summary>
+        return `<article class="account-order">
+          <div class="account-order__header">
             <span class="account-order__identity"><strong>${escapeHtml(order.order_number)}</strong><small>${new Date(order.created_at).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" })}</small></span>
-            ${preview}
             <span class="account-order__status ${isCancelled ? "is-cancelled" : ""}">${escapeHtml(statusLabels[order.status] || order.status)}</span>
             <strong class="account-order__total">${formatMoney(order.total)}</strong>
-          </summary>
-          <div class="account-order__detail">
-            <div class="order-progress ${isCancelled ? "is-cancelled" : ""}" aria-label="Sipariş durumu">
-              ${isCancelled ? `<strong>Sipariş iptal edildi</strong>` : progressStates.map((step, index) => `<span class="${index <= currentStep ? "is-done" : ""}">${statusLabels[step] || step}</span>`).join("")}
-            </div>
-            <section><h3>Sipariş içeriği</h3><ul class="order-items">${items || "<li>Ürün bilgisi bulunamadı.</li>"}</ul></section>
-            <div class="account-order__columns">
-              <section><h3>Teslimat</h3><p>${escapeHtml(order.shipping_address || "Teslimat adresi henüz eklenmedi.")}</p><p>${escapeHtml(shippingLabels[order.shipping_method] || "Kargo yöntemi belirleniyor.")}</p>${order.tracking_code ? `<p><strong>Kargo takip kodu:</strong> ${escapeHtml(order.tracking_code)}</p>` : ""}</section>
-              <section><h3>Ödeme özeti</h3><dl class="order-totals"><div><dt>Ara toplam</dt><dd>${formatMoney(order.subtotal)}</dd></div>${discount ? `<div><dt>İndirim${order.campaign_summary ? ` · ${escapeHtml(order.campaign_summary)}` : ""}</dt><dd>−${formatMoney(discount)}</dd></div>` : ""}<div><dt>KDV</dt><dd>${formatMoney(order.tax_amount)}</dd></div><div class="order-totals__grand"><dt>Toplam</dt><dd>${formatMoney(order.total)}</dd></div></dl><p>${escapeHtml(paymentLabels[order.payment_status] || order.payment_status)}</p></section>
-            </div>
           </div>
-        </details>`;
+          <section class="account-order__products"><h3>Ürünler <span>(${orderItems.length})</span></h3><ul class="order-items">${items || "<li>Ürün bilgisi bulunamadı.</li>"}</ul></section>
+          <div class="account-order__footer">
+            <span>${escapeHtml(shippingLabels[order.shipping_method] || "Kargo yöntemi belirleniyor.")}</span>
+            ${order.tracking_code ? `<span>Kargo takip: <strong>${escapeHtml(order.tracking_code)}</strong></span>` : ""}
+            <span>${escapeHtml(paymentLabels[order.payment_status] || order.payment_status)}</span>
+          </div>
+        </article>`;
       }).join("") : `<div class="account-empty"><strong>Henüz siparişiniz yok.</strong><a href="/urunler">Ürünleri keşfedin</a></div>`;
     } catch (error) {
       box.innerHTML = `<p class="account-message is-error">${escapeHtml(error.message)}</p>`;
@@ -92,6 +82,7 @@
   }
 
   async function showDashboard(customer) {
+    document.querySelector(".account-page").classList.remove("account-page--loading");
     auth.hidden = true;
     dashboard.hidden = false;
     document.querySelector(".account-shell").classList.add("is-authenticated");
@@ -174,11 +165,17 @@
   });
 
   (async () => {
-    if (resetToken) return showForm("reset");
+    if (resetToken) {
+      auth.hidden = false;
+      document.querySelector(".account-page").classList.remove("account-page--loading");
+      return showForm("reset");
+    }
     try {
       const session = await request("/api/customer/session");
       if (session.authed) return showDashboard(session.customer);
     } catch { /* giriş formu açık kalır */ }
+    auth.hidden = false;
+    document.querySelector(".account-page").classList.remove("account-page--loading");
     showForm("login");
   })();
 })();

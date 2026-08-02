@@ -10,9 +10,10 @@
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
+    <noscript><style>.account-page--loading .account-shell{visibility:visible}</style></noscript>
     <!--header-->
 
-    <main class="account-page">
+    <main class="account-page account-page--loading">
       <section class="container account-shell">
         <div class="account-intro">
           <span>Printable hesabım</span>
@@ -20,7 +21,7 @@
           <p>Kayıtlı e-posta adresinizle geçmiş siparişlerinizi görüntüleyebilir ve iletişim bilgilerinizi güncelleyebilirsiniz.</p>
         </div>
 
-        <div class="account-card" id="account-auth">
+        <div class="account-card" id="account-auth" hidden>
           <div class="account-tabs" role="tablist">
             <button type="button" class="active" data-account-tab="login">Giriş yap</button>
             <button type="button" data-account-tab="register">Kayıt ol</button>
