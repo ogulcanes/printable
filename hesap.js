@@ -34,13 +34,23 @@
   }
 
   async function request(url, options = {}) {
-    const response = await fetch(url, {
-      ...options,
-      headers: { "Content-Type": "application/json", ...(options.headers || {}) }
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "İşlem tamamlanamadı.");
-    return data;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20_000);
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        headers: { "Content-Type": "application/json", ...(options.headers || {}) }
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "İşlem tamamlanamadı.");
+      return data;
+    } catch (error) {
+      if (error.name === "AbortError") throw new Error("İstek zaman aşımına uğradı. Lütfen tekrar deneyin.");
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   async function renderOrders() {
@@ -127,12 +137,21 @@
 
   forms.forgot.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector('button[type="submit"]');
+    message(form, "Bağlantı gönderiliyor…");
+    button.disabled = true;
+    button.textContent = "Gönderiliyor…";
     try {
       const data = await request("/api/customer/forgot-password", {
-        method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget)))
+        method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(form)))
       });
-      message(event.currentTarget, data.message);
-    } catch (error) { message(event.currentTarget, error.message, true); }
+      message(form, data.message);
+    } catch (error) { message(form, error.message, true); }
+    finally {
+      button.disabled = false;
+      button.textContent = "Bağlantı gönder";
+    }
   });
 
   forms.reset.addEventListener("submit", async (event) => {
