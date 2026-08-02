@@ -105,12 +105,20 @@
 
   forms.register.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const values = Object.fromEntries(new FormData(event.currentTarget));
-    if (values.password !== values.password_confirm) return message(event.currentTarget, "Şifreler eşleşmiyor.", true);
+    const form = event.currentTarget;
+    const values = Object.fromEntries(new FormData(form));
+    const button = form.querySelector('button[type="submit"]');
+    message(form, "");
+    button.disabled = true;
+    button.textContent = "Hesap oluşturuluyor…";
     try {
       const data = await request("/api/customer/register", { method: "POST", body: JSON.stringify(values) });
       await showDashboard(data.customer);
-    } catch (error) { message(event.currentTarget, error.message, true); }
+    } catch (error) { message(form, error.message, true); }
+    finally {
+      button.disabled = false;
+      button.textContent = "Kayıt ol";
+    }
   });
 
   forms.forgot.addEventListener("submit", async (event) => {
@@ -126,7 +134,6 @@
   forms.reset.addEventListener("submit", async (event) => {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget));
-    if (values.password !== values.password_confirm) return message(event.currentTarget, "Şifreler eşleşmiyor.", true);
     try {
       await request("/api/customer/reset-password", {
         method: "POST", body: JSON.stringify({ token: resetToken, password: values.password })

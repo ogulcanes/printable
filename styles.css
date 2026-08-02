@@ -911,6 +911,14 @@ img { display: block; max-width: 100%; }
   font-weight: 500;
 }
 
+.account-name-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.account-name-fields label { min-width: 0; }
+
 .account-form input {
   width: 100%;
   min-height: 46px;
@@ -934,6 +942,11 @@ img { display: block; max-width: 100%; }
   background: var(--accent);
   color: #fff;
   font-weight: 800;
+}
+
+.account-form > button[type="submit"]:disabled {
+  cursor: wait;
+  opacity: .72;
 }
 
 .account-text-button,
@@ -1083,6 +1096,8 @@ img { display: block; max-width: 100%; }
   .account-profile {
     grid-template-columns: 1fr;
   }
+
+  .account-name-fields { grid-template-columns: 1fr; }
 
   .account-profile label,
   .account-profile button,

@@ -35,15 +35,17 @@
             <p class="account-message" role="status"></p>
           </form>
 
-          <form class="account-form" id="customer-register-form" hidden>
+          <form class="account-form" id="customer-register-form" hidden novalidate>
             <h2>Hesap oluşturun</h2>
-            <label>Ad soyad<input name="name" autocomplete="name" required minlength="2"></label>
+            <div class="account-name-fields">
+              <label>Ad<input name="first_name" autocomplete="given-name" required minlength="2"></label>
+              <label>Soyad<input name="last_name" autocomplete="family-name" required minlength="2"></label>
+            </div>
             <label>E-posta<input name="email" type="email" autocomplete="email" required></label>
             <label>Telefon <small>(isteğe bağlı)</small><input name="phone" autocomplete="tel"></label>
             <label>Şifre<input name="password" type="password" autocomplete="new-password" required minlength="8"></label>
-            <label>Şifre tekrar<input name="password_confirm" type="password" autocomplete="new-password" required minlength="8"></label>
             <button type="submit">Kayıt ol</button>
-            <p class="account-message" role="status"></p>
+            <p class="account-message" role="status" aria-live="polite"></p>
           </form>
 
           <form class="account-form" id="customer-forgot-form" hidden>
@@ -58,7 +60,6 @@
           <form class="account-form" id="customer-reset-form" hidden>
             <h2>Yeni şifrenizi belirleyin</h2>
             <label>Yeni şifre<input name="password" type="password" autocomplete="new-password" required minlength="8"></label>
-            <label>Şifre tekrar<input name="password_confirm" type="password" autocomplete="new-password" required minlength="8"></label>
             <button type="submit">Şifreyi yenile</button>
             <p class="account-message" role="status"></p>
           </form>

@@ -871,7 +871,7 @@ async function loadOptions() {
         <strong>${item.name}</strong>
         <small>${item.description || ""}</small>
       </span>
-      <span class="stl-option__price">${money(item.price_per_cm3)}/cm³</span>
+      <span class="stl-option__price">${money(Number(item.price_per_cm3) / Number(item.density_g_cm3 || 1.24))}/g</span>
     </label>
   `).join("") || "<p>Malzeme tanımlı değil.</p>";
 
@@ -973,7 +973,7 @@ async function refreshPrice() {
     if (weightEl) weightEl.textContent = `${Number(price.estimated_weight_g || 0).toFixed(1)} g`;
 
     const lines = [
-      `${price.material.name} · %${price.infill} dolgu · yaklaşık ${Number(price.estimated_weight_g || 0).toFixed(1)} g`,
+      `${price.material.name} · ${money(Number(price.material.price_per_cm3) / Number(price.material.density_g_cm3 || 1.24))}/g · %${price.infill} dolgu · yaklaşık ${Number(price.estimated_weight_g || 0).toFixed(1)} g`,
       `${Number(price.used_volume_cm3 || 0).toFixed(2)} cm³ kullanılan hacim · ${Number(price.material.density_g_cm3 || 1.24).toFixed(2)} g/cm³ yoğunluk`,
       `hazırlık ${money(price.setup_fee)} + ${price.quantity} x ${money(price.unit_price)}`
     ];

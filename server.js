@@ -94,7 +94,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "14";
+const SCHEMA_VERSION = "15";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -657,17 +657,31 @@ if (!existingMaterials) {
     INSERT INTO materials (name, description, price_per_cm3, density_g_cm3, sort_order)
     VALUES (@name, @description, @price_per_cm3, @density_g_cm3, @sort_order)
   `);
-  // PLA keeps the 8.50 TL/cm3 rate the old hardcoded formula used, so prices do not move.
+  // Fiyatlar içeride hacimle hesaplanır; müşteri tarafındaki baz gramdır.
   const materials = [
-    { name: "PLA", description: "Standart, ekonomik, iç mekan kullanımı", price_per_cm3: 8.5, density_g_cm3: 1.24 },
-    { name: "PETG", description: "Dayanıklı, ısıya ve neme daha dirençli", price_per_cm3: 11, density_g_cm3: 1.27 },
-    { name: "ABS", description: "Mekanik parçalar, yüksek sıcaklık dayanımı", price_per_cm3: 10, density_g_cm3: 1.04 },
-    { name: "Reçine (SLA)", description: "Yüksek detay, pürüzsüz yüzey", price_per_cm3: 18, density_g_cm3: 1.10 }
+    { name: "PLA", description: "Standart, ekonomik, iç mekan kullanımı", price_per_cm3: 2.48, density_g_cm3: 1.24 },
+    { name: "PETG", description: "Dayanıklı, ısıya ve neme daha dirençli", price_per_cm3: 3.29, density_g_cm3: 1.27 },
+    { name: "ABS", description: "Mekanik parçalar, yüksek sıcaklık dayanımı", price_per_cm3: 2.45, density_g_cm3: 1.04 },
+    { name: "Reçine (SLA)", description: "Yüksek detay, pürüzsüz yüzey", price_per_cm3: 4.66, density_g_cm3: 1.10 }
   ];
   for (const [index, material] of materials.entries()) {
     await seedMaterial.run({ ...material, sort_order: index + 1 });
   }
 }
+
+// PLA 2 TL/g temel alınır. Diğer malzemelerin eski fiyat farkı korunarak
+// hesaplanan gram fiyatları: PETG 2,59; ABS 2,35; Reçine 4,24 TL/g.
+// Hesap motoru hacim kullandığı için değerler yoğunlukla çarpılmıştır.
+await db.prepare(`
+  UPDATE materials SET price_per_cm3 = CASE
+    WHEN LOWER(name) = 'pla' THEN 2.48
+    WHEN LOWER(name) = 'petg' THEN 3.29
+    WHEN LOWER(name) = 'abs' THEN 2.45
+    WHEN LOWER(name) = 'reçine (sla)' OR LOWER(name) = 'resin (sla)' THEN 4.66
+    ELSE price_per_cm3
+  END
+  WHERE LOWER(name) IN ('pla', 'petg', 'abs', 'reçine (sla)', 'resin (sla)')
+`).run();
 
 if (!(await db.prepare("SELECT COUNT(*) count FROM pricing_settings").get()).count) {
   await db.prepare(`
@@ -1731,11 +1745,15 @@ async function requireCustomer(req, res, next) {
 }
 
 app.post("/api/customer/register", async (req, res) => {
-  const name = String(req.body.name || "").trim().replace(/\s+/g, " ");
+  const firstName = String(req.body.first_name || "").trim().replace(/\s+/g, " ");
+  const lastName = String(req.body.last_name || "").trim().replace(/\s+/g, " ");
+  const name = `${firstName} ${lastName}`.trim();
   const email = normalizeCustomerEmail(req.body.email);
   const phone = String(req.body.phone || "").trim();
   const password = String(req.body.password || "");
-  if (name.length < 2) return res.status(400).json({ error: "Ad soyad en az 2 karakter olmalı." });
+  if (firstName.length < 2 || lastName.length < 2) {
+    return res.status(400).json({ error: "Ad ve soyad en az 2 karakter olmalı." });
+  }
   if (!validCustomerEmail(email) || email.length > 160) {
     return res.status(400).json({ error: "Geçerli bir e-posta adresi girin." });
   }
