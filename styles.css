@@ -960,6 +960,28 @@ img { display: block; max-width: 100%; }
   font-weight: 800;
 }
 
+.account-logout {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px solid #f1c5bb;
+  border-radius: 9px;
+  background: #fff7f4;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+  transition: background .18s ease, border-color .18s ease, transform .18s ease;
+}
+
+.account-logout:hover {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
 .account-message {
   min-height: 20px;
   color: #21845d !important;
