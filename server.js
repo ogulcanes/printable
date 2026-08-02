@@ -1805,10 +1805,12 @@ app.get("/api/customer/orders", requireCustomer, async (req, res) => {
   `).all(req.customer.email);
   if (!orders.length) return res.json([]);
   const items = await db.prepare(`
-    SELECT oi.order_id, oi.product_name, oi.scale, oi.quantity, oi.unit_price, oi.line_total
+    SELECT oi.order_id, oi.product_id, oi.product_name, oi.scale, oi.quantity, oi.unit_price, oi.line_total,
+           p.image_path AS product_image
     FROM order_items oi
     JOIN orders o ON o.id = oi.order_id
     JOIN customers c ON c.id = o.customer_id
+    LEFT JOIN products p ON p.id = oi.product_id
     WHERE LOWER(c.email) = ?
     ORDER BY o.created_at DESC, oi.id ASC
   `).all(req.customer.email);

@@ -53,12 +53,24 @@
       box.innerHTML = orders.length ? orders.map((order) => {
         const currentStep = progressStates.indexOf(order.status);
         const isCancelled = order.status === "cancelled";
-        const items = (order.items || []).map((item) => `
-          <li><span><strong>${escapeHtml(item.product_name)}</strong>${item.scale ? `<small>${escapeHtml(item.scale)}</small>` : ""}</span><span>${Number(item.quantity)} adet</span><strong>${formatMoney(item.line_total)}</strong></li>`).join("");
+        const productVisual = (item, compact = false) => {
+          const image = item.product_image
+            ? `<img src="${escapeHtml(item.product_image)}" alt="${escapeHtml(item.product_name)}">`
+            : `<span class="order-product__placeholder" aria-hidden="true">3D</span>`;
+          const productId = Number(item.product_id);
+          const visual = productId > 0 ? `<a href="/urun/${productId}" class="order-product__image">${image}</a>` : `<span class="order-product__image">${image}</span>`;
+          return compact ? visual : `${visual}<span class="order-product__info"><strong>${escapeHtml(item.product_name)}</strong>${item.scale ? `<small>Ölçek: ${escapeHtml(item.scale)}</small>` : ""}</span>`;
+        };
+        const orderItems = order.items || [];
+        const items = orderItems.map((item) => `
+          <li>${productVisual(item)}<span class="order-product__quantity">${Number(item.quantity)} adet</span><strong>${formatMoney(item.line_total)}</strong></li>`).join("");
+        const firstItem = orderItems[0];
+        const preview = firstItem ? `<span class="account-order__preview">${productVisual(firstItem, true)}<span><strong>${escapeHtml(firstItem.product_name)}</strong><small>${orderItems.length > 1 ? `+ ${orderItems.length - 1} ürün daha` : `${Number(firstItem.quantity)} adet`}</small></span></span>` : "";
         const discount = Number(order.discount || 0);
         return `<details class="account-order">
           <summary>
             <span class="account-order__identity"><strong>${escapeHtml(order.order_number)}</strong><small>${new Date(order.created_at).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" })}</small></span>
+            ${preview}
             <span class="account-order__status ${isCancelled ? "is-cancelled" : ""}">${escapeHtml(statusLabels[order.status] || order.status)}</span>
             <strong class="account-order__total">${formatMoney(order.total)}</strong>
           </summary>
@@ -82,6 +94,7 @@
   async function showDashboard(customer) {
     auth.hidden = true;
     dashboard.hidden = false;
+    document.querySelector(".account-shell").classList.add("is-authenticated");
     document.querySelector("#account-welcome").textContent = `Merhaba, ${customer.name}`;
     const form = document.querySelector("#customer-profile-form");
     form.elements.name.value = customer.name || "";
