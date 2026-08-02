@@ -1776,15 +1776,31 @@ app.get("/api/customer/session", async (req, res) => {
 
 app.get("/api/customer/orders", requireCustomer, async (req, res) => {
   const orders = await db.prepare(`
-    SELECT o.id, o.order_number, o.status, o.payment_status, o.total, o.tracking_code,
-           o.shipping_method, o.created_at
+    SELECT o.id, o.order_number, o.status, o.payment_status, o.subtotal, o.discount,
+           o.tax_rate, o.tax_amount, o.total, o.tracking_code, o.shipping_address,
+           o.shipping_method, o.payment_method, o.campaign_summary, o.created_at, o.updated_at
     FROM orders o
     JOIN customers c ON c.id = o.customer_id
     WHERE LOWER(c.email) = ?
     ORDER BY o.created_at DESC
     LIMIT 100
   `).all(req.customer.email);
-  res.json(orders);
+  if (!orders.length) return res.json([]);
+  const items = await db.prepare(`
+    SELECT oi.order_id, oi.product_name, oi.scale, oi.quantity, oi.unit_price, oi.line_total
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    JOIN customers c ON c.id = o.customer_id
+    WHERE LOWER(c.email) = ?
+    ORDER BY o.created_at DESC, oi.id ASC
+  `).all(req.customer.email);
+  const itemsByOrder = new Map();
+  for (const item of items) {
+    const current = itemsByOrder.get(item.order_id) || [];
+    current.push(item);
+    itemsByOrder.set(item.order_id, current);
+  }
+  res.json(orders.map((order) => ({ ...order, items: itemsByOrder.get(order.id) || [] })));
 });
 
 app.put("/api/customer/profile", requireCustomer, async (req, res) => {
