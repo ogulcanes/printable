@@ -872,7 +872,9 @@ img { display: block; max-width: 100%; }
   border-radius: 9px;
   background: transparent;
   color: #6e655f;
+  cursor: pointer;
   font-weight: 800;
+  transition: background .18s ease, color .18s ease, box-shadow .18s ease;
 }
 
 .account-tabs button.active {
@@ -944,7 +946,15 @@ img { display: block; max-width: 100%; }
   border-radius: 10px;
   background: var(--accent);
   color: #fff;
+  cursor: pointer;
   font-weight: 800;
+  transition: background .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+
+.account-form > button[type="submit"]:hover {
+  background: #eb5738;
+  box-shadow: 0 8px 18px rgba(255, 101, 66, .22);
+  transform: translateY(-1px);
 }
 
 .account-form > button[type="submit"]:disabled {
@@ -954,10 +964,29 @@ img { display: block; max-width: 100%; }
 
 .account-text-button,
 .account-logout {
-  border: 0;
-  background: transparent;
   color: var(--accent);
   font-weight: 800;
+}
+
+.account-text-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid #f1c5bb;
+  border-radius: 9px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background .18s ease, border-color .18s ease, transform .18s ease;
+}
+
+.account-text-button:hover {
+  border-color: var(--accent);
+  background: #fff5ef;
+  transform: translateY(-1px);
 }
 
 .account-logout {
