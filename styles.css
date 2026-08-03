@@ -4981,15 +4981,101 @@ body {
   .reviews-grid { grid-template-columns: 1fr; }
 }
 
-/* ---- Homepage product rhythm ---- */
-/* Card rows share one geometry. Price, colour and action stay aligned even
-   when a product has a longer title or no review score. */
-.products:not(.products--list) .product-card {
+/* ---- Homepage rhythm: editorial feature + supporting 2x2 grid ---- */
+.featured-split {
+  display: grid;
+  grid-template-columns: minmax(0, 390px) minmax(0, 1fr);
+  gap: 28px;
+  align-items: stretch;
+  padding: 34px 0;
+}
+.feature-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #ffdccd;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #fff6f1, #fff);
+  box-shadow: 0 16px 34px rgba(255,101,66,.1);
+}
+.feature-panel__media {
+  position: relative;
+  display: block;
+  flex: none;
+  aspect-ratio: 1 / 1;
+  background: #fff8f3;
+}
+.feature-panel__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform .35s ease;
+}
+.feature-panel:hover .feature-panel__media img { transform: scale(1.04); }
+.feature-panel__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: 18px 20px 22px;
+}
+.feature-panel__body h3 {
+  margin: 6px 0 8px;
+  font-size: 20px;
+  line-height: 1.25;
+}
+.feature-panel__body h3 a { color: var(--text); }
+.feature-panel__body h3 a:hover { color: var(--accent); }
+.feature-panel__price {
+  margin: 10px 0 16px;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--accent);
+}
+.feature-panel__price s {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+}
+.feature-panel__body button {
+  width: 100%;
+  min-height: 46px;
+  margin-top: auto;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  transition: box-shadow .2s ease, transform .2s ease;
+}
+.feature-panel__body button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(255,101,66,.3);
+}
+
+.featured-split__main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.products--quad {
+  flex: 1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+}
+.products--quad .product-card {
   display: flex;
   flex-direction: column;
   height: 100%;
 }
-.products:not(.products--list) .product-card > p { margin-top: auto; }
+.products--quad .product-card img {
+  height: 190px;
+  aspect-ratio: auto;
+  object-fit: cover;
+}
+.products--quad .product-card > p { margin-top: auto; }
 
 /* 2. Ranked row — the position is the point, so number it. */
 .products--ranked { counter-reset: rank; }
@@ -5073,8 +5159,14 @@ body {
 }
 .products--list .discount-badge { display: none; }
 
+@media (max-width: 1050px) {
+  .featured-split { grid-template-columns: 1fr; }
+  .feature-panel__media { aspect-ratio: 16 / 9; }
+}
+
 @media (max-width: 720px) {
   .products--list { grid-template-columns: 1fr; }
+  .products--quad { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 460px) {
@@ -5454,7 +5546,8 @@ body {
   .products--four,
   .products--grid,
   .products--carousel,
-  .products--ranked {
+  .products--ranked,
+  .products--quad {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
   }
@@ -5483,6 +5576,7 @@ body {
 @media (max-width: 720px) {
   /* Bölüm boşlukları mobilde daha sıkı. */
   .product-section { padding: 22px 0; }
+  .featured-split { padding: 20px 0; gap: 16px; }
   .sale-band { padding: 24px 0 28px; }
   .recommend-band { padding: 24px 0 28px; }
   .categories { padding: 20px 0; }
@@ -5498,10 +5592,22 @@ body {
 }
 
 @media (max-width: 720px) {
+  .feature-panel__media { aspect-ratio: 16 / 10; }
+  .feature-panel__body { padding: 14px 16px 16px; }
+  .feature-panel__body h3 { font-size: 17px; }
+  .feature-panel__price { margin: 6px 0 12px; font-size: 19px; }
+
   /* Ana sayfadaki STL tanıtımının demo görüntüleyicisi mobilde gereksiz uzun. */
   .stl-quote:not(.stl-quote--page) .stl-viewer { height: 200px; }
   .stl-quote:not(.stl-quote--page) .stl-results { margin: 8px 0; }
   .stl-quote__grid { gap: 18px; }
+}
+
+@media (max-width: 720px) {
+  .products--quad .product-card img {
+    height: auto;
+    aspect-ratio: 1 / 1;
+  }
 }
 
 @media (max-width: 720px) {
