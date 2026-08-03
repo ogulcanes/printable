@@ -129,7 +129,13 @@
   function renderCheckoutCart() {
     const box = qs("#checkout-cart");
     if (!cart.length) {
-      box.innerHTML = `<p class="cart-empty">Sepetiniz boş. <a href="/urunler">Ürünlere göz atın</a></p>`;
+      box.innerHTML = `
+        <div class="checkout-empty">
+          <p class="checkout-empty__message">Sepetiniz boş. Beğendiğiniz ürünleri ekleyerek başlayın.</p>
+          <a class="checkout-empty__action" href="/urunler">
+            Ürünleri gör <span aria-hidden="true">→</span>
+          </a>
+        </div>`;
       return;
     }
     box.innerHTML = cart.map((item) => `
