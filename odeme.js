@@ -21,7 +21,7 @@
     cartNotice.style.display = "none";
   }
   let step = 1;
-  const LAST = 4;
+  const LAST = 3;
   const returnParams = new URLSearchParams(window.location.search);
   const isPaymentReturn = ["success", "failed"].includes(returnParams.get("paytr"))
     && returnParams.has("ref") && returnParams.has("token");
@@ -29,7 +29,7 @@
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   function preparePaymentResult() {
-    showStep(4);
+    showStep(3);
     qs(".payment-methods").hidden = true;
     qs("#co-submit").hidden = true;
     qs("#co-prev").hidden = true;
@@ -114,17 +114,6 @@
       if (!form.phone.value) form.phone.value = customer.phone || "";
     })
     .catch(() => {});
-
-  // Client-side TC check for instant feedback; the server validates authoritatively.
-  function isValidTC(v) {
-    const tc = String(v || "").trim();
-    if (!/^[1-9][0-9]{10}$/.test(tc)) return false;
-    const d = tc.split("").map(Number);
-    const odd = d[0] + d[2] + d[4] + d[6] + d[8];
-    const even = d[1] + d[3] + d[5] + d[7];
-    if ((((odd * 7) - even) % 10 + 10) % 10 !== d[9]) return false;
-    return d.slice(0, 10).reduce((a, b) => a + b, 0) % 10 === d[10];
-  }
 
   function renderCheckoutCart() {
     const box = qs("#checkout-cart");
@@ -314,23 +303,6 @@
       setError("#delivery-error", "");
       return true;
     }
-    if (n === 3) {
-      const type = qs('input[name="invoice_type"]:checked').value;
-      const f = qs("#invoice-form");
-      if (type === "individual") {
-        if (!isValidTC(f.tc_no.value)) { setError("#invoice-error", "Geçerli bir TC Kimlik Numarası girin (11 hane)."); return false; }
-      } else {
-        if (!f.company_name.value.trim()) { setError("#invoice-error", "Şirket unvanı zorunludur."); return false; }
-        if (!f.tax_office.value.trim()) { setError("#invoice-error", "Vergi dairesi zorunludur."); return false; }
-        if (!/^[0-9]{10}$/.test(f.tax_number.value.trim())) { setError("#invoice-error", "Vergi numarası 10 haneli olmalıdır."); return false; }
-      }
-      if (!qs("#same-address").checked && !f.billing_address.value.trim()) {
-        setError("#invoice-error", "Fatura adresi girin veya teslimat adresiyle aynı seçeneğini işaretleyin.");
-        return false;
-      }
-      setError("#invoice-error", "");
-      return true;
-    }
     return true;
   }
 
@@ -356,24 +328,9 @@
     qs("#co-next").disabled = cart.length === 0;
   });
 
-  // Invoice type toggle
-  document.querySelectorAll('input[name="invoice_type"]').forEach((radio) => {
-    radio.addEventListener("change", () => {
-      const type = qs('input[name="invoice_type"]:checked').value;
-      document.querySelectorAll(".invoice-fields").forEach((box) => { box.hidden = box.dataset.for !== type; });
-    });
-  });
-
-  qs("#same-address").addEventListener("change", (event) => {
-    qs("#billing-address-field").hidden = event.target.checked;
-  });
-
   qs("#co-submit").addEventListener("click", async () => {
     if (!cart.length) { setError("#payment-error", "Sepetiniz boş."); return; }
     const d = qs("#delivery-form");
-    const inv = qs("#invoice-form");
-    const type = qs('input[name="invoice_type"]:checked').value;
-    const sameAddress = qs("#same-address").checked;
     const payload = {
       customer: {
         name: d.name.value.trim(),
@@ -384,15 +341,6 @@
         neighborhood: d.neighborhood.value.trim(),
         postal_code: d.postal_code.value.trim(),
         address: d.address.value.trim()
-      },
-      invoice: {
-        type,
-        tc_no: inv.tc_no.value.trim(),
-        company_name: inv.company_name.value.trim(),
-        tax_office: inv.tax_office.value.trim(),
-        tax_number: inv.tax_number.value.trim(),
-        same_as_shipping: sameAddress,
-        billing_address: sameAddress ? "" : inv.billing_address.value.trim()
       },
       payment_method: "kart",
       // Only the code travels — the server prices the campaign itself.

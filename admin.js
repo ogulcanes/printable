@@ -485,12 +485,13 @@ function renderOrders() {
           <span class="badge">${paymentMethodLabels[order.payment_method] || "Ödeme yöntemi belirtilmemiş"}</span>
           <span class="badge">${escapeHtml(order.tracking_code) || "Takip kodu yok"}</span>
         </div>
-        <div class="meta-line">
-          <span class="badge ${order.invoice_type === "corporate" ? "blue" : ""}">${order.invoice_type === "corporate" ? "Kurumsal fatura" : "Bireysel fatura"}</span>
-          ${order.invoice_type === "corporate"
-            ? `<span class="badge">${escapeHtml(order.company_name) || "-"}</span><span class="badge">VKN ${escapeHtml(order.tax_number) || "-"}</span><span class="badge">${escapeHtml(order.tax_office) || "-"}</span>`
-            : `<span class="badge">TC ${escapeHtml(order.tc_no) || "-"}</span>`}
-        </div>
+        ${order.invoice_type ? `
+          <div class="meta-line">
+            <span class="badge ${order.invoice_type === "corporate" ? "blue" : ""}">${order.invoice_type === "corporate" ? "Kurumsal fatura" : "Bireysel fatura"}</span>
+            ${order.invoice_type === "corporate"
+              ? `<span class="badge">${escapeHtml(order.company_name) || "-"}</span><span class="badge">VKN ${escapeHtml(order.tax_number) || "-"}</span><span class="badge">${escapeHtml(order.tax_office) || "-"}</span>`
+              : `<span class="badge">TC ${escapeHtml(order.tc_no) || "-"}</span>`}
+          </div>` : ""}
       </div>
       <div class="row-actions">
         <select data-order-status="${order.id}">

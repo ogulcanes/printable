@@ -4298,23 +4298,6 @@ body {
   font-size: 14px;
   font-weight: 600;
 }
-.checkout-check { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; }
-.checkout-check input { width: 16px; height: 16px; accent-color: var(--accent); }
-
-.invoice-type { display: flex; gap: 10px; margin-bottom: 16px; }
-.invoice-type__opt {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  cursor: pointer;
-  font-weight: 600;
-}
-.invoice-type__opt input { accent-color: var(--accent); }
-
 .payment-methods { display: grid; gap: 12px; margin-bottom: 16px; }
 .payment-opt {
   display: flex;
