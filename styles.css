@@ -4407,6 +4407,15 @@ body {
 }
 .checkout-success strong { font-size: 20px; }
 .checkout-success .btn-outline { justify-self: start; margin-top: 6px; }
+.checkout-success--failed {
+  border-color: rgba(255,101,66,.4);
+  background: rgba(255,101,66,.08);
+}
+.checkout-success--failed > strong { color: var(--accent); }
+.checkout-success--pending {
+  border-color: rgba(0,215,245,.45);
+  background: rgba(0,215,245,.08);
+}
 
 @media (max-width: 900px) {
   .checkout-grid { grid-template-columns: 1fr; }
