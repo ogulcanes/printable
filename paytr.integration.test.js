@@ -85,7 +85,6 @@ async function newCheckout() {
         postal_code: "34415",
         address: "Test Sokak No: 1"
       },
-      invoice: { type: "individual", tc_no: "10000000146", same_as_shipping: true },
       payment_method: "kart",
       items: [{ product_id: product.id, quantity: 1 }]
     })
@@ -117,6 +116,38 @@ test.after(async () => {
   if (resolved.startsWith(tempRoot) && path.basename(resolved).startsWith("printable-paytr-test-")) {
     fs.rmSync(resolved, { recursive: true, force: true });
   }
+});
+
+test("Bülten aboneliği veritabanına tek kayıt yazar", async () => {
+  const email = "newsletter.test@example.com";
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const { response, payload } = await jsonRequest("/api/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email })
+    });
+    assert.equal(response.status, 201);
+    assert.equal(payload.ok, true);
+  }
+
+  const row = await db.prepare("SELECT COUNT(*) AS total FROM subscribers WHERE email = ?").get(email);
+  assert.equal(Number(row.total), 1);
+});
+
+test("Sipariş fatura veya kimlik bilgisi olmadan oluşturulur", async () => {
+  const order = await newCheckout();
+  const row = await db.prepare(`
+    SELECT invoice_type, tc_no, tax_office, tax_number, company_name,
+      billing_address, shipping_address
+    FROM orders WHERE payment_reference = ?
+  `).get(order.reference);
+
+  assert.equal(row.invoice_type, null);
+  assert.equal(row.tc_no, null);
+  assert.equal(row.tax_office, null);
+  assert.equal(row.tax_number, null);
+  assert.equal(row.company_name, null);
+  assert.equal(row.billing_address, row.shipping_address);
 });
 
 test("PayTR başarı callback'i ödemeyi tek kez onaylar", async () => {

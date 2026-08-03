@@ -18,8 +18,7 @@
         <ol class="checkout-steps" id="checkout-steps">
           <li data-step="1" class="active"><span>1</span>Sepet</li>
           <li data-step="2"><span>2</span>Teslimat</li>
-          <li data-step="3"><span>3</span>Fatura</li>
-          <li data-step="4"><span>4</span>Ödeme</li>
+          <li data-step="3"><span>3</span>Ödeme</li>
         </ol>
 
         <div class="checkout-grid">
@@ -54,33 +53,8 @@
               </form>
             </section>
 
-            <!-- Step 3: Invoice / e-fatura -->
+            <!-- Step 3: Payment -->
             <section class="checkout-panel" data-step="3">
-              <h2>Fatura bilgileri</h2>
-              <p class="checkout-hint">E-fatura / e-arşiv için gereklidir.</p>
-              <div class="invoice-type" role="radiogroup" aria-label="Fatura tipi">
-                <label class="invoice-type__opt"><input type="radio" name="invoice_type" value="individual" checked> Bireysel</label>
-                <label class="invoice-type__opt"><input type="radio" name="invoice_type" value="corporate"> Kurumsal</label>
-              </div>
-              <form id="invoice-form" class="checkout-form">
-                <div class="invoice-fields" data-for="individual">
-                  <label>TC Kimlik No *<input name="tc_no" inputmode="numeric" maxlength="11" placeholder="11 haneli"></label>
-                </div>
-                <div class="invoice-fields" data-for="corporate" hidden>
-                  <label>Şirket unvanı *<input name="company_name" autocomplete="organization"></label>
-                  <div class="checkout-form__row">
-                    <label>Vergi dairesi *<input name="tax_office"></label>
-                    <label>Vergi no (VKN) *<input name="tax_number" inputmode="numeric" maxlength="10" placeholder="10 haneli"></label>
-                  </div>
-                </div>
-                <label class="checkout-check"><input type="checkbox" id="same-address" checked> Fatura adresi teslimat adresiyle aynı</label>
-                <label id="billing-address-field" hidden>Fatura adresi<textarea name="billing_address" rows="3"></textarea></label>
-                <p class="checkout-error" id="invoice-error" hidden></p>
-              </form>
-            </section>
-
-            <!-- Step 4: Payment -->
-            <section class="checkout-panel" data-step="4">
               <h2>Ödeme yöntemi</h2>
               <div class="payment-methods" role="radiogroup" aria-label="Ödeme yöntemi">
                 <label class="payment-opt"><input type="radio" name="payment_method" value="kart" checked> <span><strong>Kredi / banka kartı</strong><small>PayTR güvenli ödeme ekranı</small></span></label>

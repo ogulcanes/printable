@@ -3998,18 +3998,6 @@ app.delete("/api/campaigns/:id", requireAdmin, async (req, res) => {
   res.status(204).end();
 });
 
-// Turkish national ID (TC Kimlik No): 11 digits with two trailing checksum digits.
-function isValidTC(value) {
-  const tc = String(value || "").trim();
-  if (!/^[1-9][0-9]{10}$/.test(tc)) return false;
-  const d = tc.split("").map(Number);
-  const oddSum = d[0] + d[2] + d[4] + d[6] + d[8];
-  const evenSum = d[1] + d[3] + d[5] + d[7];
-  if ((((oddSum * 7) - evenSum) % 10 + 10) % 10 !== d[9]) return false;
-  return d.slice(0, 10).reduce((a, b) => a + b, 0) % 10 === d[10];
-}
-const isValidVKN = (value) => /^[0-9]{10}$/.test(String(value || "").trim());
-
 const paytrHmac = (value) => crypto
   .createHmac("sha256", PAYTR_MERCHANT_KEY)
   .update(String(value), "utf8")
@@ -4190,7 +4178,6 @@ async function notifyPaidOrder(orderId) {
 app.post("/api/checkout", async (req, res) => {
   const body = req.body || {};
   const customer = body.customer || {};
-  const invoice = body.invoice || {};
   const items = Array.isArray(body.items) ? body.items : [];
 
   if (!PAYTR_CONFIGURED) {
@@ -4207,15 +4194,6 @@ app.post("/api/checkout", async (req, res) => {
   if (!customer.district?.trim()) return res.status(400).json({ error: "İlçe zorunludur." });
   if (!customer.address?.trim()) return res.status(400).json({ error: "Açık adres zorunludur." });
   if (!items.length) return res.status(400).json({ error: "Sepetiniz boş." });
-
-  const invoiceType = invoice.type === "corporate" ? "corporate" : "individual";
-  if (invoiceType === "individual") {
-    if (!isValidTC(invoice.tc_no)) return res.status(400).json({ error: "Geçerli bir TC Kimlik Numarası girin." });
-  } else {
-    if (!invoice.company_name?.trim()) return res.status(400).json({ error: "Şirket unvanı zorunludur." });
-    if (!invoice.tax_office?.trim()) return res.status(400).json({ error: "Vergi dairesi zorunludur." });
-    if (!isValidVKN(invoice.tax_number)) return res.status(400).json({ error: "Geçerli bir vergi numarası girin (10 hane)." });
-  }
 
   if (body.payment_method !== "kart") {
     return res.status(400).json({ error: "Yalnızca kredi veya banka kartıyla ödeme kabul edilir." });
@@ -4306,9 +4284,6 @@ app.post("/api/checkout", async (req, res) => {
       customer.postal_code?.trim()
     ].filter(Boolean).join(" ");
     const shippingAddress = [customer.address.trim(), locality].filter(Boolean).join(" — ");
-    const billingAddress = invoice.same_as_shipping === false && invoice.billing_address?.trim()
-      ? invoice.billing_address.trim()
-      : shippingAddress;
     const generatedNumber = `PRN-${Date.now().toString().slice(-8)}${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
     // PayTR merchant_oid yalnızca alfanümerik olmalı; ziyaretçiye gösterilen sipariş
     // numarasından ayrı ve tahmin edilmesi zor bir ödeme referansı kullanıyoruz.
@@ -4337,12 +4312,12 @@ app.post("/api/checkout", async (req, res) => {
         : null,
       total: grandTotal,
       notes: body.notes?.trim() || null,
-      invoice_type: invoiceType,
-      tc_no: invoiceType === "individual" ? String(invoice.tc_no).trim() : null,
-      tax_office: invoiceType === "corporate" ? invoice.tax_office.trim() : null,
-      tax_number: invoiceType === "corporate" ? String(invoice.tax_number).trim() : null,
-      company_name: invoiceType === "corporate" ? invoice.company_name.trim() : null,
-      billing_address: billingAddress,
+      invoice_type: null,
+      tc_no: null,
+      tax_office: null,
+      tax_number: null,
+      company_name: null,
+      billing_address: shippingAddress,
       payment_method: paymentMethod,
       tax_rate: taxRate,
       tax_amount: taxAmount,
