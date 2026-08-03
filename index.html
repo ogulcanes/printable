@@ -141,15 +141,20 @@
         <div class="category-grid" id="category-grid"></div>
       </section>
 
-      <section class="container product-section">
-        <div class="section-title">
-          <div>
-            <p class="section-kicker">Seçkimiz</p>
-            <h2>Öne Çıkan Ürünler</h2>
+      <!-- Feature panel + 2x2 quad: the large editorial card stays visually
+           distinct while the four supporting products share one grid. -->
+      <section class="container featured-split">
+        <article class="feature-panel" id="feature-panel" hidden></article>
+        <div class="featured-split__main">
+          <div class="section-title">
+            <div>
+              <p class="section-kicker">Seçkimiz</p>
+              <h2>Öne Çıkan Ürünler</h2>
+            </div>
+            <a href="/urunler">Tümünü gör</a>
           </div>
-          <a href="/urunler">Tümünü gör</a>
+          <div class="products products--quad js-featured"></div>
         </div>
-        <div class="products products--featured js-featured"></div>
       </section>
 
       <section class="service-row">
