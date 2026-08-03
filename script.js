@@ -25,13 +25,6 @@ const lineKey = (item) => `${item.id}:${item.scale_id || ""}`;
 // Ürünün müşteriye açık ölçekleri: fiyatı girilmiş, ucuzdan pahalıya sıralı.
 const productScales = (product) => (product && product.scales) || [];
 
-/* Karttaki fiyat: ölçekli üründe EN UCUZ ölçeğin fiyatı ("… TL'den başlayan"),
-   ölçeksizde varsa indirimli fiyat. Ölçekli üründe sale_price uygulanmaz —
-   sunucu da öyle hesaplıyor (normalizeCartItems). */
-const displayPrice = (product) => {
-  const scales = productScales(product);
-  return scales.length ? scales[0].price : (product.sale_price || product.price);
-};
 const storeProducts = document.querySelector("#store-products");
 const cartPanel = document.querySelector("#cart-panel");
 const cartCount = document.querySelector("#cart-count");
@@ -207,37 +200,6 @@ function renderLiveStats(active) {
   strip.hidden = false;
 }
 
-// The one product shown large beside the quad. Its own markup rather than a
-// scaled-up .product-card: the card's centred, compact layout does not survive
-// being stretched to a full column.
-function renderFeaturePanel(product) {
-  const panel = document.querySelector("#feature-panel");
-  if (!panel) return;
-  if (!product) { panel.hidden = true; return; }
-
-  const off = discountPercent(product);
-  const scales = productScales(product);
-  const price = displayPrice(product);
-  panel.innerHTML = `
-    <a class="feature-panel__media" href="/urun/${product.id}">
-      ${off && !scales.length ? `<span class="discount-badge">-%${off}</span>` : ""}
-      <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" loading="lazy">
-    </a>
-    <div class="feature-panel__body">
-      <p class="section-kicker">Haftanın seçimi</p>
-      <h3><a href="/urun/${product.id}">${product.name}</a></h3>
-      ${ratingHTML(product)}
-      <p class="feature-panel__price">
-        ${money(price)}${scales.length > 1
-          ? `<span class="price-from">'den itibaren</span>`
-          : (!scales.length && product.sale_price ? ` <s>${money(product.price)}</s>` : "")}
-        <span class="price-tax">+ KDV</span>
-      </p>
-      <button type="button" data-add-product="${product.id}">${scales.length > 1 ? "Ölçek seçin" : "Sepete ekle"}</button>
-    </div>`;
-  panel.hidden = false;
-}
-
 // The homepage rows are curated slices of the same catalogue; /urunler owns real filtering.
 async function loadProducts() {
   try {
@@ -246,11 +208,9 @@ async function loadProducts() {
     const active = products.filter((product) => product.is_active);
     fillProductGrid(storeProducts, active);
 
-    // The priciest goes in the feature panel, the next four fill the 2x2 quad —
-    // exactly four, otherwise the block stops being a square.
+    // Keep the featured selection visually consistent: one grid, one card system.
     const featured = [...active].sort((a, b) => (b.sale_price || b.price) - (a.sale_price || a.price));
-    renderFeaturePanel(featured[0]);
-    fillProductGrid(".js-featured", featured.slice(1, 5));
+    fillProductGrid(".js-featured", featured.slice(0, 5));
 
     fillProductGrid(".js-popular", active.slice(0, 5));
     fillProductGrid(".js-recommended", [...active].reverse().slice(0, 4));
