@@ -1390,17 +1390,16 @@ async function injectShell(html, headActive) {
 }
 
 /* Satıcı kimliği yasal sayfalarda TEK yerden gelir: /admin → Ayarlar. Metni
-   HTML'e gömmek, unvan ya da adres değiştiğinde üç sayfayı birden güncellemeyi
-   unutmak demekti — mesafeli satış sözleşmesinde yanlış satıcı bilgisi ise
-   sayfayı hükümsüz kılar. Doldurulmamış alanı gizlemiyoruz; eksik olduğunu
-   açıkça yazıyoruz ki yarım bir sözleşme tam görünmesin. */
+   HTML'e gömmek, satıcı adı ya da adres değiştiğinde üç sayfayı birden
+   güncellemeyi unutmak demekti. PayTR'nin site kontrolünde aradığı temel
+   kimlik alanları satıcı adı, açık adres, telefon ve e-postadır. Vergi ve
+   MERSİS alanları girilmişse ayrıca gösterilir; boşsa ziyaretçiye temsili bir
+   değer veya "Belirtilmemiş" satırı sunulmaz. */
 async function renderSellerBlock() {
   const s = await db.prepare("SELECT * FROM site_settings WHERE id = 1").get() || {};
-  // MERSİS her satıcıda olmaz (şahıs şirketinde yok); boşsa satırı hiç gösterme.
-  // Diğerleri yasal zorunluluk: boş olsalar bile satır kalsın ki eksik görünsün.
-  const zorunlu = new Set(["Unvan", "Adres", "Telefon", "E-posta", "Vergi dairesi", "Vergi / TC kimlik no"]);
+  const zorunlu = new Set(["Satıcı", "Adres", "Telefon", "E-posta"]);
   const goster = [
-    ["Unvan", s.company_title],
+    ["Satıcı", s.company_title],
     ["Adres", s.legal_address],
     ["Telefon", s.phone],
     ["E-posta", s.email],
