@@ -39,7 +39,7 @@
                 <label>Ad soyad *<input name="name" required autocomplete="name"></label>
                 <div class="checkout-form__row">
                   <label>Telefon *<input name="phone" required inputmode="tel" autocomplete="tel" placeholder="05xx xxx xx xx"></label>
-                  <label>E-posta<input name="email" type="email" autocomplete="email"></label>
+                  <label>E-posta *<input name="email" type="email" required autocomplete="email"></label>
                 </div>
                 <div class="checkout-form__row">
                   <label>İl *<input name="city" required autocomplete="address-level1" placeholder="İstanbul"></label>
@@ -83,7 +83,7 @@
             <section class="checkout-panel" data-step="4">
               <h2>Ödeme yöntemi</h2>
               <div class="payment-methods" role="radiogroup" aria-label="Ödeme yöntemi">
-                <label class="payment-opt"><input type="radio" name="payment_method" value="kart" checked> <span><strong>Kredi / banka kartı</strong><small>Tek ödeme yöntemi</small></span></label>
+                <label class="payment-opt"><input type="radio" name="payment_method" value="kart" checked> <span><strong>Kredi / banka kartı</strong><small>PayTR güvenli ödeme ekranı</small></span></label>
               </div>
               <p class="checkout-error" id="payment-error" hidden></p>
               <div id="checkout-result" class="checkout-result" hidden></div>
@@ -92,7 +92,7 @@
             <div class="checkout-nav">
               <button type="button" id="co-prev" class="ghost" hidden>Geri</button>
               <button type="button" id="co-next">Devam</button>
-              <button type="button" id="co-submit" hidden>Siparişi oluştur</button>
+              <button type="button" id="co-submit" hidden>Güvenli ödemeye geç</button>
             </div>
           </div>
 
@@ -126,6 +126,7 @@
 
     <!--chat-->
     <script src="/script.js"></script>
+    <script src="https://www.paytr.com/js/iframeResizer.min.js"></script>
     <script src="/odeme.js"></script>
   </body>
 </html>

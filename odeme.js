@@ -4,6 +4,12 @@
   const steps = document.querySelector("#checkout-steps");
   if (!steps) return;
 
+  // PayTR yönlendirmeyi iframe içinde açarsa sonucu ana ödeme sayfasına taşı.
+  if (window.self !== window.top) {
+    window.top.location.replace(window.location.href);
+    return;
+  }
+
   const qs = (s) => document.querySelector(s);
   const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
   const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ESC[c]);
@@ -16,6 +22,85 @@
   }
   let step = 1;
   const LAST = 4;
+  const returnParams = new URLSearchParams(window.location.search);
+  const isPaymentReturn = ["success", "failed"].includes(returnParams.get("paytr"))
+    && returnParams.has("ref") && returnParams.has("token");
+
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  function preparePaymentResult() {
+    showStep(4);
+    qs(".payment-methods").hidden = true;
+    qs("#co-submit").hidden = true;
+    qs("#co-prev").hidden = true;
+    qs("#co-next").hidden = true;
+    qs("#checkout-result").hidden = false;
+  }
+
+  function showPaidOrder(data) {
+    cart.length = 0;
+    saveCart();
+    if (typeof renderCart === "function") renderCart();
+    preparePaymentResult();
+    qs("#checkout-result").innerHTML = `
+      <div class="checkout-success">
+        <strong>Ödemeniz onaylandı! 🎉</strong>
+        <p>Sipariş numaranız: <b>${escapeHtml(data.order_number)}</b></p>
+        <p>Ödeme yöntemi: PayTR · Kredi / banka kartı</p>
+        <p class="checkout-success__note">${data.shipping_method === "free"
+          ? "Siparişiniz ücretsiz kargo ile gönderilecektir."
+          : "Kargo ücreti teslimatta alıcı tarafından ödenir."}</p>
+        <a class="btn-outline" href="/urunler">Alışverişe devam et</a>
+      </div>`;
+  }
+
+  function showFailedPayment(message) {
+    preparePaymentResult();
+    qs("#checkout-result").innerHTML = `
+      <div class="checkout-success checkout-success--failed">
+        <strong>Ödeme tamamlanamadı.</strong>
+        <p>${escapeHtml(message || "Kart işlemi onaylanmadı. Sepetiniz korunuyor; tekrar deneyebilirsiniz.")}</p>
+        <a class="btn-outline" href="/odeme">Tekrar dene</a>
+      </div>`;
+  }
+
+  function showPendingPayment(message) {
+    preparePaymentResult();
+    qs("#checkout-result").innerHTML = `
+      <div class="checkout-success checkout-success--pending">
+        <strong>Ödeme sonucu bekleniyor.</strong>
+        <p>${escapeHtml(message || "Sonuç henüz ulaşmadı. Birkaç saniye sonra durumu yeniden kontrol edin.")}</p>
+        <a class="btn-outline" href="${escapeHtml(window.location.href)}">Durumu yenile</a>
+      </div>`;
+  }
+
+  async function showPaymentReturn() {
+    preparePaymentResult();
+    qs("#checkout-result").innerHTML = `
+      <div class="checkout-success">
+        <strong>Ödeme sonucu doğrulanıyor…</strong>
+        <p>Lütfen bu sayfayı kapatmayın.</p>
+      </div>`;
+    const query = new URLSearchParams({
+      ref: returnParams.get("ref"),
+      token: returnParams.get("token")
+    });
+
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      try {
+        const response = await fetch(`/api/paytr/status?${query}`, { cache: "no-store" });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Ödeme sonucu okunamadı.");
+        if (data.payment_status === "paid") return showPaidOrder(data);
+        if (data.payment_status === "failed") return showFailedPayment(data.failure_message);
+      } catch (error) {
+        if (attempt === 11) return showPendingPayment(error.message);
+      }
+      await wait(1500);
+    }
+
+    showPendingPayment();
+  }
 
   // Giriş yapan müşterinin temel bilgilerini teslimat formuna taşı; adres yine
   // siparişe özeldir ve müşteri tarafından doldurulur.
@@ -151,7 +236,7 @@
       freeShippingThreshold = Number(info.free_shipping_threshold);
     }
     renderSummary();
-    showStep(step);   // minimum sağlanmıyorsa Devam butonu kilitlensin
+    if (!isPaymentReturn) showStep(step);   // minimum sağlanmıyorsa Devam butonu kilitlensin
   }).catch(() => {});
 
   function refreshCartViews() {
@@ -208,8 +293,12 @@
     }
     if (n === 2) {
       const f = qs("#delivery-form");
-      if (!f.name.value.trim() || !f.phone.value.trim()) {
-        setError("#delivery-error", "Ad soyad ve telefon zorunludur.");
+      if (!f.name.value.trim() || !f.phone.value.trim() || !f.email.value.trim()) {
+        setError("#delivery-error", "Ad soyad, telefon ve e-posta zorunludur.");
+        return false;
+      }
+      if (!f.email.validity.valid) {
+        setError("#delivery-error", "Geçerli bir e-posta adresi girin.");
         return false;
       }
       if (!f.city.value.trim() || !f.district.value.trim() || !f.address.value.trim()) {
@@ -316,23 +405,21 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Sipariş oluşturulamadı.");
-      // Success: clear the cart and show confirmation.
-      cart.length = 0;
-      saveCart();
-      if (typeof renderCart === "function") renderCart();
+      if (!/^https:\/\/www\.paytr\.com\/odeme\/guvenli\//.test(data.iframe_url || "")) {
+        throw new Error("Güvenli ödeme ekranı açılamadı.");
+      }
+      // Sepet callback ile ödeme onaylanana kadar korunur. Kart bilgileri yalnızca
+      // PayTR iframe'ine girilir; Printable sunucusuna hiçbir kart verisi gelmez.
+      qs(".payment-methods").hidden = true;
       qs("#checkout-result").hidden = false;
       qs("#checkout-result").innerHTML = `
-        <div class="checkout-success">
-          <strong>Siparişiniz alındı! 🎉</strong>
-          <p>Sipariş numaranız: <b>${data.order_number}</b></p>
-          <p>Ödeme yöntemi: Kredi / banka kartı</p>
-          <p class="checkout-success__note">${data.shipping_method === "free"
-            ? "Siparişiniz ücretsiz kargo ile gönderilecektir."
-            : "Kargo ücreti teslimatta alıcı tarafından ödenir."}</p>
-          <a class="btn-outline" href="/urunler">Alışverişe devam et</a>
-        </div>`;
+        <p><strong>Sipariş: ${escapeHtml(data.order_number)}</strong></p>
+        <iframe src="${escapeHtml(data.iframe_url)}" id="paytriframe" title="PayTR güvenli kart ödeme ekranı"
+          frameborder="0" scrolling="no" style="width:100%;min-height:600px"></iframe>`;
+      if (typeof window.iFrameResize === "function") window.iFrameResize({}, "#paytriframe");
       qs("#co-submit").hidden = true;
       qs("#co-prev").hidden = true;
+      qs("#co-next").hidden = true;
       document.querySelectorAll(".checkout-panel[data-step]").forEach((p) => { if (p.dataset.step !== "4") p.classList.remove("active"); });
     } catch (err) {
       setError("#payment-error", err.message);
@@ -417,6 +504,10 @@
   }
 
   refreshCartViews();
-  showStep(1);
-  fiyatlariTazele();
+  if (isPaymentReturn) {
+    showPaymentReturn();
+  } else {
+    showStep(1);
+    fiyatlariTazele();
+  }
 })();

@@ -412,7 +412,7 @@ function renderCategories() {
 }
 
 const SEO_PAGE_FIELDS = ["title", "description", "canonical", "og_title", "og_description", "og_image", "robots"];
-const SEO_SITE_FIELDS = ["site_name", "site_url", "description", "logo_path", "default_og_image", "phone", "email", "whatsapp", "contact_address", "working_hours", "social_links"];
+const SEO_SITE_FIELDS = ["site_name", "site_url", "description", "logo_path", "default_og_image", "phone", "email", "whatsapp", "social_links"];
 
 function fillSeoPageForm(slug) {
   const page = state.seo.pages.find((item) => item.slug === slug);
@@ -573,7 +573,7 @@ function renderSettings() {
   form.elements.show_stock.checked = Number(state.settings.show_stock) === 1;
   form.elements.track_stock.checked = Number(state.settings.track_stock) === 1;
   form.elements.min_cart_total.value = Number(state.settings.min_cart_total) || 0;
-  ["company_title", "legal_address", "tax_office", "tax_number", "mersis", "return_address"]
+  ["company_title", "legal_address"]
     .forEach((alan) => { form.elements[alan].value = state.settings[alan] || ""; });
 }
 
@@ -1633,7 +1633,7 @@ qs("#settings-form").addEventListener("submit", async (event) => {
     track_stock: form.elements.track_stock.checked ? 1 : 0,
     min_cart_total: form.elements.min_cart_total.value.trim() || 0
   };
-  ["company_title", "legal_address", "tax_office", "tax_number", "mersis", "return_address"]
+  ["company_title", "legal_address"]
     .forEach((alan) => { govde[alan] = form.elements[alan].value; });
 
   await api("/api/settings", {
