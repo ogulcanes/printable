@@ -602,10 +602,10 @@
 
           <div class="admin-card">
             <div class="card-title"><h2>Satıcı / Yasal Bilgiler</h2></div>
-            <p class="form-note">Bu bilgiler <a href="/mesafeli-satis" target="_blank">Mesafeli Satış Sözleşmesi</a>, <a href="/iade" target="_blank">İade</a> ve <a href="/gizlilik" target="_blank">Gizlilik &amp; KVKK</a> sayfalarında otomatik olarak yayınlanır. <strong>Eksik bırakılan alanlar sayfalarda "Belirtilmemiş" olarak görünür ve sayfanın eksik olduğu uyarısı çıkar</strong> — mesafeli satış sözleşmesinin yasal geçerliliği için doldurulmaları gerekir.</p>
+            <p class="form-note">Bu bilgiler <a href="/mesafeli-satis" target="_blank">Mesafeli Satış Sözleşmesi</a>, <a href="/iade" target="_blank">İade</a> ve <a href="/gizlilik" target="_blank">Gizlilik &amp; KVKK</a> sayfalarında otomatik olarak yayınlanır. Satıcı adı, açık adres, telefon ve e-posta PayTR site kontrolü için zorunludur. Vergi ve MERSİS alanları doldurulursa sözleşmede ayrıca gösterilir.</p>
 
-            <label>Unvan (şirket veya şahıs adı)
-              <input name="company_title" placeholder="Örn. Printable 3D Baskı — Oğulcan ...">
+            <label>Satıcı adı / ticari unvan
+              <input name="company_title" placeholder="Örn. Furkan Hüseyin Araz — Printable">
             </label>
             <label>Yasal adres
               <textarea name="legal_address" rows="2" placeholder="Mahalle, cadde, no, ilçe/il"></textarea>
@@ -614,7 +614,7 @@
             <label>Vergi dairesi
               <input name="tax_office" placeholder="Örn. Kadıköy">
             </label>
-            <label>Vergi no / TC kimlik no
+            <label>Vergi no / TC kimlik no (varsa)
               <input name="tax_number" placeholder="Şahıs şirketiyse TC kimlik numarası">
             </label>
             <label>MERSİS no (varsa)
