@@ -115,6 +115,12 @@ test("Ana sayfa Spinball ve Katlaç için 10, 50, 100 adetlik sepet alanını i�
   const scriptResponse = await realFetch(`${baseUrl}/script.js`);
   const storefrontScript = await scriptResponse.text();
   assert.equal(homeResponse.status, 200);
+  assert.match(home, /class="landing-hero"/);
+  assert.match(home, /Katlaç[\s\S]*Spinball/);
+  assert.match(home, /\/assets\/shopier\/53\.jpg/);
+  assert.match(home, /\/assets\/shopier\/39\.jpg/);
+  assert.match(home, /href="\/urun\/53"/);
+  assert.match(home, /href="\/urunler\?q=katlaç"/);
   assert.match(home, /id="bulk-commerce"/);
   assert.match(storefrontScript, /BULK_QUANTITIES = \[10, 50, 100\]/);
   assert.match(storefrontScript, /Toplu satış/);

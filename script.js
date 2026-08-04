@@ -234,6 +234,25 @@ function renderFeaturePanel(product) {
   panel.hidden = false;
 }
 
+function renderLandingHero(active) {
+  const spinball = active.find((product) => product.id === 53)
+    || active.find((product) => /spinball|helixcore/i.test(product.name || ""));
+  const katlaclar = active.filter((product) => /katlaç|katlac/i.test(product.name || ""));
+  const spinballPrice = document.querySelector("[data-landing-spinball-price]");
+  const katlacPrice = document.querySelector("[data-landing-katlac-price]");
+
+  if (spinball && spinballPrice) {
+    spinballPrice.textContent = `${money(displayPrice(spinball))} · KDV dahil`;
+  }
+  if (katlaclar.length && katlacPrice) {
+    const prices = katlaclar.map(displayPrice).map(Number).filter((price) => price > 0);
+    const startingPrice = prices.length ? Math.min(...prices) : 0;
+    katlacPrice.textContent = startingPrice
+      ? `${katlaclar.length} model · ${money(startingPrice)}'den başlayan`
+      : `${katlaclar.length} modeli keşfet`;
+  }
+}
+
 function renderFidgetSpotlight(active) {
   const section = document.querySelector("#fidget-spotlight");
   const spinballPanel = document.querySelector("#spinball-spotlight");
@@ -479,6 +498,7 @@ async function loadProducts() {
 
     fillProductGrid(".js-popular", active.slice(0, 5));
     fillProductGrid(".js-recommended", [...active].reverse().slice(0, 4));
+    renderLandingHero(active);
     renderFidgetSpotlight(active);
 
     // Discounted products get their own section — hidden entirely when nothing is on sale.
