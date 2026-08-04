@@ -33,6 +33,12 @@ global.fetch = async (url, options = {}) => {
       body: JSON.parse(String(options.body || "{}"))
     };
     shopierRequests.push(request);
+    if (shopierMode === "forbidden" && request.method === "PUT") {
+      return new Response(JSON.stringify({ message: "Access to this resource on the server is denied" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
     if (shopierMode === "fail") {
       return new Response(JSON.stringify({ message: "Geçici Shopier test hatası" }), {
         status: 503,
@@ -201,6 +207,25 @@ test("Ürün düzenlemesi yeni kayıt açmadan mevcut Shopier ürününü günce
   assert.equal(remote.method, "PUT");
   assert.deepEqual(remote.body.priceData, { price: "249.50", discount: true, discountedPrice: "219.50" });
   assert.equal(remote.body.stockQuantity, 4);
+});
+
+test("Başka mağazadan kalan Shopier kimliği 403 verirse ürün yeniden oluşturulur", async () => {
+  const created = await request("/api/products", {
+    method: "POST",
+    body: productForm("Shopier Eski Eşleme Ürünü")
+  });
+  await db.prepare("UPDATE products SET shopier_product_id = ? WHERE id = ?")
+    .run("eski-magaza-urun-id", created.payload.id);
+
+  const before = shopierRequests.length;
+  shopierMode = "forbidden";
+  const retried = await request(`/api/products/${created.payload.id}/shopier-sync`, { method: "POST" });
+  shopierMode = "success";
+
+  assert.equal(retried.response.status, 200);
+  assert.equal(retried.payload.shopier_sync_status, "synced");
+  assert.notEqual(retried.payload.shopier_product_id, "eski-magaza-urun-id");
+  assert.deepEqual(shopierRequests.slice(before).map((item) => item.method), ["PUT", "POST"]);
 });
 
 test("Shopier hatası Printable ürününü kaybettirmez ve panelden yeniden denenebilir", async () => {

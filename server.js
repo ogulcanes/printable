@@ -2868,9 +2868,11 @@ async function performShopierSync(productId) {
     try {
       result = await shopier.syncProduct(product);
     } catch (error) {
-      /* Shopier kaydı panelden silindiyse eski kimliğe PUT sonsuza dek 404 verir.
-         Resmî 404 yanıtından sonra eşlemeyi kaldırıp ürünü bir kez yeniden aç. */
-      if (error?.status === 404 && product.shopier_product_id) {
+      /* Shopier kaydı panelden silindiyse eski kimliğe PUT 404 verir. Başka bir
+         mağaza/anahtardan kalmış kimlik de bu mağazaya 403 döner. API anahtarının
+         genel yazma yetkisi üstte doğrulandığı için iki durumda da eşlemeyi bırakıp
+         Printable ürününü bu mağazada bir kez yeniden aç. */
+      if ([403, 404].includes(error?.status) && product.shopier_product_id) {
         result = await shopier.syncProduct({
           ...product,
           shopier_product_id: null,
