@@ -222,6 +222,15 @@ function renderProducts() {
           ${product.rating?.count ? `<span class="badge">${product.rating.average} ★ (${product.rating.count} yorum)</span>` : ""}
           ${maliyetRozeti(product)}
           ${satilabilir ? "" : '<span class="badge orange">Ölçek/fiyat eksik</span>'}
+          ${product.shopier_sync_status === "synced"
+            ? `<span class="badge green">Shopier güncel</span>${product.shopier_product_url
+              ? ` <a class="badge blue" href="${escapeHtml(product.shopier_product_url)}" target="_blank" rel="noopener">Shopier'de aç</a>`
+              : ""}`
+            : product.shopier_sync_status === "failed"
+              ? `<span class="badge orange" title="${escapeHtml(product.shopier_sync_error || "Senkronizasyon hatası")}">Shopier hata</span>`
+              : product.shopier_sync_status === "not_configured"
+                ? '<span class="badge orange">Shopier anahtarı bekleniyor</span>'
+                : `<span class="badge">Shopier ${product.shopier_sync_status === "syncing" ? "gönderiliyor" : "bekliyor"}</span>`}
           <span class="badge">Eklendi: ${formatDateTime(product.created_at)}</span>
         </div>
         <div class="price-history" data-history-for="${product.id}" hidden></div>
@@ -233,6 +242,7 @@ function renderProducts() {
           <span>Aktif</span>
         </label>
         <button data-edit-product="${product.id}">Düzenle</button>
+        <button data-sync-shopier="${product.id}">${product.shopier_product_id ? "Shopier'i güncelle" : "Shopier'e gönder"}</button>
         <button data-history-product="${product.id}">Fiyat geçmişi</button>
         <button class="danger" data-delete-product="${product.id}">Sil</button>
       </div>
@@ -1889,6 +1899,20 @@ qs("#reset-product").addEventListener("click", () => {
 });
 
 qs("#product-list").addEventListener("click", async (event) => {
+  const shopierId = event.target.dataset.syncShopier;
+  if (shopierId) {
+    const button = event.target;
+    button.disabled = true;
+    button.textContent = "Gönderiliyor…";
+    const updated = await api(`/api/products/${shopierId}/shopier-sync`, { method: "POST" });
+    const index = state.products.findIndex((item) => item.id === Number(shopierId));
+    if (index >= 0) state.products[index] = updated;
+    renderProducts();
+    if (updated.shopier_sync_status === "failed" || updated.shopier_sync_status === "not_configured") {
+      alert(updated.shopier_sync_error || "Shopier senkronizasyonu tamamlanamadı.");
+    }
+    return;
+  }
   const editId = event.target.dataset.editProduct;
   const deleteId = event.target.dataset.deleteProduct;
   if (editId) {

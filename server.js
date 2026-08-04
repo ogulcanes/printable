@@ -7,6 +7,7 @@ const multer = require("multer");
 const crypto = require("crypto");
 const db = require("./db.js");
 const storage = require("./storage.js");
+const shopier = require("./shopier.js");
 
 const app = express();
 
@@ -115,7 +116,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "17";
+const SCHEMA_VERSION = "18";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -151,6 +152,11 @@ async function initDb() {
     unit_cost REAL,
     cost_inputs TEXT,
     cost_updated_at TIMESTAMPTZ,
+    shopier_product_id TEXT,
+    shopier_product_url TEXT,
+    shopier_sync_status TEXT NOT NULL DEFAULT 'pending',
+    shopier_sync_error TEXT,
+    shopier_synced_at TIMESTAMPTZ,
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -606,6 +612,11 @@ for (const [table, column, type] of [
   ["products", "meta_description", "TEXT"],
   ["products", "meta_keywords", "TEXT"],
   ["products", "image_alt", "TEXT"],
+  ["products", "shopier_product_id", "TEXT"],
+  ["products", "shopier_product_url", "TEXT"],
+  ["products", "shopier_sync_status", "TEXT NOT NULL DEFAULT 'pending'"],
+  ["products", "shopier_sync_error", "TEXT"],
+  ["products", "shopier_synced_at", "TIMESTAMPTZ"],
   ["product_images", "media_type", "TEXT NOT NULL DEFAULT 'image'"],
   ["hero_slides", "image_alt", "TEXT"],
   ["site_settings", "default_og_image", "TEXT"],
@@ -2702,6 +2713,77 @@ async function logPrice(productId, price, salePrice) {
 const priceChanged = (before, price, salePrice) =>
   Number(before.price) !== Number(price) || (before.sale_price ?? null) !== (salePrice ?? null);
 
+/* Shopier senkronizasyonu ürün kaydını geri almamalı: Shopier geçici olarak
+   erişilemezse Printable ürünü yine kaydedilir, hata panelde görünür ve aynı
+   ürün daha sonra yeniden gönderilebilir. Aynı Node örneğinde eşzamanlı iki
+   galeri isteğinin iki ayrı Shopier ürünü açmasını da bu kilit engeller. */
+const activeShopierSyncs = new Map();
+
+async function performShopierSync(productId) {
+  let product = await db.prepare("SELECT * FROM products WHERE id = ?").get(productId);
+  if (!product) return null;
+
+  if (!shopier.isConfigured()) {
+    await db.prepare(`
+      UPDATE products SET shopier_sync_status = 'not_configured',
+        shopier_sync_error = 'SHOPIER_API_KEY sunucu ortam değişkeni henüz tanımlı değil.'
+      WHERE id = ?
+    `).run(productId);
+    return withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(productId));
+  }
+
+  await db.prepare(`
+    UPDATE products SET shopier_sync_status = 'syncing', shopier_sync_error = NULL WHERE id = ?
+  `).run(productId);
+  product = await withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(productId));
+
+  try {
+    let result;
+    try {
+      result = await shopier.syncProduct(product);
+    } catch (error) {
+      /* Shopier kaydı panelden silindiyse eski kimliğe PUT sonsuza dek 404 verir.
+         Resmî 404 yanıtından sonra eşlemeyi kaldırıp ürünü bir kez yeniden aç. */
+      if (error?.status === 404 && product.shopier_product_id) {
+        result = await shopier.syncProduct({
+          ...product,
+          shopier_product_id: null,
+          shopier_product_url: null
+        });
+      } else {
+        throw error;
+      }
+    }
+
+    await db.prepare(`
+      UPDATE products SET shopier_product_id = @shopier_product_id,
+        shopier_product_url = @shopier_product_url, shopier_sync_status = 'synced',
+        shopier_sync_error = NULL, shopier_synced_at = CURRENT_TIMESTAMP
+      WHERE id = @id
+    `).run({
+      id: productId,
+      shopier_product_id: result.productId,
+      shopier_product_url: result.productUrl || null
+    });
+  } catch (error) {
+    const message = String(error?.message || "Bilinmeyen Shopier senkronizasyon hatası").slice(0, 1000);
+    console.error(`[Shopier] Ürün ${productId} senkronize edilemedi: ${message}`);
+    await db.prepare(`
+      UPDATE products SET shopier_sync_status = 'failed', shopier_sync_error = ? WHERE id = ?
+    `).run(message, productId);
+  }
+
+  return withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(productId));
+}
+
+function synchronizeProductWithShopier(productId) {
+  const key = String(productId);
+  if (activeShopierSyncs.has(key)) return activeShopierSyncs.get(key);
+  const running = performShopierSync(productId).finally(() => activeShopierSyncs.delete(key));
+  activeShopierSyncs.set(key, running);
+  return running;
+}
+
 /* Maliyet verisi TİCARİ SIR: /api/products herkese açık, ürünün kaça mal
    olduğu müşteriye ya da rakibe gitmemeli. Yalnızca giriş yapmış yöneticiye
    dönüyor. Ayrı bir uç açmak yerine burada süzmek yeterli — panel zaten bu
@@ -2711,7 +2793,12 @@ const priceChanged = (before, price, salePrice) =>
    adı ve satış fiyatı. Müşteri zaten bu ikisini görmek zorunda — seçtiği
    varyant ve ödeyeceği tutar. Silinen `cost_scales` ise maliyeti taşıyor. */
 const maliyetiGizle = (urun) => {
-  const { unit_cost, cost_inputs, cost_updated_at, cost_scales, ...kalan } = urun;
+  const {
+    unit_cost, cost_inputs, cost_updated_at, cost_scales,
+    shopier_product_id, shopier_product_url, shopier_sync_status,
+    shopier_sync_error, shopier_synced_at,
+    ...kalan
+  } = urun;
   return kalan;
 };
 
@@ -2812,7 +2899,13 @@ app.post("/api/products", requireAdmin, upload.single("image"), async (req, res)
   await setProductColors(result.lastInsertRowid, req.body.color_ids);
   await setProductCategories(result.lastInsertRowid, req.body.category_ids);
   await logPrice(result.lastInsertRowid, product.price, product.sale_price);
-  res.status(201).json(await withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(result.lastInsertRowid)));
+  res.status(201).json(await synchronizeProductWithShopier(result.lastInsertRowid));
+});
+
+app.post("/api/products/:id/shopier-sync", requireAdmin, async (req, res) => {
+  const product = await db.prepare("SELECT id FROM products WHERE id = ?").get(req.params.id);
+  if (!product) return res.status(404).json({ error: "Ürün bulunamadı." });
+  res.json(await synchronizeProductWithShopier(product.id));
 });
 
 app.patch("/api/products/:id/active", requireAdmin, async (req, res) => {
@@ -2879,7 +2972,7 @@ app.put("/api/products/:id", requireAdmin, upload.single("image"), async (req, r
   if (priceChanged(current, product.price, product.sale_price)) {
     await logPrice(current.id, product.price, product.sale_price);
   }
-  res.json(await withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(current.id)));
+  res.json(await synchronizeProductWithShopier(current.id));
 });
 
 /* ---------- Ürün galerisi ----------
@@ -2913,6 +3006,7 @@ app.post("/api/products/:id/images", requireAdmin, galleryUpload.single("image")
     sort_order: Number(son.son) + 1
   });
 
+  await synchronizeProductWithShopier(product.id);
   res.status(201).json(await db.prepare("SELECT * FROM product_images WHERE id = ?").get(sonuc.lastInsertRowid));
 });
 
@@ -2930,6 +3024,7 @@ app.patch("/api/products/:id/images/:imageId", requireAdmin, async (req, res) =>
     image_alt: req.body.image_alt === undefined ? row.image_alt : (req.body.image_alt?.trim() || null),
     sort_order: req.body.sort_order === undefined ? row.sort_order : toInt(req.body.sort_order)
   });
+  await synchronizeProductWithShopier(req.params.id);
   res.json(await db.prepare("SELECT * FROM product_images WHERE id = ?").get(row.id));
 });
 
@@ -2938,6 +3033,7 @@ app.delete("/api/products/:id/images/:imageId", requireAdmin, async (req, res) =
     .get(req.params.imageId, req.params.id);
   if (!row) return res.status(404).json({ error: "Fotoğraf bulunamadı." });
   await db.prepare("DELETE FROM product_images WHERE id = ?").run(row.id);
+  await synchronizeProductWithShopier(req.params.id);
   res.status(204).end();
 });
 
@@ -2955,7 +3051,7 @@ app.post("/api/products/:id/images/:imageId/cover", requireAdmin, async (req, re
     UPDATE products SET image_path = ?, image_alt = COALESCE(?, image_alt), updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `).run(row.image_path, row.image_alt || null, req.params.id);
-  res.json(await withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(req.params.id)));
+  res.json(await synchronizeProductWithShopier(req.params.id));
 });
 
 app.delete("/api/products/:id", requireAdmin, async (req, res) => {
