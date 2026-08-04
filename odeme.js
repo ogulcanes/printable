@@ -149,7 +149,6 @@
   }
 
   let minSepet = 0;   // panelden gelen minimum sipariş tutarı; 0 = sınır yok
-  let taxRate = 20; // KDV hariç fiyatların üstüne eklenir; oran /api/site-info'dan gelir.
   let freeShippingThreshold = 599;
 
   // Campaigns are computed server-side; this holds the last preview so the
@@ -160,8 +159,7 @@
     const subtotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
     const discount = Math.min(campaigns.discount || 0, subtotal);
     const net = subtotal - discount;
-    const tax = net * taxRate / 100;
-    const total = Math.round((net + tax) * 100) / 100;
+    const total = Math.round(net * 100) / 100;
     const ucretsizKargo = total >= freeShippingThreshold;
     qs("#summary-items").innerHTML = cart.map((i) =>
       `<div class="summary-item"><span>${i.quantity} × ${i.name}${
@@ -178,9 +176,7 @@
     ].join("");
     qs("#summary-campaigns").innerHTML = rows;
 
-    qs("#summary-tax-rate").textContent = `%${taxRate}`;
     qs("#summary-subtotal").textContent = money(subtotal);
-    qs("#summary-tax").textContent = money(tax);
     qs("#summary-total").textContent = money(total);
     qs(".summary-shipping").textContent = ucretsizKargo ? "Ücretsiz" : "Alıcı ödemeli";
     const shippingNote = qs("#summary-shipping-note");
@@ -223,9 +219,8 @@
     renderSummary();
   }
 
-  // Pull the admin-set KDV rate so the summary matches the server's calculation.
+  // Pull storefront thresholds so the summary matches the server's calculation.
   fetch("/api/site-info").then((r) => r.json()).then((info) => {
-    if (info && Number.isFinite(Number(info.tax_rate))) taxRate = Number(info.tax_rate);
     if (info && Number.isFinite(Number(info.min_cart_total))) minSepet = Number(info.min_cart_total);
     if (info && Number.isFinite(Number(info.free_shipping_threshold))) {
       freeShippingThreshold = Number(info.free_shipping_threshold);

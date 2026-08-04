@@ -66,8 +66,8 @@ const STORE_NOTIFICATION_EMAILS = [...new Set([
 const SEED_ADMIN_USERS = [...new Set(
   (process.env.ADMIN_USERS || "ogulcan,furkan").split(",").map((name) => name.trim().toLowerCase()).filter(Boolean).concat(ADMIN_USER.toLowerCase())
 )];
-const KDV_RATE = 20; // Ürün fiyatları KDV dahildir; faturada bu oranla ayrıştırılır.
-const FREE_SHIPPING_THRESHOLD = 599; // İndirim sonrası KDV dâhil ürün toplamı.
+const KDV_RATE = 0; // Vitrinde görünen fiyat müşterinin ödediği nihai ürün fiyatıdır.
+const FREE_SHIPPING_THRESHOLD = 599; // İndirim sonrası nihai ürün toplamı.
 
 /* PayTR bilgileri yalnızca sunucuda tutulur. Test modu bilinçli olarak güvenli
    varsayılandır: gerçek tahsilat ancak PAYTR_TEST_MODE=0 açıkça verilirse başlar. */
@@ -224,7 +224,7 @@ async function initDb() {
     payment_test_mode INTEGER,
     inventory_deducted INTEGER NOT NULL DEFAULT 0,
     paid_at TIMESTAMPTZ,
-    tax_rate REAL NOT NULL DEFAULT 20,
+    tax_rate REAL NOT NULL DEFAULT 0,
     tax_amount REAL NOT NULL DEFAULT 0,
     shipping_method TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -250,7 +250,7 @@ async function initDb() {
     min_order_total REAL NOT NULL DEFAULT 150,
     shell_share REAL NOT NULL DEFAULT 0.15,
     color_change_fee REAL NOT NULL DEFAULT 35,
-    tax_rate REAL NOT NULL DEFAULT 20,
+    tax_rate REAL NOT NULL DEFAULT 0,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
@@ -640,11 +640,11 @@ for (const [table, column, type] of [
   ["orders", "inventory_deducted", "INTEGER NOT NULL DEFAULT 0"],
   ["orders", "paid_at", "TIMESTAMPTZ"],
   // KDV dökümü + kargo yöntemi (kargo alıcı ödemeli).
-  ["orders", "tax_rate", "REAL NOT NULL DEFAULT 20"],
+  ["orders", "tax_rate", "REAL NOT NULL DEFAULT 0"],
   ["orders", "tax_amount", "REAL NOT NULL DEFAULT 0"],
   ["orders", "shipping_method", "TEXT"],
-  // Admin-editable KDV oranı + iletişim bilgileri.
-  ["pricing_settings", "tax_rate", "REAL NOT NULL DEFAULT 20"],
+  // Eski kurulumlardan kalan fiyat ayarı + iletişim bilgileri.
+  ["pricing_settings", "tax_rate", "REAL NOT NULL DEFAULT 0"],
   ["site_settings", "phone", "TEXT"],
   ["site_settings", "email", "TEXT"],
   ["site_settings", "contact_address", "TEXT"],
@@ -3383,15 +3383,14 @@ app.put("/api/pricing", requireAdmin, async (req, res) => {
     UPDATE pricing_settings SET
       setup_fee=@setup_fee, size_fee_per_cm=@size_fee_per_cm,
       min_order_total=@min_order_total, shell_share=@shell_share,
-      color_change_fee=@color_change_fee, tax_rate=@tax_rate, updated_at=CURRENT_TIMESTAMP
+      color_change_fee=@color_change_fee, updated_at=CURRENT_TIMESTAMP
     WHERE id=1
   `).run({
     setup_fee: Math.max(0, Number(req.body.setup_fee) || 0),
     size_fee_per_cm: Math.max(0, Number(req.body.size_fee_per_cm) || 0),
     min_order_total: Math.max(0, Number(req.body.min_order_total) || 0),
     shell_share: Math.min(1, Math.max(0, Number.isFinite(shell) ? shell : 0.15)),
-    color_change_fee: Math.max(0, Number(req.body.color_change_fee) || 0),
-    tax_rate: Math.min(100, Math.max(0, Number(req.body.tax_rate) ?? 20))
+    color_change_fee: Math.max(0, Number(req.body.color_change_fee) || 0)
   });
   res.json(await pricingSettings());
 });
@@ -4293,7 +4292,7 @@ function paytrClientIp(req) {
 }
 
 /* PayTR sepet satırlarının toplamı tahsilat tutarıyla birebir eşleşsin. İndirim
-   ve KDV sipariş geneline uygulandığı için her ürün satırına oransal dağıtılır;
+   ve sipariş indirimi ürün satırlarına oransal dağıtılır;
    son satır kuruş farkını kapatır. */
 function paytrBasket(items, total) {
   const paidItems = items.filter((item) => Number(item.line_total) > 0);
@@ -4513,9 +4512,9 @@ app.post("/api/checkout", async (req, res) => {
   const discount = Math.min(campaigns.discount, subtotal);
   const netTotal = round2(subtotal - discount);
 
-  // Prices are KDV-hariç (net); VAT is added on top — and on the *discounted*
-  // net, not the original. Shipping is recipient-paid, so it is not added.
-  const taxRate = (await pricingSettings())?.tax_rate ?? KDV_RATE;
+  // Vitrindeki fiyat nihai ürün fiyatıdır. Kampanya indirimi düşüldükten sonra
+  // ayrıca KDV eklenmez; kargo alıcı ödemeliyse o da çevrimiçi tahsilata girmez.
+  const taxRate = KDV_RATE;
 
   const pendingOrder = await db.transaction(async (tx) => {
     /* Kontenjan rezervasyonu — sipariş yazılmadan ÖNCE, çünkü kontenjan
@@ -4547,8 +4546,8 @@ app.post("/api/checkout", async (req, res) => {
       customer.name.trim(), customerEmail, customer.phone.trim(), customer.address.trim(), customer.city?.trim() || null
     );
 
-    const taxAmount = round2(uygulananNet * taxRate / 100);
-    const grandTotal = round2(uygulananNet + taxAmount);
+    const taxAmount = 0;
+    const grandTotal = uygulananNet;
     const shippingMethod = grandTotal >= FREE_SHIPPING_THRESHOLD ? "free" : "recipient_paid";
     // Compose the structured address (mahalle / ilçe / il / posta kodu) into one line.
     const locality = [
@@ -4827,13 +4826,12 @@ app.patch("/api/orders/:id", requireAdmin, async (req, res) => {
   res.json(updated);
 });
 
-// Public site info — KDV oranı + iletişim bilgileri (storefront ve /iletisim kullanır).
+// Public site info — iletişim ve vitrin ayarları.
 app.get("/api/site-info", async (req, res) => {
   const site = await db.prepare("SELECT phone, email, legal_address, working_hours, social_links, show_stock, min_cart_total FROM site_settings WHERE id = 1").get() || {};
-  const pricing = await db.prepare("SELECT tax_rate FROM pricing_settings WHERE id = 1").get() || {};
   const { wa } = await contactInfo();
   res.json({
-    tax_rate: pricing.tax_rate ?? 20,
+    tax_rate: KDV_RATE,
     phone: site.phone || "",
     email: site.email || "",
     whatsapp: wa ? `https://wa.me/${wa}` : "",

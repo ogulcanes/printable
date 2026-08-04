@@ -1029,7 +1029,7 @@ textarea { resize: vertical; }
   border: 1px solid #cfe6d6;
 }
 .cost-cell span { font-size: 12px; color: #4a6b55; font-weight: 600; line-height: 1.35; }
-/* Etiket içindeki ikincil bilgi ("%84.7 marj", "KDV %20 dâhil"). */
+/* Etiket içindeki ikincil bilgi (ör. "%84.7 marj"). */
 .cost-cell span small { font-weight: 600; opacity: .75; }
 .cost-cell strong { font-size: 19px; font-variant-numeric: tabular-nums; }
 .cost-cell--strong { background: #dff0e5; border-color: #a9d4ba; }

@@ -12,7 +12,6 @@ function saveCart() {
   try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch { /* ignore quota/privacy errors */ }
 }
 const cart = loadCart();
-let storefrontTaxRate = 20;
 let freeShippingThreshold = 599;
 
 /* Sepet satırının kimliği ÜRÜN + ÖLÇEK. Aynı katlacın küçük ve büyük boyu iki
@@ -92,7 +91,7 @@ function productCardHTML(product) {
         <h3>${product.name}</h3>
       </a>
       ${ratingHTML(product)}
-      <p>${priceHTML} <span class="price-tax">+ KDV</span></p>
+      <p>${priceHTML}</p>
       <div class="swatches">${(product.colors || []).map((color) => `<span style="background:${color.hex}" title="${color.name}"></span>`).join("")}</div>
       ${action}
     </article>
@@ -137,8 +136,7 @@ function renderCart() {
   if (subtotalEl) subtotalEl.textContent = money(cartSubtotal());
   const shippingNote = document.querySelector("#cart-shipping-note");
   if (shippingNote) {
-    const kdvliToplam = Math.round(cartSubtotal() * (1 + storefrontTaxRate / 100) * 100) / 100;
-    const kalan = Math.max(0, freeShippingThreshold - kdvliToplam);
+    const kalan = Math.max(0, freeShippingThreshold - cartSubtotal());
     shippingNote.textContent = kalan > 0
       ? `Ücretsiz kargoya ${money(kalan)} kaldı`
       : "Ücretsiz kargoyu kazandınız 🎉";
@@ -230,7 +228,6 @@ function renderFeaturePanel(product) {
         ${money(price)}${scales.length > 1
           ? `<span class="price-from">'den itibaren</span>`
           : (!scales.length && product.sale_price ? ` <s>${money(product.price)}</s>` : "")}
-        <span class="price-tax">+ KDV</span>
       </p>
       <button type="button" data-add-product="${product.id}">${scales.length > 1 ? "Ölçek seçin" : "Sepete ekle"}</button>
     </div>`;
@@ -283,7 +280,6 @@ function renderFidgetSpotlight(active) {
             ${off ? `<span class="fidget-discount">%${off} indirim</span>` : ""}
             <strong>${money(currentPrice)}</strong>
             ${off ? `<s>${money(spinball.price)}</s>` : ""}
-            <span class="price-tax">+ KDV</span>
             <small>${inStock ? `${spinball.stock} adet stokta` : "Stokta yok"}</small>
           </div>
           <div class="fidget-actions">
@@ -328,7 +324,7 @@ function renderFidgetSpotlight(active) {
                  alt="${product.image_alt || product.name}" loading="lazy">
             <span>
               <strong>${product.name}</strong>
-              <small>${money(displayPrice(product))}${productScales(product).length > 1 ? "'den itibaren" : ""} <em>+ KDV</em></small>
+              <small>${money(displayPrice(product))}${productScales(product).length > 1 ? "'den itibaren" : ""}</small>
             </span>
           </a>`).join("")}
       </div>`;
@@ -388,7 +384,7 @@ function bulkTiersHTML(product, scale = null) {
         <div class="bulk-tier__price">
           <strong>${money(offer.unit)}</strong><span>/ adet</span>
         </div>
-        <p>Toplam <strong>${money(offer.total)}</strong> <small>+ KDV</small></p>
+        <p>Toplam <strong>${money(offer.total)}</strong></p>
         ${offer.saving > 0
           ? `<span class="bulk-tier__saving">${money(offer.saving)} avantaj</span>`
           : '<span class="bulk-tier__automatic">Adet kampanyası sepette uygulanır</span>'}
@@ -425,7 +421,7 @@ function bulkProductCardHTML(product, kind, products = []) {
         ${scales.length ? `
           <label>Boy / ölçek
             <select data-bulk-scale-select>
-              ${scales.map((scale) => `<option value="${scale.id}">${scale.scale} · ${money(scale.price)} + KDV</option>`).join("")}
+              ${scales.map((scale) => `<option value="${scale.id}">${scale.scale} · ${money(scale.price)}</option>`).join("")}
             </select>
           </label>` : ""}
       </div>
@@ -861,7 +857,6 @@ loadCategories();
 loadHeroSlides();
 renderCart();
 fetch("/api/site-info").then((response) => response.json()).then((info) => {
-  if (Number.isFinite(Number(info.tax_rate))) storefrontTaxRate = Number(info.tax_rate);
   if (Number.isFinite(Number(info.free_shipping_threshold))) {
     freeShippingThreshold = Number(info.free_shipping_threshold);
   }

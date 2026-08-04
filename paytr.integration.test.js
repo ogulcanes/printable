@@ -138,7 +138,7 @@ test("Sipariş fatura veya kimlik bilgisi olmadan oluşturulur", async () => {
   const order = await newCheckout();
   const row = await db.prepare(`
     SELECT invoice_type, tc_no, tax_office, tax_number, company_name,
-      billing_address, shipping_address
+      billing_address, shipping_address, subtotal, discount, total, tax_rate, tax_amount
     FROM orders WHERE payment_reference = ?
   `).get(order.reference);
 
@@ -148,6 +148,9 @@ test("Sipariş fatura veya kimlik bilgisi olmadan oluşturulur", async () => {
   assert.equal(row.tax_number, null);
   assert.equal(row.company_name, null);
   assert.equal(row.billing_address, row.shipping_address);
+  assert.equal(Number(row.tax_rate), 0);
+  assert.equal(Number(row.tax_amount), 0);
+  assert.equal(Number(row.total), Number(row.subtotal) - Number(row.discount));
 });
 
 test("100 adetlik toplu paket tek sepet satırı olarak siparişe dönüşür", async () => {

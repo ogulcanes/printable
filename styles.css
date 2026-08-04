@@ -4471,7 +4471,7 @@ body {
   .checkout-empty__action { width: 100%; }
 }
 
-/* KDV + kargo notes */
+/* Fiyat ve kargo notları */
 .summary-line--muted { color: var(--muted); font-size: 14px; padding: 6px 0; }
 .summary-line--muted span { color: var(--muted); }
 .summary-shipping { font-weight: 600; color: var(--text); }
@@ -4669,7 +4669,7 @@ body {
   .contact-grid { grid-template-columns: 1fr; }
 }
 
-/* "+ KDV" price note (prices are KDV-hariç; VAT is added at checkout) */
+/* Product-detail price note (the displayed price is the checkout price). */
 .price-tax { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; }
 .product-detail__price .price-tax { font-size: 14px; }
 
@@ -5637,7 +5637,7 @@ body {
 }
 
 @media (max-width: 460px) {
-  /* İki sütunlu dar kartta "299.00 TL 349.00 TL + KDV" tek satıra sığmıyor
+  /* İki sütunlu dar kartta indirimli ve eski fiyat tek satıra sığmıyor
      ve taşıyordu; alt satıra inebilsin. */
   .product-card p {
     display: flex;
@@ -5660,7 +5660,7 @@ body {
 
 @media (max-width: 460px) {
   /* Kompakt liste satırında fiyata nowrap verilmişti; indirimli üründe
-     "249.00 TL 299.00 TL + KDV" tek satıra sığmayıp sayfayı yatay
+     indirimli ve eski fiyat tek satıra sığmayıp sayfayı yatay
      kaydırılabilir yapıyordu. (Bu seçici .product-card p'den daha özgül
      olduğu için genel mobil kuralı onu ezemiyordu.) */
   .products--list .product-card p {

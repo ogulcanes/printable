@@ -173,9 +173,9 @@
                  <span>${product.rating.average} · ${product.rating.count} değerlendirme</span></a>`
             : `<a class="product-detail__rating product-detail__rating--empty" href="#reviews-section">${stars(0)}
                  <span>Henüz değerlendirilmemiş</span></a>`}
-          <p class="product-detail__price">${money(price)} <span class="price-tax">+ KDV</span>${onSale ? ` <s>${money(product.price)}</s> <span class="discount-badge">-%${off}</span>` : ""}</p>
+          <p class="product-detail__price">${money(price)}${onSale ? ` <s>${money(product.price)}</s> <span class="discount-badge">-%${off}</span>` : ""}</p>
           ${onSale ? `<p class="product-detail__save">${money(product.price - product.sale_price)} tasarruf edin</p>` : ""}
-          <p class="product-detail__tax">Fiyata KDV eklenir · Kargo alıcı ödemeli</p>
+          <p class="product-detail__tax">KDV dahil · Kargo alıcı ödemeli</p>
           ${olcekSecici}
           ${swatches ? `<div class="product-detail__colors"><span>Renkler</span><div class="swatches">${swatches}</div></div>` : ""}
           ${product.description ? `<p class="product-detail__desc">${escapeHtml(product.description)}</p>` : ""}
