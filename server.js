@@ -3452,7 +3452,7 @@ app.post("/api/quotes", modelUploadMiddleware, async (req, res) => {
   });
   if (!ownerNotified) console.error(`3D teklif bildirimi gönderilemedi: ${quoteNumber}`);
 
-  res.status(201).json(await withParts(savedQuote));
+  res.status(201).json({ ...await withParts(savedQuote), notification_sent: ownerNotified });
 });
 
 const partsOfQuote = db.prepare("SELECT * FROM quote_parts WHERE quote_id = ? ORDER BY part_index");
@@ -4813,7 +4813,7 @@ app.post("/api/contact", async (req, res) => {
     return false;
   });
   if (!ownerNotified) console.error("İletişim formu bildirimi gönderilemedi.");
-  res.status(201).json({ ok: true });
+  res.status(201).json({ ok: true, notification_sent: ownerNotified });
 });
 
 app.get("/api/messages", requireAdmin, async (req, res) => {

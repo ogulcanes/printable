@@ -90,6 +90,7 @@ test("İletişim formu info adresine bildirim gönderir", async () => {
 
   assert.equal(response.status, 201);
   assert.equal(payload.ok, true);
+  assert.equal(payload.notification_sent, true);
   const email = storeMessage("Yeni iletişim mesajı");
   assert.ok(email);
   assert.deepEqual(email.to, ["info@printable.com.tr", "operations@example.com"]);
@@ -120,6 +121,7 @@ test("3D teklif formu özet e-postasını info adresine gönderir", async () => 
   const { response, payload } = await request("/api/quotes", { method: "POST", body: form });
   assert.equal(response.status, 201);
   assert.match(payload.quote_number, /^TKF-/);
+  assert.equal(payload.notification_sent, true);
   const email = storeMessage("Yeni 3D baskı teklifi");
   assert.ok(email);
   assert.ok(email.to.includes("info@printable.com.tr"));
@@ -184,6 +186,7 @@ test("E-posta servisi hata verse de iletişim mesajı kaydedilir", async () => {
 
   assert.equal(response.status, 201);
   assert.equal(payload.ok, true);
+  assert.equal(payload.notification_sent, false);
   const row = await db.prepare("SELECT message FROM messages WHERE email = ?").get("kayit@example.com");
   assert.equal(row.message, "Bu mesaj kaybolmamalı.");
 });
