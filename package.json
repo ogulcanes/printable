@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node --test paytr.integration.test.js shopier.integration.test.js"
+    "test": "node --test paytr.integration.test.js shopier.integration.test.js email.integration.test.js"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",

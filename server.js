@@ -55,8 +55,11 @@ if (ADMIN_LOCKED) {
 }
 const SESSION_COOKIE = "printable_admin";
 const CUSTOMER_SESSION_COOKIE = "printable_customer";
-const STORE_NOTIFICATION_EMAILS = String(process.env.STORE_NOTIFICATION_EMAILS || "")
-  .split(",").map((email) => email.trim()).filter(Boolean);
+const STORE_NOTIFICATION_EMAILS = [...new Set([
+  "info@printable.com.tr",
+  ...String(process.env.STORE_NOTIFICATION_EMAILS || "")
+    .split(",").map((email) => email.trim()).filter(Boolean)
+])];
 /* İlk kurulumda açılacak panel hesapları. Sadece admin_users tablosu boşken
    kullanılır; sonrası panelden yönetilir. ADMIN_USER da listeye katılır ki
    eski tek-hesap kurulumları giriş yapabilmeye devam etsin. */
@@ -2000,6 +2003,47 @@ async function notifyNewOrder({ name, email, phone, orderNumber, items, total })
   });
 }
 
+async function notifyNewQuote({ quoteNumber, name, email, phone, fileName, materialName, infill,
+  quantity, width, height, depth, volumeCm3, partCount, colorCount, painted, note, total }) {
+  const dimensions = [width, height, depth]
+    .map((value) => value == null ? "?" : Number(value).toFixed(2))
+    .join(" × ");
+  return sendStoreNotification({
+    subject: `Yeni 3D baskı teklifi · ${quoteNumber}`,
+    html: `<div style="font-family:Arial,sans-serif;color:#171c2c;line-height:1.6;max-width:640px">
+      <h2>Yeni 3D baskı teklifi geldi</h2>
+      <p><strong>Teklif:</strong> ${escapeHtml(quoteNumber)}</p>
+      <p><strong>Müşteri:</strong> ${escapeHtml(name)}<br>
+        <strong>E-posta:</strong> ${escapeHtml(email || "Belirtilmedi")}<br>
+        <strong>Telefon:</strong> ${escapeHtml(phone || "Belirtilmedi")}</p>
+      <p><strong>Model:</strong> ${escapeHtml(fileName || "Dosya adı yok")}<br>
+        <strong>Ölçüler:</strong> ${escapeHtml(dimensions)} mm<br>
+        <strong>Hacim:</strong> ${Number(volumeCm3 || 0).toFixed(2)} cm³<br>
+        <strong>Malzeme:</strong> ${escapeHtml(materialName || "Belirtilmedi")} · %${Number(infill || 0)} dolgu · ${Number(quantity || 0)} adet<br>
+        <strong>Parça / renk:</strong> ${Number(partCount || 0)} parça · ${Number(colorCount || 1)} renk${painted ? " · boyalı 3MF" : ""}</p>
+      <p style="font-size:18px"><strong>Teklif toplamı: ${emailMoney(total)}</strong></p>
+      ${note ? `<div style="padding:12px;border-left:3px solid #ff6542;background:#fff7f3"><strong>Müşteri notu</strong><br>${escapeHtml(note)}</div>` : ""}
+      <p><a href="https://printable.com.tr/admin" style="color:#ff6542;font-weight:700">Teklifi yönetim panelinde aç</a></p>
+    </div>`
+  });
+}
+
+async function notifyNewContactMessage({ name, email, phone, subject, message }) {
+  const cleanSubject = String(subject || "Genel iletişim").replace(/[\r\n]+/g, " ").trim().slice(0, 100);
+  return sendStoreNotification({
+    subject: `Yeni iletişim mesajı · ${cleanSubject || "Genel iletişim"}`,
+    html: `<div style="font-family:Arial,sans-serif;color:#171c2c;line-height:1.6;max-width:640px">
+      <h2>Yeni iletişim mesajı geldi</h2>
+      <p><strong>Gönderen:</strong> ${escapeHtml(name)}<br>
+        <strong>E-posta:</strong> ${escapeHtml(email || "Belirtilmedi")}<br>
+        <strong>Telefon:</strong> ${escapeHtml(phone || "Belirtilmedi")}<br>
+        <strong>Konu:</strong> ${escapeHtml(cleanSubject || "Genel iletişim")}</p>
+      <div style="padding:14px;border-left:3px solid #ff6542;background:#fff7f3;white-space:pre-wrap">${escapeHtml(message)}</div>
+      <p><a href="https://printable.com.tr/admin" style="color:#ff6542;font-weight:700">Mesajı yönetim panelinde aç</a></p>
+    </div>`
+  });
+}
+
 app.post("/api/customer/forgot-password", async (req, res) => {
   const email = normalizeCustomerEmail(req.body.email);
   if (!validCustomerEmail(email)) return res.status(400).json({ error: "Geçerli bir e-posta adresi girin." });
@@ -3383,7 +3427,32 @@ app.post("/api/quotes", modelUploadMiddleware, async (req, res) => {
     }
   });
 
-  res.status(201).json(await withParts(await db.prepare("SELECT * FROM quotes WHERE id = ?").get(result.lastInsertRowid)));
+  const savedQuote = await db.prepare("SELECT * FROM quotes WHERE id = ?").get(result.lastInsertRowid);
+  const ownerNotified = await notifyNewQuote({
+    quoteNumber: savedQuote.quote_number,
+    name: savedQuote.customer_name,
+    email: savedQuote.email,
+    phone: savedQuote.phone,
+    fileName: savedQuote.file_name,
+    materialName: savedQuote.material_name,
+    infill: savedQuote.infill,
+    quantity: savedQuote.quantity,
+    width: savedQuote.width,
+    height: savedQuote.height,
+    depth: savedQuote.depth,
+    volumeCm3: savedQuote.volume_cm3,
+    partCount: parts.length,
+    colorCount: Math.max(1, distinctColors.size),
+    painted: Boolean(savedQuote.painted),
+    note: savedQuote.note,
+    total: savedQuote.total
+  }).catch((error) => {
+    console.error(`3D teklif bildirimi gönderilemedi (${quoteNumber}):`, error.message);
+    return false;
+  });
+  if (!ownerNotified) console.error(`3D teklif bildirimi gönderilemedi: ${quoteNumber}`);
+
+  res.status(201).json(await withParts(savedQuote));
 });
 
 const partsOfQuote = db.prepare("SELECT * FROM quote_parts WHERE quote_id = ? ORDER BY part_index");
@@ -4725,13 +4794,25 @@ app.post("/api/contact", async (req, res) => {
   const name = req.body.name?.trim();
   const message = req.body.message?.trim();
   if (!name || !message) return res.status(400).json({ error: "Ad soyad ve mesaj alanları zorunludur." });
-  await db.prepare("INSERT INTO messages (name, email, phone, subject, message) VALUES (?,?,?,?,?)").run(
+  const contact = {
     name,
-    req.body.email?.trim() || null,
-    req.body.phone?.trim() || null,
-    req.body.subject?.trim() || null,
+    email: req.body.email?.trim() || null,
+    phone: req.body.phone?.trim() || null,
+    subject: req.body.subject?.trim() || null,
     message
+  };
+  await db.prepare("INSERT INTO messages (name, email, phone, subject, message) VALUES (?,?,?,?,?)").run(
+    contact.name,
+    contact.email,
+    contact.phone,
+    contact.subject,
+    contact.message
   );
+  const ownerNotified = await notifyNewContactMessage(contact).catch((error) => {
+    console.error("İletişim formu bildirimi gönderilemedi:", error.message);
+    return false;
+  });
+  if (!ownerNotified) console.error("İletişim formu bildirimi gönderilemedi.");
   res.status(201).json({ ok: true });
 });
 
