@@ -237,6 +237,105 @@ function renderFeaturePanel(product) {
   panel.hidden = false;
 }
 
+function renderFidgetSpotlight(active) {
+  const section = document.querySelector("#fidget-spotlight");
+  const spinballPanel = document.querySelector("#spinball-spotlight");
+  const katlacPanel = document.querySelector("#katlac-spotlight");
+  if (!section || !spinballPanel || !katlacPanel) return;
+
+  const spinball = active.find((product) => product.id === 53)
+    || active.find((product) => /spinball|helixcore/i.test(product.name || ""));
+  const katlaclar = active.filter((product) => /katlaç|katlac/i.test(product.name || ""));
+  if (!spinball && !katlaclar.length) return;
+
+  section.hidden = false;
+
+  if (spinball) {
+    const video = (spinball.images || []).find((item) =>
+      item.media_type === "video" || /\.(?:mp4|webm)(?:[?#]|$)/i.test(item.image_path || "")
+    );
+    const off = discountPercent(spinball);
+    const currentPrice = displayPrice(spinball);
+    const inStock = Number(spinball.stock) > 0;
+    spinballPanel.innerHTML = `
+      <div class="spinball-spotlight__media">
+        ${video
+          ? `<video class="spinball-spotlight__video" poster="${spinball.image_path || ""}"
+                    muted loop playsinline preload="metadata" controls
+                    aria-label="${spinball.name} kullanım videosu">
+               <source src="${video.image_path}" type="video/mp4">
+             </video>`
+          : `<img src="${spinball.image_path || "/assets/printable-logo.svg"}"
+                  alt="${spinball.image_alt || spinball.name}" loading="lazy">`}
+        <span class="spinball-spotlight__motion">Basınca dönen mekanizma</span>
+      </div>
+      <div class="spinball-spotlight__copy">
+        <p class="fidget-label">Yeni nesil fidget</p>
+        <h3>Bas. Çevir. Rahatla.</h3>
+        <p>${spinball.description || "Sıkma hareketini akıcı bir dönüşe çeviren, avuç içinde oynamalık mekanik fidget topu."}</p>
+        <ul class="fidget-benefits" aria-label="Ürün özellikleri">
+          <li>Mekanik ve tatmin edici hareket</li>
+          <li>Avuç içinde rahat kullanım</li>
+          <li>Masada ve molalarda elinin altında</li>
+        </ul>
+        <div class="spinball-spotlight__buy">
+          <div>
+            ${off ? `<span class="fidget-discount">%${off} indirim</span>` : ""}
+            <strong>${money(currentPrice)}</strong>
+            ${off ? `<s>${money(spinball.price)}</s>` : ""}
+            <span class="price-tax">+ KDV</span>
+            <small>${inStock ? `${spinball.stock} adet stokta` : "Stokta yok"}</small>
+          </div>
+          <div class="fidget-actions">
+            <button type="button" data-add-product="${spinball.id}" ${inStock ? "" : "disabled"}>${inStock ? "Hemen sepete ekle" : "Tükendi"}</button>
+            <a href="/urun/${spinball.id}">Ürünü incele</a>
+          </div>
+        </div>
+      </div>`;
+    spinballPanel.hidden = false;
+
+    const spotlightVideo = spinballPanel.querySelector("video");
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (spotlightVideo && !reducedMotion && "IntersectionObserver" in window) {
+      const videoObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) spotlightVideo.play().catch(() => {});
+          else spotlightVideo.pause();
+        });
+      }, { threshold: 0.55 });
+      videoObserver.observe(spotlightVideo);
+    }
+  }
+
+  if (katlaclar.length) {
+    const prices = katlaclar.map(displayPrice).map(Number).filter((price) => price > 0);
+    const startingPrice = prices.length ? Math.min(...prices) : 0;
+    katlacPanel.innerHTML = `
+      <div class="katlac-spotlight__copy">
+        <p class="fidget-label">Katlaç koleksiyonu</p>
+        <h3>Katla. Aç. Yeniden başla.</h3>
+        <p>Renkli, temalı ve elde çevirmesi keyifli Katlaçlardan tarzına uyanı seç. Tekrarlayan hareketiyle ellerini meşgul eder, masanda da iyi görünür.</p>
+        <div class="katlac-spotlight__facts">
+          <span><strong>${katlaclar.length}</strong> farklı tasarım</span>
+          ${startingPrice ? `<span><strong>${money(startingPrice)}</strong>'den başlayan</span>` : ""}
+        </div>
+        <a class="katlac-spotlight__all" href="/urunler?q=katlaç">Tüm Katlaçları gör <span aria-hidden="true">→</span></a>
+      </div>
+      <div class="katlac-spotlight__models" id="katlac-models">
+        ${katlaclar.slice(0, 6).map((product) => `
+          <a class="katlac-mini" href="/urun/${product.id}">
+            <img src="${product.image_path || "/assets/printable-logo.svg"}"
+                 alt="${product.image_alt || product.name}" loading="lazy">
+            <span>
+              <strong>${product.name}</strong>
+              <small>${money(displayPrice(product))}${productScales(product).length > 1 ? "'den itibaren" : ""} <em>+ KDV</em></small>
+            </span>
+          </a>`).join("")}
+      </div>`;
+    katlacPanel.hidden = false;
+  }
+}
+
 // The homepage rows are curated slices of the same catalogue; /urunler owns real filtering.
 async function loadProducts() {
   try {
@@ -252,6 +351,7 @@ async function loadProducts() {
 
     fillProductGrid(".js-popular", active.slice(0, 5));
     fillProductGrid(".js-recommended", [...active].reverse().slice(0, 4));
+    renderFidgetSpotlight(active);
 
     // Discounted products get their own section — hidden entirely when nothing is on sale.
     const onSale = active.filter((product) => product.sale_price && product.price > product.sale_price);
@@ -355,8 +455,7 @@ searchForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   const input = searchForm.querySelector("input");
   if (input?.value.trim()) {
-    input.value = "";
-    input.placeholder = "Arama sonraki sürümde aktif olacak";
+    location.href = `/urunler?q=${encodeURIComponent(input.value.trim())}`;
   }
 });
 

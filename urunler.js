@@ -3,6 +3,9 @@
 // an IIFE so nothing here collides with script.js's top-level declarations.
 (function () {
   const qs = (sel) => document.querySelector(sel);
+  const escapeHTML = (value) => String(value || "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  })[char]);
   const grid = qs("#catalog-grid");
   if (!grid) return;
 
@@ -13,6 +16,7 @@
     priceMax: null,
     inStock: false,
     onSale: false,
+    query: "",
     sort: "new"
   };
   // Ölçekli üründe sale_price uygulanmıyor (bkz. script.js displayPrice), o
@@ -46,6 +50,11 @@
 
   function matches(p) {
     if (!p.is_active) return false;
+    if (state.query) {
+      const haystack = `${p.name || ""} ${p.description || ""} ${(p.categories || []).map((c) => c.name).join(" ")}`
+        .toLocaleLowerCase("tr-TR");
+      if (!haystack.includes(state.query)) return false;
+    }
     if (state.categories.size && !(p.categories || []).some((c) => state.categories.has(c.id))) return false;
     if (state.colors.size && !(p.colors || []).some((c) => state.colors.has(c.id))) return false;
     const price = priceOf(p);
@@ -80,6 +89,7 @@
     }
     if (state.inStock) chips.push(`<button type="button" class="chip" data-remove-stock>Stokta ✕</button>`);
     if (state.onSale) chips.push(`<button type="button" class="chip" data-remove-sale>İndirimli ✕</button>`);
+    if (state.query) chips.push(`<button type="button" class="chip" data-remove-query>Arama: ${escapeHTML(state.query)} ✕</button>`);
     box.innerHTML = chips.join("");
     box.hidden = chips.length === 0;
   }
@@ -147,6 +157,7 @@
     else if (t.hasAttribute("data-remove-price")) { state.priceMin = state.priceMax = null; qs("#price-min").value = ""; qs("#price-max").value = ""; }
     else if (t.hasAttribute("data-remove-stock")) { state.inStock = false; qs("#in-stock").checked = false; }
     else if (t.hasAttribute("data-remove-sale")) { state.onSale = false; qs("#on-sale").checked = false; }
+    else if (t.hasAttribute("data-remove-query")) { state.query = ""; }
     else return;
     renderCategoryFilters();
     renderColorFilters();
@@ -189,11 +200,12 @@
       return;
     }
     window.printableProducts = products; // so script.js's add-to-cart can resolve ids
-    // Homepage links land here pre-filtered: ?kategori=<id> or ?indirim=1.
+    // Homepage links land here pre-filtered: ?kategori=<id>, ?indirim=1 or ?q=katlaç.
     const params = new URLSearchParams(location.search);
     const preset = Number(params.get("kategori"));
     if (preset && categories.some((c) => c.id === preset)) state.categories.add(preset);
     if (params.get("indirim") === "1") { state.onSale = true; qs("#on-sale").checked = true; }
+    state.query = String(params.get("q") || "").trim().toLocaleLowerCase("tr-TR").slice(0, 80);
     renderCategoryFilters();
     renderColorFilters();
     apply();
