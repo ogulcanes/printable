@@ -115,7 +115,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "16";
+const SCHEMA_VERSION = "17";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -487,6 +487,7 @@ async function initDb() {
     color_id INTEGER,
     image_path TEXT NOT NULL,
     image_alt TEXT,
+    media_type TEXT NOT NULL DEFAULT 'image',
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE,
@@ -605,6 +606,7 @@ for (const [table, column, type] of [
   ["products", "meta_description", "TEXT"],
   ["products", "meta_keywords", "TEXT"],
   ["products", "image_alt", "TEXT"],
+  ["product_images", "media_type", "TEXT NOT NULL DEFAULT 'image'"],
   ["hero_slides", "image_alt", "TEXT"],
   ["site_settings", "default_og_image", "TEXT"],
   // e-fatura + ödeme bilgileri sipariş üzerinde tutulur (fatura anlık görüntüsü).
@@ -1101,19 +1103,31 @@ function ensureDbReady() {
 // catch şart: kimse beklemeden reddedilirse Node süreci düşürür.
 ensureDbReady().catch(() => {});
 
+const localUploadStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const safe = path.basename(file.originalname, ext).replace(/[^a-z0-9]+/gi, "-").slice(0, 40);
+    cb(null, `${Date.now()}-${safe}${ext}`);
+  }
+});
+
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase();
-      const safe = path.basename(file.originalname, ext).replace(/[^a-z0-9]+/gi, "-").slice(0, 40);
-      cb(null, `${Date.now()}-${safe}${ext}`);
-    }
-  }),
+  storage: localUploadStorage,
   fileFilter: (req, file, cb) => {
     cb(null, /^image\/(png|jpe?g|webp|gif)$/i.test(file.mimetype));
   },
   limits: { fileSize: 8 * 1024 * 1024 }
+});
+
+// Ürün galerisi fotoğrafın yanında kısa MP4/WEBM ürün videoları da kabul eder.
+// Kapak, banner ve kategori yüklemeleri yukarıdaki image-only middleware'de kalır.
+const galleryUpload = multer({
+  storage: localUploadStorage,
+  fileFilter: (req, file, cb) => {
+    cb(null, /^(image\/(png|jpe?g|webp|gif)|video\/(mp4|webm))$/i.test(file.mimetype));
+  },
+  limits: { fileSize: 50 * 1024 * 1024 }
 });
 
 app.use(express.json());
@@ -1139,8 +1153,9 @@ app.use("/uploads", express.static(UPLOAD_DIR));
    Görsel yüklemesi admin'e özel; model yüklemesi teklif formundan herkese açık,
    o yüzden uzantı doğrulaması burada, sunucuda yapılır. */
 app.post("/api/uploads/sign", async (req, res) => {
-  const kind = req.body?.kind === "image" ? "image" : "model";
-  if (kind === "image" && !(await isAuthed(req))) {
+  const requestedKind = req.body?.kind;
+  const kind = ["image", "media", "model"].includes(requestedKind) ? requestedKind : "model";
+  if (kind !== "model" && !(await isAuthed(req))) {
     return res.status(401).json({ error: "Yetkiniz yok." });
   }
   if (!storage.enabled) {
@@ -2447,6 +2462,12 @@ function resolveImagePath(body, file) {
   return body.image_url?.trim() || body.current_image || null;
 }
 
+function resolveGalleryMediaType(body, file, mediaPath) {
+  if (file?.mimetype?.startsWith("video/")) return "video";
+  if (body.media_type === "video") return "video";
+  return /\.(mp4|webm)(?:[?#]|$)/i.test(mediaPath || "") ? "video" : "image";
+}
+
 const seoMetniKisalt = (value, max) => {
   const text = String(value || "").replace(/\s+/g, " ").trim();
   if (text.length <= max) return text;
@@ -2579,7 +2600,7 @@ async function decorateProducts(products) {
     `).all(...ids),
     // Galeri de tek sorguda: ürün başına ayrı sorgu N+1 demek olurdu.
     db.prepare(`
-      SELECT id, product_id, color_id, image_path, image_alt, sort_order
+      SELECT id, product_id, color_id, image_path, image_alt, media_type, sort_order
       FROM product_images WHERE product_id IN ${list}
       ORDER BY sort_order ASC, id ASC
     `).all(...ids),
@@ -2629,7 +2650,7 @@ const satisOlcekleri = (rows, fallbackPrice = null) => (rows || [])
 
 // Tek ürün için: POST/PUT sonrası dönen kayıtta kullanılır.
 const imagesOfProduct = db.prepare(`
-  SELECT id, color_id, image_path, image_alt, sort_order
+  SELECT id, color_id, image_path, image_alt, media_type, sort_order
   FROM product_images WHERE product_id = ?
   ORDER BY sort_order ASC, id ASC
 `);
@@ -2867,12 +2888,13 @@ app.put("/api/products/:id", requireAdmin, upload.single("image"), async (req, r
    yükleme hatası ürünün tamamının kaydını düşürürdü. Her fotoğraf kendi
    isteğiyle gelir; biri patlarsa diğerleri kaydedilmiş olur. */
 
-app.post("/api/products/:id/images", requireAdmin, upload.single("image"), async (req, res) => {
+app.post("/api/products/:id/images", requireAdmin, galleryUpload.single("image"), async (req, res) => {
   const product = await db.prepare("SELECT id FROM products WHERE id = ?").get(req.params.id);
   if (!product) return res.status(404).json({ error: "Ürün bulunamadı." });
 
   const yol = resolveImagePath({ image_key: req.body.image_key, image_url: req.body.image_url }, req.file);
-  if (!yol) return res.status(400).json({ error: "Fotoğraf dosyası veya adresi gerekli." });
+  if (!yol) return res.status(400).json({ error: "Fotoğraf veya video dosyası ya da adresi gerekli." });
+  const mediaType = resolveGalleryMediaType(req.body, req.file, yol);
 
   // Yeni fotoğraf sona eklenir; sıralamayı admin sürükleyerek değil, sıra
   // numarasıyla değiştiriyor (basit ve dokunmatik ekranda güvenilir).
@@ -2880,13 +2902,14 @@ app.post("/api/products/:id/images", requireAdmin, upload.single("image"), async
   const renkId = toInt(req.body.color_id) || null;
 
   const sonuc = await db.prepare(`
-    INSERT INTO product_images (product_id, color_id, image_path, image_alt, sort_order)
-    VALUES (@product_id, @color_id, @image_path, @image_alt, @sort_order)
+    INSERT INTO product_images (product_id, color_id, image_path, image_alt, media_type, sort_order)
+    VALUES (@product_id, @color_id, @image_path, @image_alt, @media_type, @sort_order)
   `).run({
     product_id: product.id,
     color_id: renkId,
     image_path: yol,
     image_alt: req.body.image_alt?.trim() || null,
+    media_type: mediaType,
     sort_order: Number(son.son) + 1
   });
 
@@ -2921,9 +2944,10 @@ app.delete("/api/products/:id/images/:imageId", requireAdmin, async (req, res) =
 /* Galerideki bir fotoğrafı kapak yap. Kapak products.image_path'te durur:
    ürün kartları, arama sonuçları ve paylaşım görseli onu kullanıyor. */
 app.post("/api/products/:id/images/:imageId/cover", requireAdmin, async (req, res) => {
-  const row = await db.prepare("SELECT image_path, image_alt FROM product_images WHERE id = ? AND product_id = ?")
+  const row = await db.prepare("SELECT image_path, image_alt, media_type FROM product_images WHERE id = ? AND product_id = ?")
     .get(req.params.imageId, req.params.id);
   if (!row) return res.status(404).json({ error: "Fotoğraf bulunamadı." });
+  if (row.media_type === "video") return res.status(400).json({ error: "Video kapak görseli olamaz." });
   /* Alt metin de taşınır: kapak değişip alt metin eski fotoğrafınki kalırsa
      ürün sayfası yanlış görseli tarif eder (SEO ve ekran okuyucu için hatalı).
      Galeri fotoğrafının alt metni boşsa üründekine dokunmuyoruz. */

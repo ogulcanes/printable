@@ -729,7 +729,8 @@ textarea { resize: vertical; }
   overflow: hidden;
   background: #fff;
 }
-.gallery-item img {
+.gallery-item img,
+.gallery-item video {
   width: 100%;
   aspect-ratio: 1 / 1;
   object-fit: cover;

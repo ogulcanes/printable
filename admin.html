@@ -320,17 +320,17 @@
             <label>Fotoğraf alt metni (SEO)<input name="image_alt" placeholder="Boşsa ürün adı kullanılır"></label>
 
             <fieldset class="gallery-field" id="product-gallery-field" hidden>
-              <legend>Galeri fotoğrafları</legend>
-              <p class="field-note">Ürün sayfasında kapakla birlikte gösterilir. Bir fotoğrafa renk atarsan, müşteri o rengi seçtiğinde galeri o rengin fotoğraflarına geçer; renk atamazsan fotoğraf her zaman görünür.</p>
+              <legend>Galeri fotoğrafları ve videoları</legend>
+              <p class="field-note">Ürün sayfasında kapakla birlikte gösterilir. Bir medyaya renk atarsan, müşteri o rengi seçtiğinde galeri o rengin medya öğelerine geçer; renk atamazsan her zaman görünür. Kapak yalnızca fotoğraf olabilir.</p>
               <div id="product-gallery" class="gallery-grid"></div>
               <div class="gallery-upload">
-                <input type="file" id="gallery-files" accept="image/*" multiple>
+                <input type="file" id="gallery-files" accept="image/*,video/mp4,video/webm" multiple>
                 <select id="gallery-color"><option value="">Renk atama (isteğe bağlı)</option></select>
                 <button type="button" class="small-button" id="gallery-upload-btn">Seçilenleri yükle</button>
               </div>
               <p id="gallery-status" class="field-note" hidden></p>
             </fieldset>
-            <p id="product-gallery-hint" class="field-note">Galeri fotoğrafı eklemek için önce ürünü kaydedin, sonra <strong>Düzenle</strong> ile açın.</p>
+            <p id="product-gallery-hint" class="field-note">Galeri fotoğrafı veya videosu eklemek için önce ürünü kaydedin, sonra <strong>Düzenle</strong> ile açın.</p>
             <label>Meta başlık (SEO)<input name="meta_title" maxlength="70"></label>
             <label>Meta açıklama (SEO)<textarea name="meta_description" rows="2" maxlength="170"></textarea></label>
             <label>Anahtar kelimeler (SEO)<textarea name="meta_keywords" rows="2" placeholder="Virgülle ayırın: 3d baskı, ejderha, anahtarlık"></textarea></label>

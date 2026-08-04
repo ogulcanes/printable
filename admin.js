@@ -77,7 +77,7 @@ async function api(path, options = {}) {
   return response.json();
 }
 
-/* Görseli sunucudan geçirmek yerine doğrudan depoya yükler.
+/* Görseli/videoyu sunucudan geçirmek yerine doğrudan depoya yükler.
    Sunucusuz platformun istek gövdesi sınırı ~4.5 MB; telefonla çekilmiş bir ürün
    fotoğrafı bunu rahatlıkla aşar. Sunucudan imzalı bir adres alıp dosyayı oraya
    yüklüyor, forma yalnızca anahtarı koyuyoruz.
@@ -87,21 +87,27 @@ async function api(path, options = {}) {
 async function hoistImageUpload(formData) {
   const file = formData.get("image");
   if (!(file instanceof File) || !file.size) return;
+  const mediaType = file.type.startsWith("video/") ? "video" : "image";
 
   const signRes = await fetch("/api/uploads/sign", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ kind: "image", filename: file.name })
+    body: JSON.stringify({ kind: mediaType === "video" ? "media" : "image", filename: file.name })
   });
   if (signRes.status === 503) return;            // depolama kapalı → eski yol
   const signed = await signRes.json();
   if (!signRes.ok) throw new Error(signed.error || "Yükleme adresi alınamadı.");
 
-  const put = await fetch(signed.signedUrl, { method: "PUT", body: file });
-  if (!put.ok) throw new Error("Görsel yüklenemedi.");
+  const put = await fetch(signed.signedUrl, {
+    method: "PUT",
+    headers: file.type ? { "Content-Type": file.type } : undefined,
+    body: file
+  });
+  if (!put.ok) throw new Error(mediaType === "video" ? "Video yüklenemedi." : "Görsel yüklenemedi.");
 
   formData.delete("image");
   formData.set("image_key", signed.path);
+  if (mediaType === "video") formData.set("media_type", "video");
 }
 
 function showTab(name) {
@@ -796,27 +802,32 @@ function renderGallery(product) {
     + urunRenkleri.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
 
   const renkAdi = (id) => urunRenkleri.find((c) => c.id === id)?.name || "";
-  const foto = product.images || [];
+  const medya = product.images || [];
 
-  qs("#product-gallery").innerHTML = foto.map((g, i) => `
+  qs("#product-gallery").innerHTML = medya.map((g, i) => {
+    const video = g.media_type === "video" || /\.(mp4|webm)(?:[?#]|$)/i.test(g.image_path || "");
+    return `
     <figure class="gallery-item">
-      <img src="${escapeHtml(g.image_path)}" alt="${escapeHtml(g.image_alt) || ""}">
+      ${video
+        ? `<video src="${escapeHtml(g.image_path)}" aria-label="${escapeHtml(g.image_alt) || "Ürün videosu"}" controls muted playsinline preload="metadata"></video>`
+        : `<img src="${escapeHtml(g.image_path)}" alt="${escapeHtml(g.image_alt) || ""}">`}
       <figcaption>
         <select data-gallery-color="${g.id}">
           <option value="">Renk yok</option>
           ${urunRenkleri.map((c) => `<option value="${c.id}" ${c.id === g.color_id ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}
         </select>
         ${g.color_id && !renkAdi(g.color_id) ? '<span class="badge orange">Renk silinmiş</span>' : ""}
-        <input type="text" data-gallery-alt="${g.id}" value="${escapeHtml(g.image_alt) || ""}" placeholder="Alt metin (SEO)">
+        <input type="text" data-gallery-alt="${g.id}" value="${escapeHtml(g.image_alt) || ""}" placeholder="Medya açıklaması">
         <div class="gallery-item__actions">
           <button type="button" class="small-button" data-gallery-up="${g.id}" ${i === 0 ? "disabled" : ""}>↑</button>
-          <button type="button" class="small-button" data-gallery-down="${g.id}" ${i === foto.length - 1 ? "disabled" : ""}>↓</button>
-          <button type="button" class="small-button" data-gallery-cover="${g.id}">Kapak yap</button>
+          <button type="button" class="small-button" data-gallery-down="${g.id}" ${i === medya.length - 1 ? "disabled" : ""}>↓</button>
+          ${video ? '<span class="badge orange">Video</span>' : `<button type="button" class="small-button" data-gallery-cover="${g.id}">Kapak yap</button>`}
           <button type="button" class="small-button danger" data-gallery-delete="${g.id}">Sil</button>
         </div>
       </figcaption>
     </figure>
-  `).join("") || "<p class='field-note'>Henüz galeri fotoğrafı yok.</p>";
+  `;
+  }).join("") || "<p class='field-note'>Henüz galeri medyası yok.</p>";
 }
 
 // Düzenlenen ürünü state'ten tazeleyip galeriyi yeniden çizer.
@@ -1511,7 +1522,7 @@ qs("#gallery-upload-btn").addEventListener("click", async () => {
   const secici = qs("#gallery-files");
   const dosyalar = [...secici.files];
   if (!galeriUrunId) return alert("Önce ürünü kaydedin.");
-  if (!dosyalar.length) return alert("Yüklenecek fotoğraf seçin.");
+  if (!dosyalar.length) return alert("Yüklenecek fotoğraf veya video seçin.");
 
   const renkId = qs("#gallery-color").value;
   const durum = qs("#gallery-status");
@@ -1535,8 +1546,8 @@ qs("#gallery-upload-btn").addEventListener("click", async () => {
 
   secici.value = "";
   durum.textContent = hatalar.length
-    ? `${yuklenen} fotoğraf yüklendi, ${hatalar.length} tanesi başarısız: ${hatalar.join(" | ")}`
-    : `${yuklenen} fotoğraf yüklendi.`;
+    ? `${yuklenen} medya öğesi yüklendi, ${hatalar.length} tanesi başarısız: ${hatalar.join(" | ")}`
+    : `${yuklenen} medya öğesi yüklendi.`;
   await galeriyiTazele();
 });
 
@@ -1548,7 +1559,7 @@ qs("#product-gallery").addEventListener("click", async (event) => {
   const asagi = t.dataset.galleryDown;
 
   if (sil) {
-    if (!confirm("Bu fotoğraf silinsin mi?")) return;
+    if (!confirm("Bu galeri öğesi silinsin mi?")) return;
     await api(`/api/products/${galeriUrunId}/images/${sil}`, { method: "DELETE" });
     await galeriyiTazele();
   } else if (kapak) {
