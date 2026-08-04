@@ -334,12 +334,144 @@ function renderFidgetSpotlight(active) {
       </div>`;
     katlacPanel.hidden = false;
   }
+
+  renderBulkCommerce(spinball, katlaclar);
+}
+
+const BULK_QUANTITIES = [10, 50, 100];
+const BULK_LABELS = {
+  10: "Başlangıç paketi",
+  50: "İşletme paketi",
+  100: "Yüksek adet"
+};
+
+function bulkTierFor(product, quantity, baseTotal) {
+  return (product.tiers || [])
+    .filter((tier) => tier.quantity_exact
+      ? Number(tier.min_quantity) === quantity
+      : Number(tier.min_quantity) <= quantity)
+    .filter((tier) => !Number(tier.min_order_total) || baseTotal >= Number(tier.min_order_total))
+    .sort((a, b) => Number(a.unit_price) - Number(b.unit_price))[0] || null;
+}
+
+function bulkPrice(product, quantity, scale) {
+  const baseUnit = Number(scale?.price || displayPrice(product)) || 0;
+  const baseTotal = baseUnit * quantity;
+  const tier = bulkTierFor(product, quantity, baseTotal);
+  if (!tier) return { unit: baseUnit, total: baseTotal, saving: 0, tier: null };
+
+  let total = baseTotal;
+  if (tier.discount_type === "percent") {
+    total = baseTotal * (1 - Number(tier.discount_value || 0) / 100);
+  } else if (tier.discount_type === "fixed") {
+    total = Math.max(0, baseTotal - Number(tier.discount_value || 0));
+  }
+  return {
+    unit: total / quantity,
+    total,
+    saving: Math.max(0, baseTotal - total),
+    tier
+  };
+}
+
+function bulkTiersHTML(product, scale = null) {
+  return BULK_QUANTITIES.map((quantity) => {
+    const offer = bulkPrice(product, quantity, scale);
+    const featured = quantity === 50;
+    return `
+      <article class="bulk-tier${featured ? " bulk-tier--featured" : ""}">
+        ${featured ? '<span class="bulk-tier__popular">En çok tercih edilen</span>' : ""}
+        <div class="bulk-tier__heading">
+          <span>${BULK_LABELS[quantity]}</span>
+          <strong>${quantity}<small> adet</small></strong>
+        </div>
+        <div class="bulk-tier__price">
+          <strong>${money(offer.unit)}</strong><span>/ adet</span>
+        </div>
+        <p>Toplam <strong>${money(offer.total)}</strong> <small>+ KDV</small></p>
+        ${offer.saving > 0
+          ? `<span class="bulk-tier__saving">${money(offer.saving)} avantaj</span>`
+          : '<span class="bulk-tier__automatic">Adet kampanyası sepette uygulanır</span>'}
+        <button type="button" data-bulk-quantity="${quantity}">${quantity} adedi sepete ekle</button>
+      </article>`;
+  }).join("");
+}
+
+function bulkProductCardHTML(product, kind, products = []) {
+  const scales = productScales(product);
+  const selectedScale = scales[0] || null;
+  const isKatlac = kind === "katlac";
+  return `
+    <article class="bulk-product bulk-product--${kind}" data-bulk-product-id="${product.id}" data-bulk-kind="${kind}">
+      <header class="bulk-product__head">
+        <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" loading="lazy">
+        <div>
+          <span>${isKatlac ? "Katlaç toplu alım" : "Spinball toplu alım"}</span>
+          <h3>${isKatlac ? "Modelini seç, paketini oluştur." : "Tek hamlede toplu sipariş."}</h3>
+          <p>${isKatlac
+            ? "Farklı Katlaç modellerini ayrı ayrı sepete ekleyerek karma paket hazırlayabilirsiniz."
+            : "Etkinlik, mağaza, ekip hediyesi ve kurumsal dağıtımlar için hazır paketler."}</p>
+        </div>
+      </header>
+
+      <div class="bulk-product__selectors">
+        ${isKatlac ? `
+          <label>Katlaç modeli
+            <select data-bulk-product-select>
+              ${products.map((item) => `<option value="${item.id}" ${item.id === product.id ? "selected" : ""}>${item.name}</option>`).join("")}
+            </select>
+          </label>` : `
+          <div class="bulk-product__chosen"><span>Seçili ürün</span><strong>${product.name}</strong></div>`}
+        ${scales.length ? `
+          <label>Boy / ölçek
+            <select data-bulk-scale-select>
+              ${scales.map((scale) => `<option value="${scale.id}">${scale.scale} · ${money(scale.price)} + KDV</option>`).join("")}
+            </select>
+          </label>` : ""}
+      </div>
+
+      <div class="bulk-tiers" data-bulk-tiers>${bulkTiersHTML(product, selectedScale)}</div>
+      <div class="bulk-product__foot">
+        <span>Güvenli kart ödemesi · 599 TL üzeri ücretsiz kargo</span>
+        <a href="/iletisim?subject=${encodeURIComponent(`${product.name} 100+ adet toplu sipariş`)}">100 adetten fazlası için teklif alın →</a>
+      </div>
+    </article>`;
+}
+
+function renderBulkCommerce(spinball, katlaclar) {
+  const section = document.querySelector("#bulk-commerce");
+  if (!section || (!spinball && !katlaclar.length)) return;
+  section.innerHTML = `
+    <header class="bulk-commerce__head">
+      <div>
+        <p class="section-kicker">Toplu satış</p>
+        <h2 id="bulk-commerce-title">10, 50 veya 100 adet. Seçin, sepete ekleyin.</h2>
+      </div>
+      <p>Birim fiyatı, paket toplamını ve varsa adet avantajını sipariş vermeden önce görün. Kampanyalar ödeme öncesinde otomatik hesaplanır.</p>
+    </header>
+    <div class="bulk-commerce__grid">
+      ${spinball ? bulkProductCardHTML(spinball, "spinball") : ""}
+      ${katlaclar.length ? bulkProductCardHTML(katlaclar[0], "katlac", katlaclar) : ""}
+    </div>
+    <div class="bulk-commerce__assurance" aria-label="Toplu sipariş avantajları">
+      <span><strong>3 paket</strong> 10 · 50 · 100 adet</span>
+      <span><strong>Şeffaf fiyat</strong> Birim ve toplam birlikte</span>
+      <span><strong>Karma Katlaç</strong> Modelleri ayrı ayrı ekleyin</span>
+    </div>`;
+  section.hidden = false;
 }
 
 // The homepage rows are curated slices of the same catalogue; /urunler owns real filtering.
 async function loadProducts() {
   try {
-    const products = await fetch("/api/products").then((response) => response.json());
+    const [products, catalog] = await Promise.all([
+      fetch("/api/products").then((response) => response.json()),
+      fetch("/api/catalog").then((response) => response.json()).catch(() => ({ products: [] }))
+    ]);
+    const catalogProducts = new Map((catalog.products || []).map((product) => [product.id, product]));
+    products.forEach((product) => {
+      product.tiers = catalogProducts.get(product.id)?.tiers || [];
+    });
     window.printableProducts = products;
     const active = products.filter((product) => product.is_active);
     fillProductGrid(storeProducts, active);
@@ -408,6 +540,7 @@ function addToCart(product, quantity = 1, scale = null) {
 
 document.addEventListener("click", (event) => {
   const addId = event.target.dataset.addProduct;
+  const bulkQuantity = Number(event.target.dataset.bulkQuantity || 0);
   const removeKey = event.target.dataset.removeProduct;
   const incKey = event.target.dataset.inc;
   const decKey = event.target.dataset.dec;
@@ -420,6 +553,15 @@ document.addEventListener("click", (event) => {
       return;
     }
     addToCart(product);
+    cartPanel?.classList.add("open");
+  }
+  if (bulkQuantity) {
+    const bulkCard = event.target.closest("[data-bulk-product-id]");
+    const product = (window.printableProducts || []).find((item) => item.id === Number(bulkCard?.dataset.bulkProductId));
+    if (!product) return;
+    const scaleId = Number(bulkCard.querySelector("[data-bulk-scale-select]")?.value || 0);
+    const scale = productScales(product).find((item) => item.id === scaleId) || null;
+    addToCart(product, bulkQuantity, scale);
     cartPanel?.classList.add("open");
   }
   if (incKey) {
@@ -456,6 +598,25 @@ searchForm?.addEventListener("submit", (event) => {
   const input = searchForm.querySelector("input");
   if (input?.value.trim()) {
     location.href = `/urunler?q=${encodeURIComponent(input.value.trim())}`;
+  }
+});
+
+document.addEventListener("change", (event) => {
+  const bulkCard = event.target.closest("[data-bulk-product-id]");
+  if (!bulkCard) return;
+
+  if (event.target.matches("[data-bulk-product-select]")) {
+    const katlaclar = (window.printableProducts || []).filter((product) => /katlaç|katlac/i.test(product.name || ""));
+    const product = katlaclar.find((item) => item.id === Number(event.target.value));
+    if (product) bulkCard.outerHTML = bulkProductCardHTML(product, "katlac", katlaclar);
+    return;
+  }
+
+  if (event.target.matches("[data-bulk-scale-select]")) {
+    const product = (window.printableProducts || []).find((item) => item.id === Number(bulkCard.dataset.bulkProductId));
+    const scale = productScales(product).find((item) => item.id === Number(event.target.value)) || null;
+    const tiers = bulkCard.querySelector("[data-bulk-tiers]");
+    if (product && tiers) tiers.innerHTML = bulkTiersHTML(product, scale);
   }
 });
 

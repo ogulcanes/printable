@@ -4,6 +4,8 @@
   if (!form) return;
   const status = document.querySelector("#contact-status");
   const button = document.querySelector("#contact-submit");
+  const requestedSubject = new URLSearchParams(location.search).get("subject");
+  if (requestedSubject && form.elements.subject) form.elements.subject.value = requestedSubject.slice(0, 160);
 
   const setStatus = (message, ok) => {
     status.textContent = message;

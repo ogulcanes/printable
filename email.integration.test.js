@@ -109,6 +109,19 @@ test("İletişim sayfası taslak metin göstermeden sunucuda hazırlanır", asyn
   assert.match(html, /WhatsApp'tan mesaj gönderin/);
 });
 
+test("Ana sayfa Spinball ve Katlaç için 10, 50, 100 adetlik sepet alanını içerir", async () => {
+  const homeResponse = await realFetch(`${baseUrl}/`);
+  const home = await homeResponse.text();
+  const scriptResponse = await realFetch(`${baseUrl}/script.js`);
+  const storefrontScript = await scriptResponse.text();
+  assert.equal(homeResponse.status, 200);
+  assert.match(home, /id="bulk-commerce"/);
+  assert.match(storefrontScript, /BULK_QUANTITIES = \[10, 50, 100\]/);
+  assert.match(storefrontScript, /Toplu satış/);
+  assert.match(storefrontScript, /data-bulk-quantity/);
+  assert.match(storefrontScript, /addToCart\(product, bulkQuantity, scale\)/);
+});
+
 test("3D teklif formu özet e-postasını info adresine gönderir", async () => {
   const material = await db.prepare("SELECT id FROM materials WHERE is_active = 1 ORDER BY id LIMIT 1").get();
   const color = await db.prepare("SELECT id FROM colors WHERE is_active = 1 ORDER BY id LIMIT 1").get();

@@ -67,7 +67,7 @@ async function callback(reference, status, totalAmount, extra = {}) {
   });
 }
 
-async function newCheckout() {
+async function newCheckout(quantity = 1) {
   const products = await realFetch(`${baseUrl}/api/products`).then((response) => response.json());
   const product = products.find((item) => Number(item.is_active) === 1);
   assert.ok(product, "Test için aktif ürün bulunmalı");
@@ -86,7 +86,7 @@ async function newCheckout() {
         address: "Test Sokak No: 1"
       },
       payment_method: "kart",
-      items: [{ product_id: product.id, quantity: 1 }]
+      items: [{ product_id: product.id, quantity }]
     })
   });
   assert.equal(response.status, 201);
@@ -148,6 +148,18 @@ test("Sipariş fatura veya kimlik bilgisi olmadan oluşturulur", async () => {
   assert.equal(row.tax_number, null);
   assert.equal(row.company_name, null);
   assert.equal(row.billing_address, row.shipping_address);
+});
+
+test("100 adetlik toplu paket tek sepet satırı olarak siparişe dönüşür", async () => {
+  const order = await newCheckout(100);
+  const item = await db.prepare(`
+    SELECT oi.quantity, oi.unit_price, oi.line_total
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    WHERE o.payment_reference = ?
+  `).get(order.reference);
+  assert.equal(Number(item.quantity), 100);
+  assert.equal(Number(item.line_total), Number(item.unit_price) * 100);
 });
 
 test("PayTR başarı callback'i ödemeyi tek kez onaylar", async () => {
