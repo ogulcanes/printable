@@ -368,13 +368,28 @@
       qs("#checkout-result").hidden = false;
       qs("#checkout-result").innerHTML = `
         <p><strong>Sipariş: ${escapeHtml(data.order_number)}</strong></p>
-        <iframe src="${escapeHtml(data.iframe_url)}" id="paytriframe" title="PayTR güvenli kart ödeme ekranı"
-          frameborder="0" scrolling="no" style="width:100%;min-height:600px"></iframe>`;
+        <div class="paytr-frame-shell">
+          <p class="paytr-loading" id="paytr-loading" role="status">Güvenli ödeme formu yükleniyor…</p>
+          <iframe src="${escapeHtml(data.iframe_url)}" id="paytriframe" title="PayTR güvenli kart ödeme ekranı"
+            frameborder="0" scrolling="no"></iframe>
+        </div>`;
+      // Ödeme formu üçüncü panelin içinde. Eski kod var olmayan "4. adımı" arayıp
+      // üçüncü panelin active sınıfını kaldırdığı için iframe DOM'a eklense de görünmüyordu.
+      panels.forEach((panel) => panel.classList.toggle("active", Number(panel.dataset.step) === 3));
+      const iframe = qs("#paytriframe");
+      const loading = qs("#paytr-loading");
+      let iframeLoaded = false;
+      iframe.addEventListener("load", () => {
+        iframeLoaded = true;
+        loading.hidden = true;
+      }, { once: true });
+      window.setTimeout(() => {
+        if (!iframeLoaded) loading.textContent = "Ödeme formu beklenenden uzun sürüyor. İnternet bağlantınızı kontrol edip sayfayı yenileyebilirsiniz.";
+      }, 12000);
       if (typeof window.iFrameResize === "function") window.iFrameResize({}, "#paytriframe");
       qs("#co-submit").hidden = true;
       qs("#co-prev").hidden = true;
       qs("#co-next").hidden = true;
-      document.querySelectorAll(".checkout-panel[data-step]").forEach((p) => { if (p.dataset.step !== "4") p.classList.remove("active"); });
     } catch (err) {
       setError("#payment-error", err.message);
       button.disabled = false;

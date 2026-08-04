@@ -4421,6 +4421,26 @@ body {
 .summary-back:hover { color: var(--accent); }
 
 .checkout-result { margin-top: 20px; }
+.paytr-frame-shell {
+  min-height: 620px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+}
+.paytr-loading {
+  margin: 0;
+  padding: 14px 16px;
+  color: var(--muted);
+  background: var(--soft);
+  font-size: 14px;
+  text-align: center;
+}
+#paytriframe {
+  display: block;
+  width: 100%;
+  min-height: 600px;
+}
 .checkout-success {
   display: grid;
   gap: 10px;
