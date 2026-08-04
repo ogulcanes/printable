@@ -3036,46 +3036,6 @@ app.post("/api/products/:id/shopier-sync", requireAdmin, async (req, res) => {
   res.json(await synchronizeProductWithShopier(product.id));
 });
 
-/* Mevcut kataloğun ilk Shopier aktarımı için kısa ömürlü yetki. Ham anahtar
-   sunucuya ya da depoya yazılmaz; app_meta yalnızca SHA-256 özetini ve son
-   kullanma zamanını tutar. Aktarım aracı işi bitirince kaydı siler. */
-const SHOPIER_BULK_GRANT_KEY = "shopier_bulk_sync_grant";
-
-async function requireShopierBulkGrant(req, res, next) {
-  const token = String(req.body?.token || "");
-  const row = await db.prepare("SELECT value FROM app_meta WHERE key = ?").get(SHOPIER_BULK_GRANT_KEY);
-  let grant;
-  try { grant = row ? JSON.parse(row.value) : null; }
-  catch { grant = null; }
-
-  const expected = /^[a-f0-9]{64}$/i.test(String(grant?.digest || ""))
-    ? Buffer.from(grant.digest, "hex")
-    : Buffer.alloc(0);
-  const supplied = crypto.createHash("sha256").update(token).digest();
-  const valid = token.length >= 32
-    && Number(grant?.expires_at) > Date.now()
-    && expected.length === supplied.length
-    && crypto.timingSafeEqual(expected, supplied);
-  if (!valid) return res.status(403).json({ error: "Geçersiz veya süresi dolmuş aktarım yetkisi." });
-  next();
-}
-
-app.post("/api/internal/shopier-bulk-sync", requireShopierBulkGrant, async (req, res) => {
-  const productId = toInt(req.body.product_id);
-  if (!productId) return res.status(400).json({ error: "Geçerli ürün kimliği zorunludur." });
-  const product = await db.prepare("SELECT id FROM products WHERE id = ?").get(productId);
-  if (!product) return res.status(404).json({ error: "Ürün bulunamadı." });
-  const synced = await synchronizeProductWithShopier(product.id);
-  res.json({
-    id: synced.id,
-    name: synced.name,
-    shopier_product_id: synced.shopier_product_id || null,
-    shopier_product_url: synced.shopier_product_url || null,
-    shopier_sync_status: synced.shopier_sync_status,
-    shopier_sync_error: synced.shopier_sync_error || null
-  });
-});
-
 app.patch("/api/products/:id/active", requireAdmin, async (req, res) => {
   const isActive = req.body.is_active === true || req.body.is_active === 1 || req.body.is_active === "1";
   if (isActive) {
