@@ -1394,6 +1394,79 @@ async function contactInfo() {
   };
 }
 
+const CONTACT_CARD_ICONS = {
+  phone: `<path d="M6.8 3h3l1.5 3.7-1.9 1.4a12 12 0 0 0 5.5 5.5l1.4-1.9L20 13.2v3a1.8 1.8 0 0 1-2 1.8A15.2 15.2 0 0 1 5 5a1.8 1.8 0 0 1 1.8-2Z"/>`,
+  email: `<path d="M3.5 6.5h17v11h-17z"/><path d="m3.5 7 8.5 6 8.5-6"/>`,
+  address: `<path d="M12 21s6.5-5.6 6.5-10.2A6.5 6.5 0 0 0 5.5 10.8C5.5 15.4 12 21 12 21Z"/><circle cx="12" cy="10.5" r="2.4"/>`,
+  hours: `<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5.2l3.2 2"/>`,
+  social: `<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5a14 14 0 0 1 0 17 14 14 0 0 1 0-17Z"/>`
+};
+
+function contactCard({ title, icon, content, className = "", hint = "" }) {
+  return `<div class="contact-item contact-card${className ? ` ${className}` : ""}">
+    <span class="contact-card__icon" aria-hidden="true"><svg viewBox="0 0 24 24">${icon}</svg></span>
+    <div class="contact-card__body">
+      <h3>${escapeHtml(title)}</h3>
+      <p>${content}</p>
+      ${hint ? `<small>${escapeHtml(hint)}</small>` : ""}
+    </div>
+  </div>`;
+}
+
+// İletişim bilgileri ilk HTML'e basılır. Böylece API yanıtını beklerken ziyaretçi
+// yönetim paneline ait taslak metinleri görmez ve kartlar sonradan yer değiştirmez.
+async function renderContactDetails() {
+  const site = await db.prepare(`
+    SELECT phone, email, whatsapp, social_links, legal_address, contact_address, working_hours
+    FROM site_settings WHERE id = 1
+  `).get() || {};
+  const phone = String(site.phone || "").trim();
+  const email = String(site.email || "").trim();
+  const wa = whatsappDigits(String(site.whatsapp || "").trim() || phone);
+  const address = String(site.legal_address || site.contact_address || "").trim();
+  const workingHours = String(site.working_hours || "").trim();
+  const accounts = socialAccounts(site.social_links).filter((account) => /^https?:\/\//i.test(account.url));
+  const cards = [];
+
+  if (wa) cards.push(contactCard({
+    title: "WhatsApp",
+    icon: SOCIAL_ICONS.whatsapp,
+    content: `<a href="https://wa.me/${escapeHtml(wa)}" target="_blank" rel="noopener">WhatsApp'tan mesaj gönderin</a>`,
+    className: "contact-card--wa",
+    hint: "En hızlı yanıt burada"
+  }));
+  if (phone) cards.push(contactCard({
+    title: "Telefon",
+    icon: CONTACT_CARD_ICONS.phone,
+    content: `<a href="tel:${escapeHtml(phone.replace(/[^0-9+]/g, ""))}">${escapeHtml(phone)}</a>`
+  }));
+  if (email) cards.push(contactCard({
+    title: "E-posta",
+    icon: CONTACT_CARD_ICONS.email,
+    content: `<a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a>`
+  }));
+  if (address) cards.push(contactCard({
+    title: "Adres",
+    icon: CONTACT_CARD_ICONS.address,
+    content: escapeHtml(address)
+  }));
+  if (workingHours) cards.push(contactCard({
+    title: "Çalışma saatleri",
+    icon: CONTACT_CARD_ICONS.hours,
+    content: escapeHtml(workingHours)
+  }));
+  if (accounts.length) cards.push(contactCard({
+    title: "Sosyal medya",
+    icon: CONTACT_CARD_ICONS.social,
+    className: "contact-card--social",
+    content: accounts.map((account) =>
+      `<a href="${escapeHtml(account.url)}" target="_blank" rel="noopener">${escapeHtml(account.label)}</a>`
+    ).join("")
+  }));
+
+  return cards.join("\n");
+}
+
 // Shared footer, injected server-side so links stay consistent across every page.
 async function renderFooter() {
   const { phone, email, wa, accounts } = await contactInfo();
@@ -1515,6 +1588,7 @@ async function sendPage(req, res, file, slug) {
   if (sayfa.includes("<!--satici-->")) sayfa = sayfa.replaceAll("<!--satici-->", await renderSellerBlock());
   if (sayfa.includes("<!--iade-adresi-->")) sayfa = sayfa.replace("<!--iade-adresi-->", await renderReturnAddress());
   if (sayfa.includes("<!--guncelleme-->")) sayfa = sayfa.replace("<!--guncelleme-->", guncellemeSatiri());
+  if (sayfa.includes("<!--contact-details-->")) sayfa = sayfa.replace("<!--contact-details-->", await renderContactDetails());
   res.type("html").send(await injectShell(sayfa, slug));
 }
 
@@ -4745,7 +4819,7 @@ app.patch("/api/orders/:id", requireAdmin, async (req, res) => {
 
 // Public site info — KDV oranı + iletişim bilgileri (storefront ve /iletisim kullanır).
 app.get("/api/site-info", async (req, res) => {
-  const site = await db.prepare("SELECT phone, email, legal_address, social_links, show_stock, min_cart_total FROM site_settings WHERE id = 1").get() || {};
+  const site = await db.prepare("SELECT phone, email, legal_address, working_hours, social_links, show_stock, min_cart_total FROM site_settings WHERE id = 1").get() || {};
   const pricing = await db.prepare("SELECT tax_rate FROM pricing_settings WHERE id = 1").get() || {};
   const { wa } = await contactInfo();
   res.json({
@@ -4754,7 +4828,7 @@ app.get("/api/site-info", async (req, res) => {
     email: site.email || "",
     whatsapp: wa ? `https://wa.me/${wa}` : "",
     address: site.legal_address || "",
-    working_hours: "",
+    working_hours: site.working_hours || "",
     social_links: site.social_links || "",
     show_stock: site.show_stock ?? 1,
     min_cart_total: Number(site.min_cart_total ?? 0),

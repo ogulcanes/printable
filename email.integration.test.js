@@ -99,6 +99,16 @@ test("İletişim formu info adresine bildirim gönderir", async () => {
   assert.equal(row.subject, "Ürün sorusu");
 });
 
+test("İletişim sayfası taslak metin göstermeden sunucuda hazırlanır", async () => {
+  const response = await realFetch(`${baseUrl}/iletisim`);
+  const html = await response.text();
+  assert.equal(response.status, 200);
+  assert.doesNotMatch(html, /eklenecek/i);
+  assert.doesNotMatch(html, /data-contact=/i);
+  assert.match(html, /href="tel:/i);
+  assert.match(html, /WhatsApp'tan mesaj gönderin/);
+});
+
 test("3D teklif formu özet e-postasını info adresine gönderir", async () => {
   const material = await db.prepare("SELECT id FROM materials WHERE is_active = 1 ORDER BY id LIMIT 1").get();
   const color = await db.prepare("SELECT id FROM colors WHERE is_active = 1 ORDER BY id LIMIT 1").get();

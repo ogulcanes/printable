@@ -4536,10 +4536,6 @@ body {
 }
 .contact-info { display: grid; gap: 12px; }
 
-/* iletisim.js hides a card whose value is unset — without this the flex
-   display below would win over the hidden attribute and show it anyway. */
-.contact-item[hidden] { display: none; }
-
 .contact-card {
   position: relative;
   display: flex;
@@ -4606,7 +4602,7 @@ body {
 .contact-card--wa .contact-card__icon svg { fill: currentColor; stroke: none; }
 .contact-card--wa p a { color: #16794a !important; }
 
-.contact-card--social p a { font-weight: 700; }
+.contact-card--social p a { display: block; font-weight: 700; }
 
 .contact-aside {
   display: block;
