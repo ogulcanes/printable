@@ -39,7 +39,14 @@ async function main() {
     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
   `).run(GRANT_KEY, value);
 
-  const products = await db.prepare("SELECT id, name FROM products ORDER BY id ASC").all();
+  const allProducts = await db.prepare("SELECT id, name FROM products ORDER BY id ASC").all();
+  const requestedIds = new Set(process.argv.slice(2).map(Number).filter(Number.isInteger));
+  const products = requestedIds.size
+    ? allProducts.filter((product) => requestedIds.has(product.id))
+    : allProducts;
+  if (requestedIds.size && products.length !== requestedIds.size) {
+    throw new Error("İstenen ürün kimliklerinden biri katalogda bulunamadı.");
+  }
   const results = [];
   const failures = [];
   console.log(`Shopier aktarımı başladı: ${products.length} ürün.`);

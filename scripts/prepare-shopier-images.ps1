@@ -30,7 +30,8 @@ $items = @(
   @{ id = 45; url = "https://budyxdawnhcgqfizlbyu.supabase.co/storage/v1/object/public/images/1784482572995-cd53295d-ChatGPT-Image-19-Tem-2026-20-19-40.webp" },
   @{ id = 46; url = "https://budyxdawnhcgqfizlbyu.supabase.co/storage/v1/object/public/images/1784482577230-ade0f191-TNT-Katla.webp" },
   @{ id = 47; url = "https://budyxdawnhcgqfizlbyu.supabase.co/storage/v1/object/public/images/1784482579697-a6579623-creeper.webp" },
-  @{ id = 51; url = "https://makerworld.bblmw.com/makerworld/model/US6a3e0154a93134/design/2025-09-01_3af3607d28c8b.gif" }
+  @{ id = 51; url = "https://makerworld.bblmw.com/makerworld/model/US6a3e0154a93134/design/2025-09-01_3af3607d28c8b.gif" },
+  @{ id = 53; url = "https://budyxdawnhcgqfizlbyu.supabase.co/storage/v1/object/public/images/products/53/spinball-kapak-5b2b579dbfa0.jpg" }
 )
 
 $ffmpeg = (Get-Command ffmpeg -ErrorAction Stop).Source
