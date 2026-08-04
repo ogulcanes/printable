@@ -124,11 +124,16 @@ test("Ana sayfa Spinball ve Katlaç için 10, 50, 100 adetlik sepet alanını i�
   assert.match(storefrontScript, /addToCart\(product, bulkQuantity, scale\)/);
 });
 
-test("Katlaç ve Spinball kampanyası ayrı landing sayfasında sunulur", async () => {
-  const response = await realFetch(`${baseUrl}/katlac-spinball`);
+test("Genel landing sayfası tüm mağazayı anlatır ve Katlaç ile Spinball'u içerir", async () => {
+  const response = await realFetch(`${baseUrl}/landing`);
   const html = await response.text();
   assert.equal(response.status, 200);
   assert.match(html, /class="landing-hero"/);
+  assert.match(html, /Tüm ürünleri keşfet/);
+  assert.match(html, /Dosyanı yükle, fiyat al/);
+  assert.match(html, /id="category-grid"/);
+  assert.match(html, /id="store-products"/);
+  assert.match(html, /id="sale-section"/);
   assert.match(html, /Katlaç[\s\S]*Spinball/);
   assert.match(html, /\/assets\/shopier\/53\.jpg/);
   assert.match(html, /\/assets\/shopier\/39\.jpg/);
@@ -136,6 +141,12 @@ test("Katlaç ve Spinball kampanyası ayrı landing sayfasında sunulur", async 
   assert.match(html, /href="\/urunler\?q=katlaç"/);
   assert.match(html, /id="bulk-commerce"/);
   assert.match(html, /10, 50 ve 100 adet/);
+});
+
+test("Eski Katlaç ve Spinball landing adresi genel landing sayfasına yönlenir", async () => {
+  const response = await fetch(`${baseUrl}/katlac-spinball`, { redirect: "manual" });
+  assert.equal(response.status, 301);
+  assert.equal(response.headers.get("location"), "/landing");
 });
 
 test("3D teklif formu özet e-postasını info adresine gönderir", async () => {

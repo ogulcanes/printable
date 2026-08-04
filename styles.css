@@ -6622,7 +6622,7 @@ body.catalog-view-table .catalog-table-view { display: block; overflow-x: auto; 
   box-shadow: 0 0 0 2px rgb(255 101 66 / 12%);
 }
 
-/* ---- Ürün odaklı landing hero: Katlaç + Spinball ---- */
+/* ---- Genel mağaza landing hero ---- */
 .landing-hero {
   position: relative;
   isolation: isolate;
@@ -6856,7 +6856,7 @@ body.catalog-view-table .catalog-table-view { display: block; overflow-x: auto; 
   .landing-hero__bulk { transition: none; }
 }
 
-/* ---- Ana sayfa Fidget vitrini: Spinball hareketi + Katlaç koleksiyonu ---- */
+/* ---- Yeniden kullanılabilir Fidget vitrini: Spinball + Katlaç koleksiyonu ---- */
 .fidget-spotlight[hidden],
 .spinball-spotlight[hidden],
 .katlac-spotlight[hidden],
