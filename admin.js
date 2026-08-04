@@ -287,6 +287,14 @@ const quoteStatusLabels = {
   won: "Kazanıldı",
   lost: "Kaybedildi"
 };
+const quoteStatusClasses = {
+  new: "is-new",
+  contacted: "is-contacted",
+  quoted: "is-quoted",
+  won: "is-won",
+  lost: "is-lost"
+};
+const quoteFilters = { search: "", status: "" };
 
 function renderMaterials() {
   qs("#material-count").textContent = `${state.materials.length} malzeme`;
@@ -317,48 +325,127 @@ function renderMaterials() {
 }
 
 function renderQuotes() {
-  qs("#quote-count").textContent = `${state.quotes.length} teklif`;
-  qs("#quote-list").innerHTML = state.quotes.map((quote) => `
-    <article class="row">
-      <span class="brand-mark">3D</span>
-      <div>
-        <h3>${escapeHtml(quote.quote_number)} - ${escapeHtml(quote.customer_name)}</h3>
-        <p>${escapeHtml(quote.file_name) || "Dosya yok"} | ${quote.width ?? "?"} x ${quote.height ?? "?"} x ${quote.depth ?? "?"} mm | ${Number(quote.volume_cm3).toFixed(2)} cm³</p>
-        <div class="meta-line">
-          <span class="badge ${quote.status === "new" ? "orange" : "green"}">${quoteStatusLabels[quote.status] || quote.status}</span>
-          <span class="badge blue">${money(quote.total)}</span>
-          ${quote.painted ? '<span class="badge orange">Boyalı 3MF - orijinal dosyayla basın</span>' : ""}
-          ${(() => {
-            const colors = new Set((quote.parts || []).map((p) => p.color_name).filter(Boolean)).size;
-            return colors > 1 ? `<span class="badge orange">${colors} renk - filament değişimi</span>` : "";
-          })()}
-          <span class="badge">${escapeHtml(quote.material_name) || "-"}</span>
-          <span class="badge">%${quote.infill} dolgu</span>
-          <span class="badge">${quote.quantity} adet</span>
-          <span class="badge">${escapeHtml(quote.email || quote.phone) || "-"}</span>
+  const search = quoteFilters.search.trim().toLocaleLowerCase("tr-TR");
+  const quotes = state.quotes.filter((quote) => {
+    if (quoteFilters.status && quote.status !== quoteFilters.status) return false;
+    if (!search) return true;
+    const haystack = [quote.quote_number, quote.customer_name, quote.email, quote.phone, quote.file_name]
+      .filter(Boolean).join(" ").toLocaleLowerCase("tr-TR");
+    return haystack.includes(search);
+  });
+
+  qs("#quote-count").textContent = quotes.length === state.quotes.length
+    ? `${state.quotes.length} teklif`
+    : `${quotes.length} / ${state.quotes.length} teklif`;
+
+  const downloadUrl = (item) => {
+    if (item?.download_url) return item.download_url;
+    return String(item?.file_path || "").startsWith("/uploads/") ? item.file_path : "";
+  };
+  const measure = (value) => value == null || value === "" ? "—" : Number(value).toFixed(2);
+
+  qs("#quote-list").innerHTML = quotes.map((quote) => {
+    const parts = quote.parts || [];
+    const colorCount = new Set(parts.map((part) => part.color_name).filter(Boolean)).size;
+    const mainDownload = downloadUrl(quote);
+    const statusLabel = quoteStatusLabels[quote.status] || quote.status;
+    const statusClassName = quoteStatusClasses[quote.status] || "";
+    const contact = [quote.email, quote.phone].filter(Boolean).map(escapeHtml).join(" · ") || "İletişim bilgisi yok";
+    const dimensions = `${measure(quote.width)} × ${measure(quote.height)} × ${measure(quote.depth)} mm`;
+
+    return `
+      <article class="quote-card ${statusClassName}" data-quote-card="${quote.id}">
+        <header class="quote-card__header">
+          <span class="quote-card__icon" aria-hidden="true">3D</span>
+          <div class="quote-card__identity">
+            <div class="quote-card__eyebrow">
+              <span>${escapeHtml(quote.quote_number)}</span>
+              <span class="quote-status ${statusClassName}">${escapeHtml(statusLabel)}</span>
+            </div>
+            <h3>${escapeHtml(quote.customer_name) || "İsimsiz müşteri"}</h3>
+            <p>${contact}</p>
+          </div>
+          <div class="quote-card__amount">
+            <span>Teklif toplamı</span>
+            <strong>${money(quote.total)}</strong>
+            <small>${formatDateTime(quote.created_at)}</small>
+          </div>
+        </header>
+
+        <div class="quote-card__body">
+          <div class="quote-model">
+            <span class="quote-model__label">Yüklenen model</span>
+            <strong title="${escapeHtml(quote.file_name)}">${escapeHtml(quote.file_name) || "Dosya adı yok"}</strong>
+          </div>
+
+          <dl class="quote-metrics">
+            <div><dt>Ölçüler</dt><dd>${dimensions}</dd></div>
+            <div><dt>Hacim</dt><dd>${Number(quote.volume_cm3 || 0).toFixed(2)} cm³</dd></div>
+            <div><dt>Malzeme</dt><dd>${escapeHtml(quote.material_name) || "—"}</dd></div>
+            <div><dt>Dolgu</dt><dd>%${Number(quote.infill || 0)}</dd></div>
+            <div><dt>Adet</dt><dd>${Number(quote.quantity || 0)}</dd></div>
+          </dl>
+
+          ${(quote.painted || colorCount > 1) ? `
+            <div class="quote-alerts">
+              ${quote.painted ? '<span>Boyalı 3MF · orijinal dosyayla basın</span>' : ""}
+              ${colorCount > 1 ? `<span>${colorCount} renk · filament değişimi gerekli</span>` : ""}
+            </div>` : ""}
+
+          ${parts.length ? `
+            <details class="quote-parts">
+              <summary>
+                <span><strong>Model parçaları</strong><em>${parts.length}</em></span>
+                <small>${colorCount || 1} renk · toplam ${Number(quote.volume_cm3 || 0).toFixed(2)} cm³</small>
+                <b aria-hidden="true">⌄</b>
+              </summary>
+              <div class="quote-parts__grid">
+                ${parts.map((part) => {
+                  const partDownload = downloadUrl(part);
+                  return `
+                    <div class="quote-part">
+                      <span class="quote-part__color" style="background:${escapeHtml(part.color_hex) || "#ddd"}" aria-hidden="true"></span>
+                      <span class="quote-part__info">
+                        <strong>${escapeHtml(part.name) || `Parça ${part.part_index}`}</strong>
+                        <small>${escapeHtml(part.color_name) || "Renk yok"} · ${Number(part.volume_cm3 || 0).toFixed(2)} cm³</small>
+                      </span>
+                      ${partDownload
+                        ? `<a href="${escapeHtml(partDownload)}" download aria-label="${escapeHtml(part.name) || `Parça ${part.part_index}`} dosyasını indir">İndir</a>`
+                        : '<span class="quote-part__missing">Dosya yok</span>'}
+                    </div>`;
+                }).join("")}
+              </div>
+            </details>` : `
+            <div class="quote-single-color">
+              <span class="quote-part__color" style="background:${escapeHtml(quote.color_hex) || "#ddd"}" aria-hidden="true"></span>
+              <span>Tek parça · ${escapeHtml(quote.color_name) || "Renk seçilmemiş"}</span>
+            </div>`}
+
+          ${quote.note ? `<div class="quote-note"><strong>Müşteri notu</strong><p>${escapeHtml(quote.note)}</p></div>` : ""}
         </div>
-        <div class="meta-line">
-          ${(quote.parts || []).length
-            ? quote.parts.map((part) => `
-                <span class="badge">
-                  <span class="color-dot" style="background:${escapeHtml(part.color_hex) || "#ddd"}"></span>
-                  ${escapeHtml(part.name) || `Parça ${part.part_index}`}: ${escapeHtml(part.color_name) || "renk yok"} (${Number(part.volume_cm3).toFixed(2)} cm³)
-                  ${part.file_path ? `<a href="${escapeHtml(part.file_path)}" download>STL</a>` : ""}
-                </span>
-              `).join("")
-            : `<span class="badge">${escapeHtml(quote.color_name) || "Renk yok"}</span>`}
-        </div>
-        ${quote.note ? `<p>Not: ${escapeHtml(quote.note)}</p>` : ""}
-      </div>
-      <div class="row-actions">
-        ${quote.file_path ? `<a class="small-button" href="${escapeHtml(quote.file_path)}" download>STL indir</a>` : ""}
-        <select data-quote-status="${quote.id}">
-          ${Object.entries(quoteStatusLabels).map(([value, label]) => `<option value="${value}" ${value === quote.status ? "selected" : ""}>${label}</option>`).join("")}
-        </select>
-        <button class="danger" data-delete-quote="${quote.id}">Sil</button>
-      </div>
-    </article>
-  `).join("") || "<p>Henüz teklif yok.</p>";
+
+        <footer class="quote-card__actions">
+          <div>
+            ${mainDownload
+              ? `<a class="quote-download" href="${escapeHtml(mainDownload)}" download>${quote.painted ? "Orijinal 3MF'yi indir" : "Ana model dosyasını indir"}</a>`
+              : '<span class="quote-download quote-download--disabled">Ana dosya yok</span>'}
+          </div>
+          <div class="quote-workflow">
+            <label>
+              <span>Teklif durumu</span>
+              <select data-quote-status="${quote.id}" aria-label="${escapeHtml(quote.quote_number)} durumu">
+                ${Object.entries(quoteStatusLabels).map(([value, label]) => `<option value="${value}" ${value === quote.status ? "selected" : ""}>${label}</option>`).join("")}
+              </select>
+            </label>
+            <button class="quote-delete danger" type="button" data-delete-quote="${quote.id}">Teklifi sil</button>
+          </div>
+        </footer>
+      </article>`;
+  }).join("") || `
+    <div class="quote-empty">
+      <strong>${state.quotes.length ? "Filtreye uygun teklif bulunamadı." : "Henüz teklif yok."}</strong>
+      <p>${state.quotes.length ? "Arama kelimesini veya durum filtresini değiştirin." : "Yeni müşteri teklifleri burada görünecek."}</p>
+    </div>`;
 }
 
 function renderColors() {
@@ -2043,20 +2130,37 @@ qs("#pricing-form").addEventListener("submit", async (event) => {
   alert("Fiyat katsayıları kaydedildi.");
 });
 
+qs("#quote-search")?.addEventListener("input", (event) => {
+  quoteFilters.search = event.target.value;
+  renderQuotes();
+});
+
+qs("#quote-status-filter")?.addEventListener("change", (event) => {
+  quoteFilters.status = event.target.value;
+  renderQuotes();
+});
+
 qs("#quote-list").addEventListener("change", async (event) => {
   const id = event.target.dataset.quoteStatus;
   if (!id) return;
-  await api(`/api/quotes/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status: event.target.value })
-  });
-  await refresh();
+  const select = event.target;
+  select.disabled = true;
+  try {
+    await api(`/api/quotes/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: select.value })
+    });
+    await refresh();
+  } finally {
+    select.disabled = false;
+  }
 });
 
 qs("#quote-list").addEventListener("click", async (event) => {
   const id = event.target.dataset.deleteQuote;
-  if (!id || !confirm("Bu teklif silinsin mi?")) return;
+  const quote = state.quotes.find((item) => item.id === Number(id));
+  if (!id || !confirm(`${quote?.quote_number || "Bu teklif"} kalıcı olarak silinsin mi?`)) return;
   await api(`/api/quotes/${id}`, { method: "DELETE" });
   await refresh();
 });

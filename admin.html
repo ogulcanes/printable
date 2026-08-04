@@ -239,11 +239,31 @@
 
       <section id="quotes" class="panel">
         <div class="admin-card">
-          <div class="card-title">
-            <h2>3D Baskı Teklifleri</h2>
+          <div class="card-title quote-page-title">
+            <div>
+              <h2>3D Baskı Teklifleri</h2>
+              <p>Müşteri, model, üretim bilgileri ve dosyaları tek ekrandan yönetin.</p>
+            </div>
             <span id="quote-count" class="count-pill">0 teklif</span>
           </div>
-          <div id="quote-list" class="list"></div>
+          <div class="quote-toolbar" aria-label="Teklif filtreleri">
+            <label>
+              <span>Teklif ara</span>
+              <input id="quote-search" type="search" placeholder="Teklif no, müşteri, e-posta veya dosya adı">
+            </label>
+            <label>
+              <span>Durum</span>
+              <select id="quote-status-filter">
+                <option value="">Tüm durumlar</option>
+                <option value="new">Yeni</option>
+                <option value="contacted">İletişime geçildi</option>
+                <option value="quoted">Fiyat verildi</option>
+                <option value="won">Kazanıldı</option>
+                <option value="lost">Kaybedildi</option>
+              </select>
+            </label>
+          </div>
+          <div id="quote-list" class="quote-list"></div>
         </div>
       </section>
 
