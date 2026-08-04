@@ -1593,6 +1593,7 @@ async function sendPage(req, res, file, slug) {
 }
 
 app.get("/", async (req, res) => await sendPage(req, res, "index.html", "home"));
+app.get("/katlac-spinball", async (req, res) => await sendPage(req, res, "katlac-spinball.html", "katlac-spinball"));
 app.get("/urunler", async (req, res) => await sendPage(req, res, "urunler.html", "urunler"));
 app.get("/stl-teklif", async (req, res) => await sendPage(req, res, "stl-teklif.html", "stl-teklif"));
 app.get("/hakkinda", async (req, res) => await sendPage(req, res, "hakkinda.html", "hakkinda"));
@@ -1719,6 +1720,7 @@ app.get("/sitemap.xml", async (req, res) => {
   const site = await db.prepare("SELECT site_url FROM site_settings WHERE id = 1").get() || {};
   const urls = [
     { loc: "/", priority: "1.0" },
+    { loc: "/katlac-spinball", priority: "0.9" },
     { loc: "/urunler", priority: "0.9" },
     { loc: "/stl-teklif", priority: "0.8" },
     { loc: "/hakkinda", priority: "0.5" },

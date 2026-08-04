@@ -14,76 +14,39 @@
     <!--header-->
 
     <main>
-      <section class="landing-hero" aria-labelledby="landing-title">
-        <div class="container landing-hero__grid">
-          <div class="landing-hero__copy">
-            <p class="landing-eyebrow"><span></span> Printable fidget koleksiyonu</p>
-            <h1 id="landing-title"><em>Katlaç</em> ve <em>Spinball</em> ile hareket hiç bitmesin.</h1>
-            <p class="landing-hero__lead">Masada, molada ve günün her anında elinizin altında. Tekli alın veya etkinlik, mağaza ve kurumsal dağıtımlar için 10, 50 ve 100 adetlik paketleri doğrudan sepete ekleyin.</p>
-            <div class="landing-hero__actions">
-              <a class="landing-button landing-button--primary" href="/urun/53">Spinball'u keşfet <span aria-hidden="true">→</span></a>
-              <a class="landing-button landing-button--secondary" href="/urunler?q=katlaç">Katlaç modellerini gör</a>
-            </div>
-            <ul class="landing-hero__trust" aria-label="Alışveriş avantajları">
-              <li><strong>KDV dahil</strong><span>Gördüğünüz fiyat</span></li>
-              <li><strong>10 · 50 · 100</strong><span>Toplu alım paketi</span></li>
-              <li><strong>Güvenli ödeme</strong><span>Kartla tamamlayın</span></li>
-            </ul>
-          </div>
+      <section class="hero">
+        <div class="container hero__grid">
+          <div class="hero__slider">
+            <div class="hero__slides" role="group" aria-label="Banner görselleri">
+              <img class="hero__slide is-active" src="https://images.unsplash.com/photo-1572044162444-ad60f128bdea?auto=format&fit=crop&w=1800&q=75" alt="Renk kartelası ve tasarım masası" fetchpriority="high">
+              <img class="hero__slide" src="https://images.unsplash.com/photo-1503694978374-8a2fa686963a?auto=format&fit=crop&w=1800&q=75" alt="Ofset baskı makinesinden çıkan baskılar" loading="lazy">
+              <img class="hero__slide" src="https://images.unsplash.com/photo-1622547748225-3fc4abd2cca0?auto=format&fit=crop&w=1800&q=75" alt="3D baskı için hazırlanmış model görseli" loading="lazy">
 
-          <div class="landing-hero__showcase" aria-label="Katlaç ve Spinball ürünleri">
-            <a class="landing-product landing-product--spinball" href="/urun/53">
-              <span class="landing-product__badge">Bas · çevir · rahatla</span>
-              <img src="/assets/shopier/53.jpg" alt="Renkli Spinball fidget topları" fetchpriority="high">
-              <span class="landing-product__shade"></span>
-              <span class="landing-product__copy">
-                <small>Spinball</small>
-                <strong>HelixCore Fidget Topu</strong>
-                <span data-landing-spinball-price>Güncel fiyatı gör</span>
-              </span>
-            </a>
-            <a class="landing-product landing-product--katlac" href="/urunler?q=katlaç">
-              <span class="landing-product__badge">Koleksiyonu seç</span>
-              <img src="/assets/shopier/39.jpg" alt="Siyah beyaz Katlaç fidget koleksiyonu" fetchpriority="high">
-              <span class="landing-product__shade"></span>
-              <span class="landing-product__copy">
-                <small>Katlaç</small>
-                <strong>Renkli ve temalı modeller</strong>
-                <span data-landing-katlac-price>Modelleri keşfet</span>
-              </span>
-            </a>
-            <a class="landing-hero__bulk" href="#bulk-commerce">
-              <span>Toplu satış</span>
-              <strong>10, 50 veya 100 adet</strong>
-              <small>Paketini seç, doğrudan sepete ekle →</small>
-            </a>
+              <button class="hero__arrow hero__arrow--prev" type="button" aria-label="Önceki görsel">&#8249;</button>
+              <button class="hero__arrow hero__arrow--next" type="button" aria-label="Sonraki görsel">&#8250;</button>
+              <div class="hero__dots"></div>
+            </div>
+            <div class="hero__copy">
+              <h1>3D Baskı Figür, Oyuncak ve Anahtarlıklar</h1>
+              <span>Hazır 3D baskı ürünleri satın alın veya kendi STL dosyanızı yükleyip fiyat alın</span>
+              <div class="hero-actions">
+                <a class="btn btn--light" href="/stl-teklif">
+                  <span>STL yükle, fiyat al</span>
+                </a>
+                <a class="btn btn--ghost" href="/urunler">
+                  <span>Ürünleri incele</span>
+                </a>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       <section class="promise-bar">
         <div class="container promise-bar__grid">
-          <div>Katlaç ve Spinball tekli satış</div>
-          <div>10, 50 ve 100 adet toplu paket</div>
-          <div>599 TL üzeri ücretsiz kargo</div>
-        </div>
-      </section>
-
-      <!-- Fiyat, stok, görsel ve video script.js tarafından canlı katalogdan
-           doldurulur; Spinball ve Katlaç landing akışının ana satış bölümüdür. -->
-      <section class="fidget-spotlight" id="fidget-spotlight" aria-labelledby="fidget-spotlight-title" hidden>
-        <div class="container">
-          <header class="fidget-spotlight__head">
-            <div>
-              <p class="section-kicker">Katlaç &amp; Spinball</p>
-              <h2 id="fidget-spotlight-title">Tekli alışverişten toplu siparişe, hepsi burada.</h2>
-            </div>
-            <p>Ürünü yakından inceleyin, Katlaç modelinizi seçin veya işletmeler, etkinlikler ve mağazalar için 10, 50 ve 100 adetlik paketleri doğrudan sepete ekleyin.</p>
-          </header>
-
-          <article class="spinball-spotlight" id="spinball-spotlight" hidden></article>
-          <article class="katlac-spotlight" id="katlac-spotlight" hidden></article>
-          <section class="bulk-commerce" id="bulk-commerce" aria-labelledby="bulk-commerce-title" hidden></section>
+          <div>Hızlı üretim ve teslimat</div>
+          <div>Kendi modelinize özel üretim</div>
+          <div>Sipariş takip desteği</div>
         </div>
       </section>
 
@@ -137,6 +100,24 @@
           <button class="carousel-button" type="button" data-carousel="prev" aria-label="Önceki ürün">‹</button>
           <div class="products products--carousel" id="store-products"></div>
           <button class="carousel-button" type="button" data-carousel="next" aria-label="Sonraki ürün">›</button>
+        </div>
+      </section>
+
+      <!-- Fiyat, stok, görsel ve video script.js tarafından canlı katalogdan
+           doldurulur. Ürün değiştiğinde bu satış vitrini kendiliğinden güncel kalır. -->
+      <section class="fidget-spotlight" id="fidget-spotlight" aria-labelledby="fidget-spotlight-title" hidden>
+        <div class="container">
+          <header class="fidget-spotlight__head">
+            <div>
+              <p class="section-kicker">Fidget seçkisi</p>
+              <h2 id="fidget-spotlight-title">Eline al, hareketi hisset.</h2>
+            </div>
+            <p>Tekli alışverişin yanında işletmeler, etkinlikler ve mağazalar için Spinball ve Katlaçlarda 10, 50 ve 100 adetlik toplu sipariş seçenekleri.</p>
+          </header>
+
+          <article class="spinball-spotlight" id="spinball-spotlight" hidden></article>
+          <article class="katlac-spotlight" id="katlac-spotlight" hidden></article>
+          <section class="bulk-commerce" id="bulk-commerce" aria-labelledby="bulk-commerce-title" hidden></section>
         </div>
       </section>
 

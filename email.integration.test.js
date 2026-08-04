@@ -115,17 +115,27 @@ test("Ana sayfa Spinball ve Katlaç için 10, 50, 100 adetlik sepet alanını i�
   const scriptResponse = await realFetch(`${baseUrl}/script.js`);
   const storefrontScript = await scriptResponse.text();
   assert.equal(homeResponse.status, 200);
-  assert.match(home, /class="landing-hero"/);
-  assert.match(home, /Katlaç[\s\S]*Spinball/);
-  assert.match(home, /\/assets\/shopier\/53\.jpg/);
-  assert.match(home, /\/assets\/shopier\/39\.jpg/);
-  assert.match(home, /href="\/urun\/53"/);
-  assert.match(home, /href="\/urunler\?q=katlaç"/);
+  assert.match(home, /class="hero"/);
+  assert.doesNotMatch(home, /class="landing-hero"/);
   assert.match(home, /id="bulk-commerce"/);
   assert.match(storefrontScript, /BULK_QUANTITIES = \[10, 50, 100\]/);
   assert.match(storefrontScript, /Toplu satış/);
   assert.match(storefrontScript, /data-bulk-quantity/);
   assert.match(storefrontScript, /addToCart\(product, bulkQuantity, scale\)/);
+});
+
+test("Katlaç ve Spinball kampanyası ayrı landing sayfasında sunulur", async () => {
+  const response = await realFetch(`${baseUrl}/katlac-spinball`);
+  const html = await response.text();
+  assert.equal(response.status, 200);
+  assert.match(html, /class="landing-hero"/);
+  assert.match(html, /Katlaç[\s\S]*Spinball/);
+  assert.match(html, /\/assets\/shopier\/53\.jpg/);
+  assert.match(html, /\/assets\/shopier\/39\.jpg/);
+  assert.match(html, /href="\/urun\/53"/);
+  assert.match(html, /href="\/urunler\?q=katlaç"/);
+  assert.match(html, /id="bulk-commerce"/);
+  assert.match(html, /10, 50 ve 100 adet/);
 });
 
 test("3D teklif formu özet e-postasını info adresine gönderir", async () => {
