@@ -131,7 +131,7 @@ test("Shopier uyumluluk görseli kullanılırken ürün bilgileri birebir korunu
     price: 349.9,
     sale_price: 299.9,
     stock: 18,
-    image_path: "https://cdn.example.com/products/katlac.webp",
+    image_path: "https://cdn.example.com/products/katlac.jpg",
     shopier_image_path: "https://www.printable.com.tr/assets/shopier/41.jpg"
   });
   assert.equal(payload.title, "Sarı Lacivert Katlaç");

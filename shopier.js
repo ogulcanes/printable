@@ -23,12 +23,15 @@ function publicShopierImage(url) {
 
 function productMedia(product) {
   const candidates = [
-    product.image_path,
     // Printable vitrini hareketli GIF/WebP kapağını koruyabilir. Shopier bu
     // biçimleri kabul etmediğinde hazırlanmış JPG yalnızca uzak ürün yükünde kullanılır.
     product.shopier_image_path,
+    // Uyumluluk kopyası varsa önce o gönderilir. Bu, uzaktaki özgün JPG adresi
+    // bot erişimini engellese bile Shopier'in ürünü Printable alanından almasını sağlar.
+    ...(!product.shopier_image_path ? [product.image_path] : []),
     ...(product.images || [])
-      .filter((image) => image.media_type !== "video")
+      .filter((image) => image.media_type !== "video"
+        && (!product.shopier_image_path || image.image_path !== product.image_path))
       .map((image) => image.image_path)
   ];
   return [...new Set(candidates.filter(publicShopierImage))]
