@@ -24,6 +24,9 @@ function publicShopierImage(url) {
 function productMedia(product) {
   const candidates = [
     product.image_path,
+    // Printable vitrini hareketli GIF/WebP kapağını koruyabilir. Shopier bu
+    // biçimleri kabul etmediğinde hazırlanmış JPG yalnızca uzak ürün yükünde kullanılır.
+    product.shopier_image_path,
     ...(product.images || [])
       .filter((image) => image.media_type !== "video")
       .map((image) => image.image_path)

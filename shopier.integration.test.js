@@ -124,6 +124,28 @@ test("Shopier yükü videoları ve desteklenmeyen görselleri dışarıda bırak
   assert.equal(payload.media.some((item) => /\.(?:mp4|webp)$/.test(item.url)), false);
 });
 
+test("Shopier uyumluluk görseli kullanılırken ürün bilgileri birebir korunur", () => {
+  const payload = buildProductPayload({
+    name: "Sarı Lacivert Katlaç",
+    description: "Ürünün eksiksiz açıklaması",
+    price: 349.9,
+    sale_price: 299.9,
+    stock: 18,
+    image_path: "https://cdn.example.com/products/katlac.webp",
+    shopier_image_path: "https://www.printable.com.tr/assets/shopier/41.jpg"
+  });
+  assert.equal(payload.title, "Sarı Lacivert Katlaç");
+  assert.equal(payload.description, "Ürünün eksiksiz açıklaması");
+  assert.deepEqual(payload.priceData, {
+    currency: "TRY",
+    price: "349.90",
+    discount: true,
+    discountedPrice: "299.90"
+  });
+  assert.equal(payload.stockQuantity, 18);
+  assert.equal(payload.media[0].url, "https://www.printable.com.tr/assets/shopier/41.jpg");
+});
+
 test("Yeni Printable ürünü Shopier'de bir kez oluşturulur", async () => {
   const before = shopierRequests.length;
   const { response, payload } = await request("/api/products", {
