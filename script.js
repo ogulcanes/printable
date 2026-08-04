@@ -234,23 +234,74 @@ function renderFeaturePanel(product) {
   panel.hidden = false;
 }
 
-function renderLandingHero(active) {
-  const spinball = active.find((product) => product.id === 53)
-    || active.find((product) => /spinball|helixcore/i.test(product.name || ""));
-  const katlaclar = active.filter((product) => /katlaç|katlac/i.test(product.name || ""));
-  const spinballPrice = document.querySelector("[data-landing-spinball-price]");
-  const katlacPrice = document.querySelector("[data-landing-katlac-price]");
+function preferredProductList(active, ids, limit, excluded = new Set()) {
+  const selected = [];
+  ids.forEach((id) => {
+    const product = active.find((item) => item.id === id);
+    if (product && !excluded.has(product.id) && !selected.some((item) => item.id === product.id)) selected.push(product);
+  });
+  active.forEach((product) => {
+    if (selected.length >= limit || excluded.has(product.id) || selected.some((item) => item.id === product.id)) return;
+    selected.push(product);
+  });
+  return selected.slice(0, limit);
+}
 
-  if (spinball && spinballPrice) {
-    spinballPrice.textContent = `${money(displayPrice(spinball))} · KDV dahil`;
-  }
-  if (katlaclar.length && katlacPrice) {
-    const prices = katlaclar.map(displayPrice).map(Number).filter((price) => price > 0);
-    const startingPrice = prices.length ? Math.min(...prices) : 0;
-    katlacPrice.textContent = startingPrice
-      ? `${katlaclar.length} model · ${money(startingPrice)}'den başlayan`
-      : `${katlaclar.length} modeli keşfet`;
-  }
+function commerceStageCardHTML(product, index) {
+  const off = discountPercent(product);
+  const scales = productScales(product);
+  const inStock = Number(product.stock) > 0;
+  return `
+    <article class="commerce-product${index === 0 ? " commerce-product--lead" : ""}">
+      ${off ? `<span class="commerce-product__discount">%${off} indirim</span>` : ""}
+      <a href="/urun/${product.id}">
+        <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" ${index === 0 ? 'fetchpriority="high"' : 'loading="eager"'}>
+      </a>
+      <div>
+        ${index === 0 ? "<span>Vitrin ürünü</span>" : ""}
+        <h2>${product.name}</h2>
+        <strong>${money(displayPrice(product))}${scales.length > 1 ? "'den başlayan" : ""}</strong>
+        <button type="button" data-add-product="${product.id}" ${inStock ? "" : "disabled"}>${inStock ? (scales.length > 1 ? "Boyunu seç" : "Sepete ekle") : "Tükendi"}</button>
+      </div>
+    </article>`;
+}
+
+function landingShelfCardHTML(product) {
+  const off = discountPercent(product);
+  const scales = productScales(product);
+  const inStock = Number(product.stock) > 0;
+  return `
+    <article class="landing-shelf-product">
+      <a class="landing-shelf-product__media" href="/urun/${product.id}">
+        ${off ? `<span>%${off} indirim</span>` : ""}
+        <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" loading="lazy">
+      </a>
+      <div class="landing-shelf-product__body">
+        <h3><a href="/urun/${product.id}">${product.name}</a></h3>
+        <div class="landing-shelf-product__buy">
+          <p><strong>${money(displayPrice(product))}</strong>${scales.length > 1 ? "<small>'den başlayan</small>" : (off ? `<s>${money(product.price)}</s>` : "")}</p>
+          <button type="button" data-add-product="${product.id}" ${inStock ? "" : "disabled"} aria-label="${product.name}: ${inStock ? "sepete ekle" : "tükendi"}">${inStock ? (scales.length > 1 ? "Seç" : "+") : "—"}</button>
+        </div>
+      </div>
+    </article>`;
+}
+
+function renderProductLanding(active) {
+  const stage = document.querySelector("#landing-product-stage");
+  const shelf = document.querySelector("#landing-feature-products");
+  if (!stage && !shelf) return;
+
+  // Beş farklı ürün tipini ilk ekranda tut; Spinball (53) ve Katlaç (39)
+  // bu seçkinin sabit parçalarıdır, diğer ürünler katalogdan tamamlanır.
+  const stageProducts = preferredProductList(active, [21, 53, 22, 39, 35], 5);
+  if (stage && stageProducts.length) stage.innerHTML = stageProducts.map(commerceStageCardHTML).join("");
+
+  const stageIds = new Set(stageProducts.map((product) => product.id));
+  const shelfProducts = preferredProductList(active, [50, 49, 48, 38, 37, 36, 30, 29, 51, 7], 8, stageIds);
+  if (shelf) shelf.innerHTML = shelfProducts.map(landingShelfCardHTML).join("");
+
+  const count = document.querySelector("[data-landing-catalog-count]");
+  if (count) count.textContent = `${active.length} ürünün tamamını keşfet`;
 }
 
 function renderFidgetSpotlight(active) {
@@ -498,7 +549,7 @@ async function loadProducts() {
 
     fillProductGrid(".js-popular", active.slice(0, 5));
     fillProductGrid(".js-recommended", [...active].reverse().slice(0, 4));
-    renderLandingHero(active);
+    renderProductLanding(active);
     renderFidgetSpotlight(active);
 
     // Discounted products get their own section — hidden entirely when nothing is on sale.
