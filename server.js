@@ -119,7 +119,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "18";
+const SCHEMA_VERSION = "19";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -894,6 +894,13 @@ const extraSeoPages = [
     description: "Hangi verilerinizi neden topluyoruz, ne kadar saklıyoruz ve KVKK kapsamındaki haklarınız neler?",
     og_title: "Gizlilik Politikası ve KVKK | Printable",
     og_description: "Verilerinizi nasıl işlediğimizi sade bir dille açıkladık."
+  },
+  {
+    slug: "anahtarlik-katalogu", label: "Anahtarlık toptan kataloğu",
+    title: "Toptan Anahtarlık Kataloğu | Printable",
+    description: "3D baskılı anahtarlık koleksiyonunu inceleyin, istediğiniz modelleri seçip Excel listesi olarak indirin.",
+    og_title: "Toptan Anahtarlık Kataloğu | Printable",
+    og_description: "Seçtiğiniz anahtarlık modellerini tek tıkla Excel'e aktarın."
   }
 ];
 for (const page of extraSeoPages) await addSeoPage.run(page);
@@ -1605,6 +1612,7 @@ app.get("/mesafeli-satis", async (req, res) => await sendPage(req, res, "mesafel
 app.get("/iade", async (req, res) => await sendPage(req, res, "iade.html", "iade"));
 app.get("/gizlilik", async (req, res) => await sendPage(req, res, "gizlilik.html", "gizlilik"));
 app.get("/katalog", async (req, res) => await sendPage(req, res, "katalog.html", "katalog"));
+app.get("/anahtarlik-katalogu", async (req, res) => await sendPage(req, res, "anahtarlik-katalogu.html", "anahtarlik-katalogu"));
 
 // Per-product SEO: crawlers need real title/description/og:image/JSON-LD in the HTML
 // (the visible detail is filled by urun.js, matching the rest of the JS-rendered site).
@@ -1753,7 +1761,7 @@ app.get("/sitemap.xml", async (req, res) => {
   );
 });
 
-["styles.css", "script.js", "stl-viewer.js", "admin.css", "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js", "katalog.js", "hesap.js"].forEach((file) => {
+["styles.css", "script.js", "stl-viewer.js", "admin.css", "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js", "katalog.js", "hesap.js", "anahtarlik-katalog.js"].forEach((file) => {
   app.get(`/${file}`, async (req, res) => res.sendFile(path.join(ROOT, file)));
 });
 
