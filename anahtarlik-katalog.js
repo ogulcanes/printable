@@ -210,11 +210,11 @@ const KEYCHAIN_PRODUCTS = [{"id": "2678102", "name": "Samoyed Köpek — Uzun Ku
       showHint("Önce en az bir ürün seçin.");
       return;
     }
-    const header = ["Sıra", "Ürün Adı", "Kategori", "Kaynak Bağlantısı"];
+    const header = ["Sıra", "Ürün Adı", "Kategori"];
     const rows = [header];
     let i = 1;
     KEYCHAIN_PRODUCTS.forEach((p) => {
-      if (selected.has(p.id)) rows.push([i++, p.name, p.tag, p.url]);
+      if (selected.has(p.id)) rows.push([i++, p.name, p.tag]);
     });
 
     const blob = buildXlsxBlob(rows);
