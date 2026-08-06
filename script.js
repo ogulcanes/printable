@@ -12,7 +12,6 @@ function saveCart() {
   try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch { /* ignore quota/privacy errors */ }
 }
 const cart = loadCart();
-let storefrontTaxRate = 20;
 let freeShippingThreshold = 599;
 
 /* Sepet satırının kimliği ÜRÜN + ÖLÇEK. Aynı katlacın küçük ve büyük boyu iki
@@ -32,6 +31,7 @@ const displayPrice = (product) => {
   const scales = productScales(product);
   return scales.length ? scales[0].price : (product.sale_price || product.price);
 };
+
 const storeProducts = document.querySelector("#store-products");
 const cartPanel = document.querySelector("#cart-panel");
 const cartCount = document.querySelector("#cart-count");
@@ -91,7 +91,7 @@ function productCardHTML(product) {
         <h3>${product.name}</h3>
       </a>
       ${ratingHTML(product)}
-      <p>${priceHTML} <span class="price-tax">+ KDV</span></p>
+      <p>${priceHTML}</p>
       <div class="swatches">${(product.colors || []).map((color) => `<span style="background:${color.hex}" title="${color.name}"></span>`).join("")}</div>
       ${action}
     </article>
@@ -136,8 +136,7 @@ function renderCart() {
   if (subtotalEl) subtotalEl.textContent = money(cartSubtotal());
   const shippingNote = document.querySelector("#cart-shipping-note");
   if (shippingNote) {
-    const kdvliToplam = Math.round(cartSubtotal() * (1 + storefrontTaxRate / 100) * 100) / 100;
-    const kalan = Math.max(0, freeShippingThreshold - kdvliToplam);
+    const kalan = Math.max(0, freeShippingThreshold - cartSubtotal());
     shippingNote.textContent = kalan > 0
       ? `Ücretsiz kargoya ${money(kalan)} kaldı`
       : "Ücretsiz kargoyu kazandınız 🎉";
@@ -207,9 +206,7 @@ function renderLiveStats(active) {
   strip.hidden = false;
 }
 
-// The one product shown large beside the quad. Its own markup rather than a
-// scaled-up .product-card: the card's centred, compact layout does not survive
-// being stretched to a full column.
+// The lead product keeps its own editorial card beside the supporting 2x2 grid.
 function renderFeaturePanel(product) {
   const panel = document.querySelector("#feature-panel");
   if (!panel) return;
@@ -231,29 +228,329 @@ function renderFeaturePanel(product) {
         ${money(price)}${scales.length > 1
           ? `<span class="price-from">'den itibaren</span>`
           : (!scales.length && product.sale_price ? ` <s>${money(product.price)}</s>` : "")}
-        <span class="price-tax">+ KDV</span>
       </p>
       <button type="button" data-add-product="${product.id}">${scales.length > 1 ? "Ölçek seçin" : "Sepete ekle"}</button>
     </div>`;
   panel.hidden = false;
 }
 
+function preferredProductList(active, ids, limit, excluded = new Set()) {
+  const selected = [];
+  ids.forEach((id) => {
+    const product = active.find((item) => item.id === id);
+    if (product && !excluded.has(product.id) && !selected.some((item) => item.id === product.id)) selected.push(product);
+  });
+  active.forEach((product) => {
+    if (selected.length >= limit || excluded.has(product.id) || selected.some((item) => item.id === product.id)) return;
+    selected.push(product);
+  });
+  return selected.slice(0, limit);
+}
+
+function commerceStageCardHTML(product, index) {
+  const off = discountPercent(product);
+  const scales = productScales(product);
+  const inStock = Number(product.stock) > 0;
+  return `
+    <article class="commerce-product${index === 0 ? " commerce-product--lead" : ""}">
+      ${off ? `<span class="commerce-product__discount">%${off} indirim</span>` : ""}
+      <a href="/urun/${product.id}">
+        <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" ${index === 0 ? 'fetchpriority="high"' : 'loading="eager"'}>
+      </a>
+      <div>
+        ${index === 0 ? "<span>Vitrin ürünü</span>" : ""}
+        <h2>${product.name}</h2>
+        <strong>${money(displayPrice(product))}${scales.length > 1 ? "'den başlayan" : ""}</strong>
+        <button type="button" data-add-product="${product.id}" ${inStock ? "" : "disabled"}>${inStock ? (scales.length > 1 ? "Boyunu seç" : "Sepete ekle") : "Tükendi"}</button>
+      </div>
+    </article>`;
+}
+
+function landingShelfCardHTML(product) {
+  const off = discountPercent(product);
+  const scales = productScales(product);
+  const inStock = Number(product.stock) > 0;
+  return `
+    <article class="landing-shelf-product">
+      <a class="landing-shelf-product__media" href="/urun/${product.id}">
+        ${off ? `<span>%${off} indirim</span>` : ""}
+        <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" loading="lazy">
+      </a>
+      <div class="landing-shelf-product__body">
+        <h3><a href="/urun/${product.id}">${product.name}</a></h3>
+        <div class="landing-shelf-product__buy">
+          <p><strong>${money(displayPrice(product))}</strong>${scales.length > 1 ? "<small>'den başlayan</small>" : (off ? `<s>${money(product.price)}</s>` : "")}</p>
+          <button type="button" data-add-product="${product.id}" ${inStock ? "" : "disabled"} aria-label="${product.name}: ${inStock ? "sepete ekle" : "tükendi"}">${inStock ? (scales.length > 1 ? "Seç" : "+") : "—"}</button>
+        </div>
+      </div>
+    </article>`;
+}
+
+function renderProductLanding(active) {
+  const stage = document.querySelector("#landing-product-stage");
+  const shelf = document.querySelector("#landing-feature-products");
+  if (!stage && !shelf) return;
+
+  // Beş farklı ürün tipini ilk ekranda tut; Spinball (53) ve Katlaç (39)
+  // bu seçkinin sabit parçalarıdır, diğer ürünler katalogdan tamamlanır.
+  const stageProducts = preferredProductList(active, [21, 53, 22, 39, 35], 5);
+  if (stage && stageProducts.length) stage.innerHTML = stageProducts.map(commerceStageCardHTML).join("");
+
+  const stageIds = new Set(stageProducts.map((product) => product.id));
+  const shelfProducts = preferredProductList(active, [50, 49, 48, 38, 37, 36, 30, 29, 51, 7], 8, stageIds);
+  if (shelf) shelf.innerHTML = shelfProducts.map(landingShelfCardHTML).join("");
+
+  const count = document.querySelector("[data-landing-catalog-count]");
+  if (count) count.textContent = `${active.length} ürünün tamamını keşfet`;
+}
+
+function renderFidgetSpotlight(active) {
+  const section = document.querySelector("#fidget-spotlight");
+  const spinballPanel = document.querySelector("#spinball-spotlight");
+  const katlacPanel = document.querySelector("#katlac-spotlight");
+  if (!section || !spinballPanel || !katlacPanel) return;
+
+  const spinball = active.find((product) => product.id === 53)
+    || active.find((product) => /spinball|helixcore/i.test(product.name || ""));
+  const katlaclar = active.filter((product) => /katlaç|katlac/i.test(product.name || ""));
+  if (!spinball && !katlaclar.length) return;
+
+  section.hidden = false;
+
+  if (spinball) {
+    const video = (spinball.images || []).find((item) =>
+      item.media_type === "video" || /\.(?:mp4|webm)(?:[?#]|$)/i.test(item.image_path || "")
+    );
+    const off = discountPercent(spinball);
+    const currentPrice = displayPrice(spinball);
+    const inStock = Number(spinball.stock) > 0;
+    spinballPanel.innerHTML = `
+      <div class="spinball-spotlight__media">
+        ${video
+          ? `<video class="spinball-spotlight__video" poster="${spinball.image_path || ""}"
+                    muted loop playsinline preload="metadata" controls
+                    aria-label="${spinball.name} kullanım videosu">
+               <source src="${video.image_path}" type="video/mp4">
+             </video>`
+          : `<img src="${spinball.image_path || "/assets/printable-logo.svg"}"
+                  alt="${spinball.image_alt || spinball.name}" loading="lazy">`}
+        <span class="spinball-spotlight__motion">Basınca dönen mekanizma</span>
+      </div>
+      <div class="spinball-spotlight__copy">
+        <p class="fidget-label">Yeni nesil fidget</p>
+        <h3>Bas. Çevir. Rahatla.</h3>
+        <p>${spinball.description || "Sıkma hareketini akıcı bir dönüşe çeviren, avuç içinde oynamalık mekanik fidget topu."}</p>
+        <ul class="fidget-benefits" aria-label="Ürün özellikleri">
+          <li>Mekanik ve tatmin edici hareket</li>
+          <li>Avuç içinde rahat kullanım</li>
+          <li>Masada ve molalarda elinin altında</li>
+        </ul>
+        <div class="spinball-spotlight__buy">
+          <div>
+            ${off ? `<span class="fidget-discount">%${off} indirim</span>` : ""}
+            <strong>${money(currentPrice)}</strong>
+            ${off ? `<s>${money(spinball.price)}</s>` : ""}
+            <small>${inStock ? `${spinball.stock} adet stokta` : "Stokta yok"}</small>
+          </div>
+          <div class="fidget-actions">
+            <button type="button" data-add-product="${spinball.id}" ${inStock ? "" : "disabled"}>${inStock ? "Hemen sepete ekle" : "Tükendi"}</button>
+            <a href="/urun/${spinball.id}">Ürünü incele</a>
+          </div>
+        </div>
+      </div>`;
+    spinballPanel.hidden = false;
+
+    const spotlightVideo = spinballPanel.querySelector("video");
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (spotlightVideo && !reducedMotion && "IntersectionObserver" in window) {
+      const videoObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) spotlightVideo.play().catch(() => {});
+          else spotlightVideo.pause();
+        });
+      }, { threshold: 0.55 });
+      videoObserver.observe(spotlightVideo);
+    }
+  }
+
+  if (katlaclar.length) {
+    const prices = katlaclar.map(displayPrice).map(Number).filter((price) => price > 0);
+    const startingPrice = prices.length ? Math.min(...prices) : 0;
+    katlacPanel.innerHTML = `
+      <div class="katlac-spotlight__copy">
+        <p class="fidget-label">Katlaç koleksiyonu</p>
+        <h3>Katla. Aç. Yeniden başla.</h3>
+        <p>Renkli, temalı ve elde çevirmesi keyifli Katlaçlardan tarzına uyanı seç. Tekrarlayan hareketiyle ellerini meşgul eder, masanda da iyi görünür.</p>
+        <div class="katlac-spotlight__facts">
+          <span><strong>${katlaclar.length}</strong> farklı tasarım</span>
+          ${startingPrice ? `<span><strong>${money(startingPrice)}</strong>'den başlayan</span>` : ""}
+        </div>
+        <a class="katlac-spotlight__all" href="/urunler?q=katlaç">Tüm Katlaçları gör <span aria-hidden="true">→</span></a>
+      </div>
+      <div class="katlac-spotlight__models" id="katlac-models">
+        ${katlaclar.slice(0, 6).map((product) => `
+          <a class="katlac-mini" href="/urun/${product.id}">
+            <img src="${product.image_path || "/assets/printable-logo.svg"}"
+                 alt="${product.image_alt || product.name}" loading="lazy">
+            <span>
+              <strong>${product.name}</strong>
+              <small>${money(displayPrice(product))}${productScales(product).length > 1 ? "'den itibaren" : ""}</small>
+            </span>
+          </a>`).join("")}
+      </div>`;
+    katlacPanel.hidden = false;
+  }
+
+  renderBulkCommerce(spinball, katlaclar);
+}
+
+const BULK_QUANTITIES = [10, 50, 100];
+const BULK_LABELS = {
+  10: "Başlangıç paketi",
+  50: "İşletme paketi",
+  100: "Yüksek adet"
+};
+
+function bulkTierFor(product, quantity, baseTotal) {
+  return (product.tiers || [])
+    .filter((tier) => tier.quantity_exact
+      ? Number(tier.min_quantity) === quantity
+      : Number(tier.min_quantity) <= quantity)
+    .filter((tier) => !Number(tier.min_order_total) || baseTotal >= Number(tier.min_order_total))
+    .sort((a, b) => Number(a.unit_price) - Number(b.unit_price))[0] || null;
+}
+
+function bulkPrice(product, quantity, scale) {
+  const baseUnit = Number(scale?.price || displayPrice(product)) || 0;
+  const baseTotal = baseUnit * quantity;
+  const tier = bulkTierFor(product, quantity, baseTotal);
+  if (!tier) return { unit: baseUnit, total: baseTotal, saving: 0, tier: null };
+
+  let total = baseTotal;
+  if (tier.discount_type === "percent") {
+    total = baseTotal * (1 - Number(tier.discount_value || 0) / 100);
+  } else if (tier.discount_type === "fixed") {
+    total = Math.max(0, baseTotal - Number(tier.discount_value || 0));
+  }
+  return {
+    unit: total / quantity,
+    total,
+    saving: Math.max(0, baseTotal - total),
+    tier
+  };
+}
+
+function bulkTiersHTML(product, scale = null) {
+  return BULK_QUANTITIES.map((quantity) => {
+    const offer = bulkPrice(product, quantity, scale);
+    const featured = quantity === 50;
+    return `
+      <article class="bulk-tier${featured ? " bulk-tier--featured" : ""}">
+        ${featured ? '<span class="bulk-tier__popular">En çok tercih edilen</span>' : ""}
+        <div class="bulk-tier__heading">
+          <span>${BULK_LABELS[quantity]}</span>
+          <strong>${quantity}<small> adet</small></strong>
+        </div>
+        <div class="bulk-tier__price">
+          <strong>${money(offer.unit)}</strong><span>/ adet</span>
+        </div>
+        <p>Toplam <strong>${money(offer.total)}</strong></p>
+        ${offer.saving > 0
+          ? `<span class="bulk-tier__saving">${money(offer.saving)} avantaj</span>`
+          : '<span class="bulk-tier__automatic">Adet kampanyası sepette uygulanır</span>'}
+        <button type="button" data-bulk-quantity="${quantity}">${quantity} adedi sepete ekle</button>
+      </article>`;
+  }).join("");
+}
+
+function bulkProductCardHTML(product, kind, products = []) {
+  const scales = productScales(product);
+  const selectedScale = scales[0] || null;
+  const isKatlac = kind === "katlac";
+  return `
+    <article class="bulk-product bulk-product--${kind}" data-bulk-product-id="${product.id}" data-bulk-kind="${kind}">
+      <header class="bulk-product__head">
+        <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" loading="lazy">
+        <div>
+          <span>${isKatlac ? "Katlaç toplu alım" : "Spinball toplu alım"}</span>
+          <h3>${isKatlac ? "Modelini seç, paketini oluştur." : "Tek hamlede toplu sipariş."}</h3>
+          <p>${isKatlac
+            ? "Farklı Katlaç modellerini ayrı ayrı sepete ekleyerek karma paket hazırlayabilirsiniz."
+            : "Etkinlik, mağaza, ekip hediyesi ve kurumsal dağıtımlar için hazır paketler."}</p>
+        </div>
+      </header>
+
+      <div class="bulk-product__selectors">
+        ${isKatlac ? `
+          <label>Katlaç modeli
+            <select data-bulk-product-select>
+              ${products.map((item) => `<option value="${item.id}" ${item.id === product.id ? "selected" : ""}>${item.name}</option>`).join("")}
+            </select>
+          </label>` : `
+          <div class="bulk-product__chosen"><span>Seçili ürün</span><strong>${product.name}</strong></div>`}
+        ${scales.length ? `
+          <label>Boy / ölçek
+            <select data-bulk-scale-select>
+              ${scales.map((scale) => `<option value="${scale.id}">${scale.scale} · ${money(scale.price)}</option>`).join("")}
+            </select>
+          </label>` : ""}
+      </div>
+
+      <div class="bulk-tiers" data-bulk-tiers>${bulkTiersHTML(product, selectedScale)}</div>
+      <div class="bulk-product__foot">
+        <span>Güvenli kart ödemesi · 599 TL üzeri ücretsiz kargo</span>
+        <a href="/iletisim?subject=${encodeURIComponent(`${product.name} 100+ adet toplu sipariş`)}">100 adetten fazlası için teklif alın →</a>
+      </div>
+    </article>`;
+}
+
+function renderBulkCommerce(spinball, katlaclar) {
+  const section = document.querySelector("#bulk-commerce");
+  if (!section || (!spinball && !katlaclar.length)) return;
+  section.innerHTML = `
+    <header class="bulk-commerce__head">
+      <div>
+        <p class="section-kicker">Toplu satış</p>
+        <h2 id="bulk-commerce-title">10, 50 veya 100 adet. Seçin, sepete ekleyin.</h2>
+      </div>
+      <p>Birim fiyatı, paket toplamını ve varsa adet avantajını sipariş vermeden önce görün. Kampanyalar ödeme öncesinde otomatik hesaplanır.</p>
+    </header>
+    <div class="bulk-commerce__grid">
+      ${spinball ? bulkProductCardHTML(spinball, "spinball") : ""}
+      ${katlaclar.length ? bulkProductCardHTML(katlaclar[0], "katlac", katlaclar) : ""}
+    </div>
+    <div class="bulk-commerce__assurance" aria-label="Toplu sipariş avantajları">
+      <span><strong>3 paket</strong> 10 · 50 · 100 adet</span>
+      <span><strong>Şeffaf fiyat</strong> Birim ve toplam birlikte</span>
+      <span><strong>Karma Katlaç</strong> Modelleri ayrı ayrı ekleyin</span>
+    </div>`;
+  section.hidden = false;
+}
+
 // The homepage rows are curated slices of the same catalogue; /urunler owns real filtering.
 async function loadProducts() {
   try {
-    const products = await fetch("/api/products").then((response) => response.json());
+    const [products, catalog] = await Promise.all([
+      fetch("/api/products").then((response) => response.json()),
+      fetch("/api/catalog").then((response) => response.json()).catch(() => ({ products: [] }))
+    ]);
+    const catalogProducts = new Map((catalog.products || []).map((product) => [product.id, product]));
+    products.forEach((product) => {
+      product.tiers = catalogProducts.get(product.id)?.tiers || [];
+    });
     window.printableProducts = products;
     const active = products.filter((product) => product.is_active);
     fillProductGrid(storeProducts, active);
 
-    // The priciest goes in the feature panel, the next four fill the 2x2 quad —
-    // exactly four, otherwise the block stops being a square.
+    // The priciest product leads; the next four support it in the 2x2 grid.
     const featured = [...active].sort((a, b) => (b.sale_price || b.price) - (a.sale_price || a.price));
     renderFeaturePanel(featured[0]);
     fillProductGrid(".js-featured", featured.slice(1, 5));
 
     fillProductGrid(".js-popular", active.slice(0, 5));
     fillProductGrid(".js-recommended", [...active].reverse().slice(0, 4));
+    renderProductLanding(active);
+    renderFidgetSpotlight(active);
 
     // Discounted products get their own section — hidden entirely when nothing is on sale.
     const onSale = active.filter((product) => product.sale_price && product.price > product.sale_price);
@@ -310,6 +607,7 @@ function addToCart(product, quantity = 1, scale = null) {
 
 document.addEventListener("click", (event) => {
   const addId = event.target.dataset.addProduct;
+  const bulkQuantity = Number(event.target.dataset.bulkQuantity || 0);
   const removeKey = event.target.dataset.removeProduct;
   const incKey = event.target.dataset.inc;
   const decKey = event.target.dataset.dec;
@@ -322,6 +620,15 @@ document.addEventListener("click", (event) => {
       return;
     }
     addToCart(product);
+    cartPanel?.classList.add("open");
+  }
+  if (bulkQuantity) {
+    const bulkCard = event.target.closest("[data-bulk-product-id]");
+    const product = (window.printableProducts || []).find((item) => item.id === Number(bulkCard?.dataset.bulkProductId));
+    if (!product) return;
+    const scaleId = Number(bulkCard.querySelector("[data-bulk-scale-select]")?.value || 0);
+    const scale = productScales(product).find((item) => item.id === scaleId) || null;
+    addToCart(product, bulkQuantity, scale);
     cartPanel?.classList.add("open");
   }
   if (incKey) {
@@ -357,8 +664,26 @@ searchForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   const input = searchForm.querySelector("input");
   if (input?.value.trim()) {
-    input.value = "";
-    input.placeholder = "Arama sonraki sürümde aktif olacak";
+    location.href = `/urunler?q=${encodeURIComponent(input.value.trim())}`;
+  }
+});
+
+document.addEventListener("change", (event) => {
+  const bulkCard = event.target.closest("[data-bulk-product-id]");
+  if (!bulkCard) return;
+
+  if (event.target.matches("[data-bulk-product-select]")) {
+    const katlaclar = (window.printableProducts || []).filter((product) => /katlaç|katlac/i.test(product.name || ""));
+    const product = katlaclar.find((item) => item.id === Number(event.target.value));
+    if (product) bulkCard.outerHTML = bulkProductCardHTML(product, "katlac", katlaclar);
+    return;
+  }
+
+  if (event.target.matches("[data-bulk-scale-select]")) {
+    const product = (window.printableProducts || []).find((item) => item.id === Number(bulkCard.dataset.bulkProductId));
+    const scale = productScales(product).find((item) => item.id === Number(event.target.value)) || null;
+    const tiers = bulkCard.querySelector("[data-bulk-tiers]");
+    if (product && tiers) tiers.innerHTML = bulkTiersHTML(product, scale);
   }
 });
 
@@ -603,7 +928,6 @@ loadCategories();
 loadHeroSlides();
 renderCart();
 fetch("/api/site-info").then((response) => response.json()).then((info) => {
-  if (Number.isFinite(Number(info.tax_rate))) storefrontTaxRate = Number(info.tax_rate);
   if (Number.isFinite(Number(info.free_shipping_threshold))) {
     freeShippingThreshold = Number(info.free_shipping_threshold);
   }

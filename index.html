@@ -103,6 +103,24 @@
         </div>
       </section>
 
+      <!-- Fiyat, stok, görsel ve video script.js tarafından canlı katalogdan
+           doldurulur. Ürün değiştiğinde bu satış vitrini kendiliğinden güncel kalır. -->
+      <section class="fidget-spotlight" id="fidget-spotlight" aria-labelledby="fidget-spotlight-title" hidden>
+        <div class="container">
+          <header class="fidget-spotlight__head">
+            <div>
+              <p class="section-kicker">Fidget seçkisi</p>
+              <h2 id="fidget-spotlight-title">Eline al, hareketi hisset.</h2>
+            </div>
+            <p>Tekli alışverişin yanında işletmeler, etkinlikler ve mağazalar için Spinball ve Katlaçlarda 10, 50 ve 100 adetlik toplu sipariş seçenekleri.</p>
+          </header>
+
+          <article class="spinball-spotlight" id="spinball-spotlight" hidden></article>
+          <article class="katlac-spotlight" id="katlac-spotlight" hidden></article>
+          <section class="bulk-commerce" id="bulk-commerce" aria-labelledby="bulk-commerce-title" hidden></section>
+        </div>
+      </section>
+
       <section class="cyber">
         <div class="container">
           <h2>Printable'da ne arıyorsunuz?</h2>
@@ -141,8 +159,8 @@
         <div class="category-grid" id="category-grid"></div>
       </section>
 
-      <!-- Feature panel + 2x2 quad. Deliberately not another 5-across row: the
-           homepage was four identical grids in a column. -->
+      <!-- Feature panel + 2x2 quad: the large editorial card stays visually
+           distinct while the four supporting products share one grid. -->
       <section class="container featured-split">
         <article class="feature-panel" id="feature-panel" hidden></article>
         <div class="featured-split__main">

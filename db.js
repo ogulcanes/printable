@@ -56,7 +56,12 @@ async function connect() {
   }
 
   const { PGlite } = require("@electric-sql/pglite");
-  const store = new PGlite(path.join(__dirname, "data", "pgdata"), {
+  // Entegrasyon testleri gerçek yerel veriyi kirletmeden ayrı bir PGlite klasörü
+  // kullanabilir. Üretimde DATABASE_URL varken bu yol zaten devreye girmez.
+  const localStorePath = process.env.PGLITE_DATA_DIR
+    ? path.resolve(process.env.PGLITE_DATA_DIR)
+    : path.join(__dirname, "data", "pgdata");
+  const store = new PGlite(localStorePath, {
     parsers: NUMERIC_OIDS
   });
   await store.waitReady;

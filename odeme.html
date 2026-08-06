@@ -18,8 +18,7 @@
         <ol class="checkout-steps" id="checkout-steps">
           <li data-step="1" class="active"><span>1</span>Sepet</li>
           <li data-step="2"><span>2</span>Teslimat</li>
-          <li data-step="3"><span>3</span>Fatura</li>
-          <li data-step="4"><span>4</span>Ödeme</li>
+          <li data-step="3"><span>3</span>Ödeme</li>
         </ol>
 
         <div class="checkout-grid">
@@ -39,7 +38,7 @@
                 <label>Ad soyad *<input name="name" required autocomplete="name"></label>
                 <div class="checkout-form__row">
                   <label>Telefon *<input name="phone" required inputmode="tel" autocomplete="tel" placeholder="05xx xxx xx xx"></label>
-                  <label>E-posta<input name="email" type="email" autocomplete="email"></label>
+                  <label>E-posta *<input name="email" type="email" required autocomplete="email"></label>
                 </div>
                 <div class="checkout-form__row">
                   <label>İl *<input name="city" required autocomplete="address-level1" placeholder="İstanbul"></label>
@@ -54,36 +53,11 @@
               </form>
             </section>
 
-            <!-- Step 3: Invoice / e-fatura -->
+            <!-- Step 3: Payment -->
             <section class="checkout-panel" data-step="3">
-              <h2>Fatura bilgileri</h2>
-              <p class="checkout-hint">E-fatura / e-arşiv için gereklidir.</p>
-              <div class="invoice-type" role="radiogroup" aria-label="Fatura tipi">
-                <label class="invoice-type__opt"><input type="radio" name="invoice_type" value="individual" checked> Bireysel</label>
-                <label class="invoice-type__opt"><input type="radio" name="invoice_type" value="corporate"> Kurumsal</label>
-              </div>
-              <form id="invoice-form" class="checkout-form">
-                <div class="invoice-fields" data-for="individual">
-                  <label>TC Kimlik No *<input name="tc_no" inputmode="numeric" maxlength="11" placeholder="11 haneli"></label>
-                </div>
-                <div class="invoice-fields" data-for="corporate" hidden>
-                  <label>Şirket unvanı *<input name="company_name" autocomplete="organization"></label>
-                  <div class="checkout-form__row">
-                    <label>Vergi dairesi *<input name="tax_office"></label>
-                    <label>Vergi no (VKN) *<input name="tax_number" inputmode="numeric" maxlength="10" placeholder="10 haneli"></label>
-                  </div>
-                </div>
-                <label class="checkout-check"><input type="checkbox" id="same-address" checked> Fatura adresi teslimat adresiyle aynı</label>
-                <label id="billing-address-field" hidden>Fatura adresi<textarea name="billing_address" rows="3"></textarea></label>
-                <p class="checkout-error" id="invoice-error" hidden></p>
-              </form>
-            </section>
-
-            <!-- Step 4: Payment -->
-            <section class="checkout-panel" data-step="4">
               <h2>Ödeme yöntemi</h2>
               <div class="payment-methods" role="radiogroup" aria-label="Ödeme yöntemi">
-                <label class="payment-opt"><input type="radio" name="payment_method" value="kart" checked> <span><strong>Kredi / banka kartı</strong><small>Tek ödeme yöntemi</small></span></label>
+                <label class="payment-opt"><input type="radio" name="payment_method" value="kart" checked> <span><strong>Kredi / banka kartı</strong><small>PayTR güvenli ödeme ekranı</small></span></label>
               </div>
               <p class="checkout-error" id="payment-error" hidden></p>
               <div id="checkout-result" class="checkout-result" hidden></div>
@@ -92,7 +66,7 @@
             <div class="checkout-nav">
               <button type="button" id="co-prev" class="ghost" hidden>Geri</button>
               <button type="button" id="co-next">Devam</button>
-              <button type="button" id="co-submit" hidden>Siparişi oluştur</button>
+              <button type="button" id="co-submit" hidden>Güvenli ödemeye geç</button>
             </div>
           </div>
 
@@ -108,9 +82,8 @@
               <p class="coupon-box__msg" id="coupon-message" role="status" hidden></p>
             </div>
 
-            <div class="summary-line"><span>Ara toplam (KDV hariç)</span><strong id="summary-subtotal">0.00 TL</strong></div>
+            <div class="summary-line"><span>Ürünler toplamı</span><strong id="summary-subtotal">0.00 TL</strong></div>
             <div id="summary-campaigns" class="summary-campaigns"></div>
-            <div class="summary-line summary-line--muted"><span>KDV (<span id="summary-tax-rate">%20</span>)</span><span id="summary-tax">0.00 TL</span></div>
             <div class="summary-line summary-line--muted"><span>Kargo</span><span class="summary-shipping">Alıcı ödemeli</span></div>
             <div class="summary-line summary-total"><span>Genel toplam</span><strong id="summary-total">0.00 TL</strong></div>
             <p class="summary-note" id="summary-shipping-note">599 TL ve üzeri siparişlerde kargo ücretsizdir.</p>
@@ -126,6 +99,7 @@
 
     <!--chat-->
     <script src="/script.js"></script>
+    <script src="https://www.paytr.com/js/iframeResizer.min.js"></script>
     <script src="/odeme.js"></script>
   </body>
 </html>

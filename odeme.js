@@ -4,6 +4,12 @@
   const steps = document.querySelector("#checkout-steps");
   if (!steps) return;
 
+  // PayTR yönlendirmeyi iframe içinde açarsa sonucu ana ödeme sayfasına taşı.
+  if (window.self !== window.top) {
+    window.top.location.replace(window.location.href);
+    return;
+  }
+
   const qs = (s) => document.querySelector(s);
   const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
   const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ESC[c]);
@@ -15,7 +21,86 @@
     cartNotice.style.display = "none";
   }
   let step = 1;
-  const LAST = 4;
+  const LAST = 3;
+  const returnParams = new URLSearchParams(window.location.search);
+  const isPaymentReturn = ["success", "failed"].includes(returnParams.get("paytr"))
+    && returnParams.has("ref") && returnParams.has("token");
+
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  function preparePaymentResult() {
+    showStep(3);
+    qs(".payment-methods").hidden = true;
+    qs("#co-submit").hidden = true;
+    qs("#co-prev").hidden = true;
+    qs("#co-next").hidden = true;
+    qs("#checkout-result").hidden = false;
+  }
+
+  function showPaidOrder(data) {
+    cart.length = 0;
+    saveCart();
+    if (typeof renderCart === "function") renderCart();
+    preparePaymentResult();
+    qs("#checkout-result").innerHTML = `
+      <div class="checkout-success">
+        <strong>Ödemeniz onaylandı! 🎉</strong>
+        <p>Sipariş numaranız: <b>${escapeHtml(data.order_number)}</b></p>
+        <p>Ödeme yöntemi: PayTR · Kredi / banka kartı</p>
+        <p class="checkout-success__note">${data.shipping_method === "free"
+          ? "Siparişiniz ücretsiz kargo ile gönderilecektir."
+          : "Kargo ücreti teslimatta alıcı tarafından ödenir."}</p>
+        <a class="btn-outline" href="/urunler">Alışverişe devam et</a>
+      </div>`;
+  }
+
+  function showFailedPayment(message) {
+    preparePaymentResult();
+    qs("#checkout-result").innerHTML = `
+      <div class="checkout-success checkout-success--failed">
+        <strong>Ödeme tamamlanamadı.</strong>
+        <p>${escapeHtml(message || "Kart işlemi onaylanmadı. Sepetiniz korunuyor; tekrar deneyebilirsiniz.")}</p>
+        <a class="btn-outline" href="/odeme">Tekrar dene</a>
+      </div>`;
+  }
+
+  function showPendingPayment(message) {
+    preparePaymentResult();
+    qs("#checkout-result").innerHTML = `
+      <div class="checkout-success checkout-success--pending">
+        <strong>Ödeme sonucu bekleniyor.</strong>
+        <p>${escapeHtml(message || "Sonuç henüz ulaşmadı. Birkaç saniye sonra durumu yeniden kontrol edin.")}</p>
+        <a class="btn-outline" href="${escapeHtml(window.location.href)}">Durumu yenile</a>
+      </div>`;
+  }
+
+  async function showPaymentReturn() {
+    preparePaymentResult();
+    qs("#checkout-result").innerHTML = `
+      <div class="checkout-success">
+        <strong>Ödeme sonucu doğrulanıyor…</strong>
+        <p>Lütfen bu sayfayı kapatmayın.</p>
+      </div>`;
+    const query = new URLSearchParams({
+      ref: returnParams.get("ref"),
+      token: returnParams.get("token")
+    });
+
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      try {
+        const response = await fetch(`/api/paytr/status?${query}`, { cache: "no-store" });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Ödeme sonucu okunamadı.");
+        if (data.payment_status === "paid") return showPaidOrder(data);
+        if (data.payment_status === "failed") return showFailedPayment(data.failure_message);
+      } catch (error) {
+        if (attempt === 11) return showPendingPayment(error.message);
+      }
+      await wait(1500);
+    }
+
+    showPendingPayment();
+  }
 
   // Giriş yapan müşterinin temel bilgilerini teslimat formuna taşı; adres yine
   // siparişe özeldir ve müşteri tarafından doldurulur.
@@ -30,21 +115,16 @@
     })
     .catch(() => {});
 
-  // Client-side TC check for instant feedback; the server validates authoritatively.
-  function isValidTC(v) {
-    const tc = String(v || "").trim();
-    if (!/^[1-9][0-9]{10}$/.test(tc)) return false;
-    const d = tc.split("").map(Number);
-    const odd = d[0] + d[2] + d[4] + d[6] + d[8];
-    const even = d[1] + d[3] + d[5] + d[7];
-    if ((((odd * 7) - even) % 10 + 10) % 10 !== d[9]) return false;
-    return d.slice(0, 10).reduce((a, b) => a + b, 0) % 10 === d[10];
-  }
-
   function renderCheckoutCart() {
     const box = qs("#checkout-cart");
     if (!cart.length) {
-      box.innerHTML = `<p class="cart-empty">Sepetiniz boş. <a href="/urunler">Ürünlere göz atın</a></p>`;
+      box.innerHTML = `
+        <div class="checkout-empty">
+          <p class="checkout-empty__message">Sepetiniz boş. Beğendiğiniz ürünleri ekleyerek başlayın.</p>
+          <a class="checkout-empty__action" href="/urunler">
+            Ürünleri gör <span aria-hidden="true">→</span>
+          </a>
+        </div>`;
       return;
     }
     box.innerHTML = cart.map((item) => `
@@ -69,7 +149,6 @@
   }
 
   let minSepet = 0;   // panelden gelen minimum sipariş tutarı; 0 = sınır yok
-  let taxRate = 20; // KDV hariç fiyatların üstüne eklenir; oran /api/site-info'dan gelir.
   let freeShippingThreshold = 599;
 
   // Campaigns are computed server-side; this holds the last preview so the
@@ -80,8 +159,7 @@
     const subtotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
     const discount = Math.min(campaigns.discount || 0, subtotal);
     const net = subtotal - discount;
-    const tax = net * taxRate / 100;
-    const total = Math.round((net + tax) * 100) / 100;
+    const total = Math.round(net * 100) / 100;
     const ucretsizKargo = total >= freeShippingThreshold;
     qs("#summary-items").innerHTML = cart.map((i) =>
       `<div class="summary-item"><span>${i.quantity} × ${i.name}${
@@ -98,9 +176,7 @@
     ].join("");
     qs("#summary-campaigns").innerHTML = rows;
 
-    qs("#summary-tax-rate").textContent = `%${taxRate}`;
     qs("#summary-subtotal").textContent = money(subtotal);
-    qs("#summary-tax").textContent = money(tax);
     qs("#summary-total").textContent = money(total);
     qs(".summary-shipping").textContent = ucretsizKargo ? "Ücretsiz" : "Alıcı ödemeli";
     const shippingNote = qs("#summary-shipping-note");
@@ -143,15 +219,14 @@
     renderSummary();
   }
 
-  // Pull the admin-set KDV rate so the summary matches the server's calculation.
+  // Pull storefront thresholds so the summary matches the server's calculation.
   fetch("/api/site-info").then((r) => r.json()).then((info) => {
-    if (info && Number.isFinite(Number(info.tax_rate))) taxRate = Number(info.tax_rate);
     if (info && Number.isFinite(Number(info.min_cart_total))) minSepet = Number(info.min_cart_total);
     if (info && Number.isFinite(Number(info.free_shipping_threshold))) {
       freeShippingThreshold = Number(info.free_shipping_threshold);
     }
     renderSummary();
-    showStep(step);   // minimum sağlanmıyorsa Devam butonu kilitlensin
+    if (!isPaymentReturn) showStep(step);   // minimum sağlanmıyorsa Devam butonu kilitlensin
   }).catch(() => {});
 
   function refreshCartViews() {
@@ -208,8 +283,12 @@
     }
     if (n === 2) {
       const f = qs("#delivery-form");
-      if (!f.name.value.trim() || !f.phone.value.trim()) {
-        setError("#delivery-error", "Ad soyad ve telefon zorunludur.");
+      if (!f.name.value.trim() || !f.phone.value.trim() || !f.email.value.trim()) {
+        setError("#delivery-error", "Ad soyad, telefon ve e-posta zorunludur.");
+        return false;
+      }
+      if (!f.email.validity.valid) {
+        setError("#delivery-error", "Geçerli bir e-posta adresi girin.");
         return false;
       }
       if (!f.city.value.trim() || !f.district.value.trim() || !f.address.value.trim()) {
@@ -217,23 +296,6 @@
         return false;
       }
       setError("#delivery-error", "");
-      return true;
-    }
-    if (n === 3) {
-      const type = qs('input[name="invoice_type"]:checked').value;
-      const f = qs("#invoice-form");
-      if (type === "individual") {
-        if (!isValidTC(f.tc_no.value)) { setError("#invoice-error", "Geçerli bir TC Kimlik Numarası girin (11 hane)."); return false; }
-      } else {
-        if (!f.company_name.value.trim()) { setError("#invoice-error", "Şirket unvanı zorunludur."); return false; }
-        if (!f.tax_office.value.trim()) { setError("#invoice-error", "Vergi dairesi zorunludur."); return false; }
-        if (!/^[0-9]{10}$/.test(f.tax_number.value.trim())) { setError("#invoice-error", "Vergi numarası 10 haneli olmalıdır."); return false; }
-      }
-      if (!qs("#same-address").checked && !f.billing_address.value.trim()) {
-        setError("#invoice-error", "Fatura adresi girin veya teslimat adresiyle aynı seçeneğini işaretleyin.");
-        return false;
-      }
-      setError("#invoice-error", "");
       return true;
     }
     return true;
@@ -261,24 +323,9 @@
     qs("#co-next").disabled = cart.length === 0;
   });
 
-  // Invoice type toggle
-  document.querySelectorAll('input[name="invoice_type"]').forEach((radio) => {
-    radio.addEventListener("change", () => {
-      const type = qs('input[name="invoice_type"]:checked').value;
-      document.querySelectorAll(".invoice-fields").forEach((box) => { box.hidden = box.dataset.for !== type; });
-    });
-  });
-
-  qs("#same-address").addEventListener("change", (event) => {
-    qs("#billing-address-field").hidden = event.target.checked;
-  });
-
   qs("#co-submit").addEventListener("click", async () => {
     if (!cart.length) { setError("#payment-error", "Sepetiniz boş."); return; }
     const d = qs("#delivery-form");
-    const inv = qs("#invoice-form");
-    const type = qs('input[name="invoice_type"]:checked').value;
-    const sameAddress = qs("#same-address").checked;
     const payload = {
       customer: {
         name: d.name.value.trim(),
@@ -289,15 +336,6 @@
         neighborhood: d.neighborhood.value.trim(),
         postal_code: d.postal_code.value.trim(),
         address: d.address.value.trim()
-      },
-      invoice: {
-        type,
-        tc_no: inv.tc_no.value.trim(),
-        company_name: inv.company_name.value.trim(),
-        tax_office: inv.tax_office.value.trim(),
-        tax_number: inv.tax_number.value.trim(),
-        same_as_shipping: sameAddress,
-        billing_address: sameAddress ? "" : inv.billing_address.value.trim()
       },
       payment_method: "kart",
       // Only the code travels — the server prices the campaign itself.
@@ -316,24 +354,37 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Sipariş oluşturulamadı.");
-      // Success: clear the cart and show confirmation.
-      cart.length = 0;
-      saveCart();
-      if (typeof renderCart === "function") renderCart();
+      if (!/^https:\/\/www\.paytr\.com\/odeme\/guvenli\//.test(data.iframe_url || "")) {
+        throw new Error("Güvenli ödeme ekranı açılamadı.");
+      }
+      // Sepet callback ile ödeme onaylanana kadar korunur. Kart bilgileri yalnızca
+      // PayTR iframe'ine girilir; Printable sunucusuna hiçbir kart verisi gelmez.
+      qs(".payment-methods").hidden = true;
       qs("#checkout-result").hidden = false;
       qs("#checkout-result").innerHTML = `
-        <div class="checkout-success">
-          <strong>Siparişiniz alındı! 🎉</strong>
-          <p>Sipariş numaranız: <b>${data.order_number}</b></p>
-          <p>Ödeme yöntemi: Kredi / banka kartı</p>
-          <p class="checkout-success__note">${data.shipping_method === "free"
-            ? "Siparişiniz ücretsiz kargo ile gönderilecektir."
-            : "Kargo ücreti teslimatta alıcı tarafından ödenir."}</p>
-          <a class="btn-outline" href="/urunler">Alışverişe devam et</a>
+        <p><strong>Sipariş: ${escapeHtml(data.order_number)}</strong></p>
+        <div class="paytr-frame-shell">
+          <p class="paytr-loading" id="paytr-loading" role="status">Güvenli ödeme formu yükleniyor…</p>
+          <iframe src="${escapeHtml(data.iframe_url)}" id="paytriframe" title="PayTR güvenli kart ödeme ekranı"
+            frameborder="0" scrolling="no"></iframe>
         </div>`;
+      // Ödeme formu üçüncü panelin içinde. Eski kod var olmayan "4. adımı" arayıp
+      // üçüncü panelin active sınıfını kaldırdığı için iframe DOM'a eklense de görünmüyordu.
+      panels.forEach((panel) => panel.classList.toggle("active", Number(panel.dataset.step) === 3));
+      const iframe = qs("#paytriframe");
+      const loading = qs("#paytr-loading");
+      let iframeLoaded = false;
+      iframe.addEventListener("load", () => {
+        iframeLoaded = true;
+        loading.hidden = true;
+      }, { once: true });
+      window.setTimeout(() => {
+        if (!iframeLoaded) loading.textContent = "Ödeme formu beklenenden uzun sürüyor. İnternet bağlantınızı kontrol edip sayfayı yenileyebilirsiniz.";
+      }, 12000);
+      if (typeof window.iFrameResize === "function") window.iFrameResize({}, "#paytriframe");
       qs("#co-submit").hidden = true;
       qs("#co-prev").hidden = true;
-      document.querySelectorAll(".checkout-panel[data-step]").forEach((p) => { if (p.dataset.step !== "4") p.classList.remove("active"); });
+      qs("#co-next").hidden = true;
     } catch (err) {
       setError("#payment-error", err.message);
       button.disabled = false;
@@ -417,6 +468,10 @@
   }
 
   refreshCartViews();
-  showStep(1);
-  fiyatlariTazele();
+  if (isPaymentReturn) {
+    showPaymentReturn();
+  } else {
+    showStep(1);
+    fiyatlariTazele();
+  }
 })();

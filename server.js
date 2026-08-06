@@ -7,6 +7,7 @@ const multer = require("multer");
 const crypto = require("crypto");
 const db = require("./db.js");
 const storage = require("./storage.js");
+const shopier = require("./shopier.js");
 
 const app = express();
 
@@ -54,16 +55,38 @@ if (ADMIN_LOCKED) {
 }
 const SESSION_COOKIE = "printable_admin";
 const CUSTOMER_SESSION_COOKIE = "printable_customer";
-const STORE_NOTIFICATION_EMAILS = String(process.env.STORE_NOTIFICATION_EMAILS || "")
-  .split(",").map((email) => email.trim()).filter(Boolean);
+const STORE_NOTIFICATION_EMAILS = [...new Set([
+  "info@printable.com.tr",
+  ...String(process.env.STORE_NOTIFICATION_EMAILS || "")
+    .split(",").map((email) => email.trim()).filter(Boolean)
+])];
 /* İlk kurulumda açılacak panel hesapları. Sadece admin_users tablosu boşken
    kullanılır; sonrası panelden yönetilir. ADMIN_USER da listeye katılır ki
    eski tek-hesap kurulumları giriş yapabilmeye devam etsin. */
 const SEED_ADMIN_USERS = [...new Set(
   (process.env.ADMIN_USERS || "ogulcan,furkan").split(",").map((name) => name.trim().toLowerCase()).filter(Boolean).concat(ADMIN_USER.toLowerCase())
 )];
-const KDV_RATE = 20; // Ürün fiyatları KDV dahildir; faturada bu oranla ayrıştırılır.
-const FREE_SHIPPING_THRESHOLD = 599; // İndirim sonrası KDV dâhil ürün toplamı.
+const KDV_RATE = 0; // Vitrinde görünen fiyat müşterinin ödediği nihai ürün fiyatıdır.
+const FREE_SHIPPING_THRESHOLD = 599; // İndirim sonrası nihai ürün toplamı.
+
+/* PayTR bilgileri yalnızca sunucuda tutulur. Test modu bilinçli olarak güvenli
+   varsayılandır: gerçek tahsilat ancak PAYTR_TEST_MODE=0 açıkça verilirse başlar. */
+const PAYTR_MERCHANT_ID = String(process.env.PAYTR_MERCHANT_ID || "").trim();
+const PAYTR_MERCHANT_KEY = String(process.env.PAYTR_MERCHANT_KEY || "").trim();
+const PAYTR_MERCHANT_SALT = String(process.env.PAYTR_MERCHANT_SALT || "").trim();
+const PAYTR_CONFIGURED = Boolean(PAYTR_MERCHANT_ID && PAYTR_MERCHANT_KEY && PAYTR_MERCHANT_SALT);
+const PAYTR_TEST_MODE = process.env.PAYTR_TEST_MODE === "0" ? "0" : "1";
+const PAYTR_DEBUG_ON = process.env.PAYTR_DEBUG_ON === "1"
+  ? "1"
+  : process.env.PAYTR_DEBUG_ON === "0" ? "0" : PAYTR_TEST_MODE;
+const PAYTR_NO_INSTALLMENT = process.env.PAYTR_NO_INSTALLMENT === "1" ? "1" : "0";
+const PAYTR_MAX_INSTALLMENT = new Set(["0", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"])
+  .has(String(process.env.PAYTR_MAX_INSTALLMENT || "0"))
+  ? String(process.env.PAYTR_MAX_INSTALLMENT || "0")
+  : "0";
+const PAYTR_TIMEOUT_LIMIT = String(Math.min(60, Math.max(5, Number.parseInt(process.env.PAYTR_TIMEOUT_LIMIT || "30", 10) || 30)));
+const PAYTR_TOKEN_URL = "https://www.paytr.com/odeme/api/get-token";
+const PAYTR_IFRAME_BASE = "https://www.paytr.com/odeme/guvenli/";
 
 /* Şifreler scrypt ile saklanır: her hesaba rastgele salt, sabit-zamanlı karşılaştırma.
    Biçim: scrypt$<salt-hex>$<hash-hex>. Düz metin şifre hiçbir yere yazılmaz. */
@@ -96,7 +119,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "15";
+const SCHEMA_VERSION = "19";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -132,6 +155,11 @@ async function initDb() {
     unit_cost REAL,
     cost_inputs TEXT,
     cost_updated_at TIMESTAMPTZ,
+    shopier_product_id TEXT,
+    shopier_product_url TEXT,
+    shopier_sync_status TEXT NOT NULL DEFAULT 'pending',
+    shopier_sync_error TEXT,
+    shopier_synced_at TIMESTAMPTZ,
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -188,7 +216,15 @@ async function initDb() {
     company_name TEXT,
     billing_address TEXT,
     payment_method TEXT,
-    tax_rate REAL NOT NULL DEFAULT 20,
+    payment_provider TEXT,
+    payment_reference TEXT UNIQUE,
+    payment_failure_code TEXT,
+    payment_failure_message TEXT,
+    payment_collected_amount INTEGER,
+    payment_test_mode INTEGER,
+    inventory_deducted INTEGER NOT NULL DEFAULT 0,
+    paid_at TIMESTAMPTZ,
+    tax_rate REAL NOT NULL DEFAULT 0,
     tax_amount REAL NOT NULL DEFAULT 0,
     shipping_method TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -214,7 +250,7 @@ async function initDb() {
     min_order_total REAL NOT NULL DEFAULT 150,
     shell_share REAL NOT NULL DEFAULT 0.15,
     color_change_fee REAL NOT NULL DEFAULT 35,
-    tax_rate REAL NOT NULL DEFAULT 20,
+    tax_rate REAL NOT NULL DEFAULT 0,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
@@ -460,6 +496,7 @@ async function initDb() {
     color_id INTEGER,
     image_path TEXT NOT NULL,
     image_alt TEXT,
+    media_type TEXT NOT NULL DEFAULT 'image',
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE,
@@ -578,6 +615,12 @@ for (const [table, column, type] of [
   ["products", "meta_description", "TEXT"],
   ["products", "meta_keywords", "TEXT"],
   ["products", "image_alt", "TEXT"],
+  ["products", "shopier_product_id", "TEXT"],
+  ["products", "shopier_product_url", "TEXT"],
+  ["products", "shopier_sync_status", "TEXT NOT NULL DEFAULT 'pending'"],
+  ["products", "shopier_sync_error", "TEXT"],
+  ["products", "shopier_synced_at", "TIMESTAMPTZ"],
+  ["product_images", "media_type", "TEXT NOT NULL DEFAULT 'image'"],
   ["hero_slides", "image_alt", "TEXT"],
   ["site_settings", "default_og_image", "TEXT"],
   // e-fatura + ödeme bilgileri sipariş üzerinde tutulur (fatura anlık görüntüsü).
@@ -588,12 +631,20 @@ for (const [table, column, type] of [
   ["orders", "company_name", "TEXT"],
   ["orders", "billing_address", "TEXT"],
   ["orders", "payment_method", "TEXT"],
+  ["orders", "payment_provider", "TEXT"],
+  ["orders", "payment_reference", "TEXT"],
+  ["orders", "payment_failure_code", "TEXT"],
+  ["orders", "payment_failure_message", "TEXT"],
+  ["orders", "payment_collected_amount", "INTEGER"],
+  ["orders", "payment_test_mode", "INTEGER"],
+  ["orders", "inventory_deducted", "INTEGER NOT NULL DEFAULT 0"],
+  ["orders", "paid_at", "TIMESTAMPTZ"],
   // KDV dökümü + kargo yöntemi (kargo alıcı ödemeli).
-  ["orders", "tax_rate", "REAL NOT NULL DEFAULT 20"],
+  ["orders", "tax_rate", "REAL NOT NULL DEFAULT 0"],
   ["orders", "tax_amount", "REAL NOT NULL DEFAULT 0"],
   ["orders", "shipping_method", "TEXT"],
-  // Admin-editable KDV oranı + iletişim bilgileri.
-  ["pricing_settings", "tax_rate", "REAL NOT NULL DEFAULT 20"],
+  // Eski kurulumlardan kalan fiyat ayarı + iletişim bilgileri.
+  ["pricing_settings", "tax_rate", "REAL NOT NULL DEFAULT 0"],
   ["site_settings", "phone", "TEXT"],
   ["site_settings", "email", "TEXT"],
   ["site_settings", "contact_address", "TEXT"],
@@ -642,6 +693,12 @@ for (const [table, column, type] of [
 ]) {
   if (!(await hasColumn(table, column))) await db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
 }
+
+// Eski tabloda ALTER ile eklenen payment_reference için de benzersizlik garantisi.
+await db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS orders_payment_reference_unique
+  ON orders (payment_reference) WHERE payment_reference IS NOT NULL;
+`);
 
 await db.exec(`
   UPDATE materials SET density_g_cm3 = CASE
@@ -837,6 +894,13 @@ const extraSeoPages = [
     description: "Hangi verilerinizi neden topluyoruz, ne kadar saklıyoruz ve KVKK kapsamındaki haklarınız neler?",
     og_title: "Gizlilik Politikası ve KVKK | Printable",
     og_description: "Verilerinizi nasıl işlediğimizi sade bir dille açıkladık."
+  },
+  {
+    slug: "anahtarlik-katalogu", label: "Anahtarlık toptan kataloğu",
+    title: "Toptan Anahtarlık Kataloğu | Printable",
+    description: "3D baskılı anahtarlık koleksiyonunu inceleyin, istediğiniz modelleri seçip Excel listesi olarak indirin.",
+    og_title: "Toptan Anahtarlık Kataloğu | Printable",
+    og_description: "Seçtiğiniz anahtarlık modellerini tek tıkla Excel'e aktarın."
   }
 ];
 for (const page of extraSeoPages) await addSeoPage.run(page);
@@ -1060,19 +1124,31 @@ function ensureDbReady() {
 // catch şart: kimse beklemeden reddedilirse Node süreci düşürür.
 ensureDbReady().catch(() => {});
 
+const localUploadStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const safe = path.basename(file.originalname, ext).replace(/[^a-z0-9]+/gi, "-").slice(0, 40);
+    cb(null, `${Date.now()}-${safe}${ext}`);
+  }
+});
+
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase();
-      const safe = path.basename(file.originalname, ext).replace(/[^a-z0-9]+/gi, "-").slice(0, 40);
-      cb(null, `${Date.now()}-${safe}${ext}`);
-    }
-  }),
+  storage: localUploadStorage,
   fileFilter: (req, file, cb) => {
     cb(null, /^image\/(png|jpe?g|webp|gif)$/i.test(file.mimetype));
   },
   limits: { fileSize: 8 * 1024 * 1024 }
+});
+
+// Ürün galerisi fotoğrafın yanında kısa MP4/WEBM ürün videoları da kabul eder.
+// Kapak, banner ve kategori yüklemeleri yukarıdaki image-only middleware'de kalır.
+const galleryUpload = multer({
+  storage: localUploadStorage,
+  fileFilter: (req, file, cb) => {
+    cb(null, /^(image\/(png|jpe?g|webp|gif)|video\/(mp4|webm))$/i.test(file.mimetype));
+  },
+  limits: { fileSize: 50 * 1024 * 1024 }
 });
 
 app.use(express.json());
@@ -1098,8 +1174,9 @@ app.use("/uploads", express.static(UPLOAD_DIR));
    Görsel yüklemesi admin'e özel; model yüklemesi teklif formundan herkese açık,
    o yüzden uzantı doğrulaması burada, sunucuda yapılır. */
 app.post("/api/uploads/sign", async (req, res) => {
-  const kind = req.body?.kind === "image" ? "image" : "model";
-  if (kind === "image" && !(await isAuthed(req))) {
+  const requestedKind = req.body?.kind;
+  const kind = ["image", "media", "model"].includes(requestedKind) ? requestedKind : "model";
+  if (kind !== "model" && !(await isAuthed(req))) {
     return res.status(401).json({ error: "Yetkiniz yok." });
   }
   if (!storage.enabled) {
@@ -1324,6 +1401,79 @@ async function contactInfo() {
   };
 }
 
+const CONTACT_CARD_ICONS = {
+  phone: `<path d="M6.8 3h3l1.5 3.7-1.9 1.4a12 12 0 0 0 5.5 5.5l1.4-1.9L20 13.2v3a1.8 1.8 0 0 1-2 1.8A15.2 15.2 0 0 1 5 5a1.8 1.8 0 0 1 1.8-2Z"/>`,
+  email: `<path d="M3.5 6.5h17v11h-17z"/><path d="m3.5 7 8.5 6 8.5-6"/>`,
+  address: `<path d="M12 21s6.5-5.6 6.5-10.2A6.5 6.5 0 0 0 5.5 10.8C5.5 15.4 12 21 12 21Z"/><circle cx="12" cy="10.5" r="2.4"/>`,
+  hours: `<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5.2l3.2 2"/>`,
+  social: `<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5a14 14 0 0 1 0 17 14 14 0 0 1 0-17Z"/>`
+};
+
+function contactCard({ title, icon, content, className = "", hint = "" }) {
+  return `<div class="contact-item contact-card${className ? ` ${className}` : ""}">
+    <span class="contact-card__icon" aria-hidden="true"><svg viewBox="0 0 24 24">${icon}</svg></span>
+    <div class="contact-card__body">
+      <h3>${escapeHtml(title)}</h3>
+      <p>${content}</p>
+      ${hint ? `<small>${escapeHtml(hint)}</small>` : ""}
+    </div>
+  </div>`;
+}
+
+// İletişim bilgileri ilk HTML'e basılır. Böylece API yanıtını beklerken ziyaretçi
+// yönetim paneline ait taslak metinleri görmez ve kartlar sonradan yer değiştirmez.
+async function renderContactDetails() {
+  const site = await db.prepare(`
+    SELECT phone, email, whatsapp, social_links, legal_address, contact_address, working_hours
+    FROM site_settings WHERE id = 1
+  `).get() || {};
+  const phone = String(site.phone || "").trim();
+  const email = String(site.email || "").trim();
+  const wa = whatsappDigits(String(site.whatsapp || "").trim() || phone);
+  const address = String(site.legal_address || site.contact_address || "").trim();
+  const workingHours = String(site.working_hours || "").trim();
+  const accounts = socialAccounts(site.social_links).filter((account) => /^https?:\/\//i.test(account.url));
+  const cards = [];
+
+  if (wa) cards.push(contactCard({
+    title: "WhatsApp",
+    icon: SOCIAL_ICONS.whatsapp,
+    content: `<a href="https://wa.me/${escapeHtml(wa)}" target="_blank" rel="noopener">WhatsApp'tan mesaj gönderin</a>`,
+    className: "contact-card--wa",
+    hint: "En hızlı yanıt burada"
+  }));
+  if (phone) cards.push(contactCard({
+    title: "Telefon",
+    icon: CONTACT_CARD_ICONS.phone,
+    content: `<a href="tel:${escapeHtml(phone.replace(/[^0-9+]/g, ""))}">${escapeHtml(phone)}</a>`
+  }));
+  if (email) cards.push(contactCard({
+    title: "E-posta",
+    icon: CONTACT_CARD_ICONS.email,
+    content: `<a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a>`
+  }));
+  if (address) cards.push(contactCard({
+    title: "Adres",
+    icon: CONTACT_CARD_ICONS.address,
+    content: escapeHtml(address)
+  }));
+  if (workingHours) cards.push(contactCard({
+    title: "Çalışma saatleri",
+    icon: CONTACT_CARD_ICONS.hours,
+    content: escapeHtml(workingHours)
+  }));
+  if (accounts.length) cards.push(contactCard({
+    title: "Sosyal medya",
+    icon: CONTACT_CARD_ICONS.social,
+    className: "contact-card--social",
+    content: accounts.map((account) =>
+      `<a href="${escapeHtml(account.url)}" target="_blank" rel="noopener">${escapeHtml(account.label)}</a>`
+    ).join("")
+  }));
+
+  return cards.join("\n");
+}
+
 // Shared footer, injected server-side so links stay consistent across every page.
 async function renderFooter() {
   const { phone, email, wa, accounts } = await contactInfo();
@@ -1390,23 +1540,18 @@ async function injectShell(html, headActive) {
 }
 
 /* Satıcı kimliği yasal sayfalarda TEK yerden gelir: /admin → Ayarlar. Metni
-   HTML'e gömmek, unvan ya da adres değiştiğinde üç sayfayı birden güncellemeyi
-   unutmak demekti — mesafeli satış sözleşmesinde yanlış satıcı bilgisi ise
-   sayfayı hükümsüz kılar. Doldurulmamış alanı gizlemiyoruz; eksik olduğunu
-   açıkça yazıyoruz ki yarım bir sözleşme tam görünmesin. */
+   HTML'e gömmek, satıcı adı ya da adres değiştiğinde üç sayfayı birden
+   güncellemeyi unutmak demekti. PayTR'nin site kontrolünde aradığı temel
+   kimlik alanları satıcı adı, açık adres, telefon ve e-postadır. Ziyaretçiye
+   bunların dışında bir satıcı alanı gösterilmez. */
 async function renderSellerBlock() {
   const s = await db.prepare("SELECT * FROM site_settings WHERE id = 1").get() || {};
-  // MERSİS her satıcıda olmaz (şahıs şirketinde yok); boşsa satırı hiç gösterme.
-  // Diğerleri yasal zorunluluk: boş olsalar bile satır kalsın ki eksik görünsün.
-  const zorunlu = new Set(["Unvan", "Adres", "Telefon", "E-posta", "Vergi dairesi", "Vergi / TC kimlik no"]);
+  const zorunlu = new Set(["Satıcı", "Adres", "Telefon", "E-posta"]);
   const goster = [
-    ["Unvan", s.company_title],
+    ["Satıcı", s.company_title],
     ["Adres", s.legal_address],
     ["Telefon", s.phone],
-    ["E-posta", s.email],
-    ["Vergi dairesi", s.tax_office],
-    ["Vergi / TC kimlik no", s.tax_number],
-    ["MERSİS no", s.mersis]
+    ["E-posta", s.email]
   ].filter(([etiket, deger]) => deger?.trim() || zorunlu.has(etiket));
   const eksik = goster.filter(([, deger]) => !deger?.trim()).map(([etiket]) => etiket);
 
@@ -1432,8 +1577,8 @@ async function renderSellerBlock() {
 }
 
 async function renderReturnAddress() {
-  const s = await db.prepare("SELECT return_address, legal_address, company_title FROM site_settings WHERE id = 1").get() || {};
-  const adres = s.return_address?.trim() || s.legal_address?.trim();
+  const s = await db.prepare("SELECT legal_address, company_title FROM site_settings WHERE id = 1").get() || {};
+  const adres = s.legal_address?.trim();
   if (!adres) {
     return '<p class="legal-warning legal-warning--admin"><strong>İade adresi belirtilmemiş.</strong> Yönetim panelindeki <em>Ayarlar</em> bölümünden ekleyin.</p>';
   }
@@ -1450,10 +1595,13 @@ async function sendPage(req, res, file, slug) {
   if (sayfa.includes("<!--satici-->")) sayfa = sayfa.replaceAll("<!--satici-->", await renderSellerBlock());
   if (sayfa.includes("<!--iade-adresi-->")) sayfa = sayfa.replace("<!--iade-adresi-->", await renderReturnAddress());
   if (sayfa.includes("<!--guncelleme-->")) sayfa = sayfa.replace("<!--guncelleme-->", guncellemeSatiri());
+  if (sayfa.includes("<!--contact-details-->")) sayfa = sayfa.replace("<!--contact-details-->", await renderContactDetails());
   res.type("html").send(await injectShell(sayfa, slug));
 }
 
 app.get("/", async (req, res) => await sendPage(req, res, "index.html", "home"));
+app.get("/landing", async (req, res) => await sendPage(req, res, "landing.html", "landing"));
+app.get("/katlac-spinball", async (req, res) => res.redirect(301, "/landing"));
 app.get("/urunler", async (req, res) => await sendPage(req, res, "urunler.html", "urunler"));
 app.get("/stl-teklif", async (req, res) => await sendPage(req, res, "stl-teklif.html", "stl-teklif"));
 app.get("/hakkinda", async (req, res) => await sendPage(req, res, "hakkinda.html", "hakkinda"));
@@ -1464,6 +1612,7 @@ app.get("/mesafeli-satis", async (req, res) => await sendPage(req, res, "mesafel
 app.get("/iade", async (req, res) => await sendPage(req, res, "iade.html", "iade"));
 app.get("/gizlilik", async (req, res) => await sendPage(req, res, "gizlilik.html", "gizlilik"));
 app.get("/katalog", async (req, res) => await sendPage(req, res, "katalog.html", "katalog"));
+app.get("/anahtarlik-katalogu", async (req, res) => await sendPage(req, res, "anahtarlik-katalogu.html", "anahtarlik-katalogu"));
 
 // Per-product SEO: crawlers need real title/description/og:image/JSON-LD in the HTML
 // (the visible detail is filled by urun.js, matching the rest of the JS-rendered site).
@@ -1580,6 +1729,7 @@ app.get("/sitemap.xml", async (req, res) => {
   const site = await db.prepare("SELECT site_url FROM site_settings WHERE id = 1").get() || {};
   const urls = [
     { loc: "/", priority: "1.0" },
+    { loc: "/landing", priority: "0.9" },
     { loc: "/urunler", priority: "0.9" },
     { loc: "/stl-teklif", priority: "0.8" },
     { loc: "/hakkinda", priority: "0.5" },
@@ -1611,7 +1761,7 @@ app.get("/sitemap.xml", async (req, res) => {
   );
 });
 
-["styles.css", "script.js", "stl-viewer.js", "admin.css", "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js", "katalog.js", "hesap.js"].forEach((file) => {
+["styles.css", "script.js", "stl-viewer.js", "admin.css", "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js", "katalog.js", "hesap.js", "anahtarlik-katalog.js"].forEach((file) => {
   app.get(`/${file}`, async (req, res) => res.sendFile(path.join(ROOT, file)));
 });
 
@@ -1845,12 +1995,19 @@ async function sendTransactionalEmail({ to, subject, html }) {
   if (!apiKey) return false;
   const recipients = (Array.isArray(to) ? to : [to]).map((email) => String(email).trim()).filter(Boolean);
   if (!recipients.length) return false;
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to: recipients, subject, html })
-  });
-  return response.ok;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to: recipients, subject, html }),
+      signal: controller.signal
+    });
+    return response.ok;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function sendPasswordResetEmail({ to, name, resetUrl }) {
@@ -1927,6 +2084,47 @@ async function notifyNewOrder({ name, email, phone, orderNumber, items, total })
       <ul>${lines}</ul>
       <p><strong>Toplam: ${emailMoney(total)}</strong></p>
       <p><a href="https://printable.com.tr/admin" style="color:#ff6542;font-weight:700">Siparişi panelde aç</a></p>
+    </div>`
+  });
+}
+
+async function notifyNewQuote({ quoteNumber, name, email, phone, fileName, materialName, infill,
+  quantity, width, height, depth, volumeCm3, partCount, colorCount, painted, note, total }) {
+  const dimensions = [width, height, depth]
+    .map((value) => value == null ? "?" : Number(value).toFixed(2))
+    .join(" × ");
+  return sendStoreNotification({
+    subject: `Yeni 3D baskı teklifi · ${quoteNumber}`,
+    html: `<div style="font-family:Arial,sans-serif;color:#171c2c;line-height:1.6;max-width:640px">
+      <h2>Yeni 3D baskı teklifi geldi</h2>
+      <p><strong>Teklif:</strong> ${escapeHtml(quoteNumber)}</p>
+      <p><strong>Müşteri:</strong> ${escapeHtml(name)}<br>
+        <strong>E-posta:</strong> ${escapeHtml(email || "Belirtilmedi")}<br>
+        <strong>Telefon:</strong> ${escapeHtml(phone || "Belirtilmedi")}</p>
+      <p><strong>Model:</strong> ${escapeHtml(fileName || "Dosya adı yok")}<br>
+        <strong>Ölçüler:</strong> ${escapeHtml(dimensions)} mm<br>
+        <strong>Hacim:</strong> ${Number(volumeCm3 || 0).toFixed(2)} cm³<br>
+        <strong>Malzeme:</strong> ${escapeHtml(materialName || "Belirtilmedi")} · %${Number(infill || 0)} dolgu · ${Number(quantity || 0)} adet<br>
+        <strong>Parça / renk:</strong> ${Number(partCount || 0)} parça · ${Number(colorCount || 1)} renk${painted ? " · boyalı 3MF" : ""}</p>
+      <p style="font-size:18px"><strong>Teklif toplamı: ${emailMoney(total)}</strong></p>
+      ${note ? `<div style="padding:12px;border-left:3px solid #ff6542;background:#fff7f3"><strong>Müşteri notu</strong><br>${escapeHtml(note)}</div>` : ""}
+      <p><a href="https://printable.com.tr/admin" style="color:#ff6542;font-weight:700">Teklifi yönetim panelinde aç</a></p>
+    </div>`
+  });
+}
+
+async function notifyNewContactMessage({ name, email, phone, subject, message }) {
+  const cleanSubject = String(subject || "Genel iletişim").replace(/[\r\n]+/g, " ").trim().slice(0, 100);
+  return sendStoreNotification({
+    subject: `Yeni iletişim mesajı · ${cleanSubject || "Genel iletişim"}`,
+    html: `<div style="font-family:Arial,sans-serif;color:#171c2c;line-height:1.6;max-width:640px">
+      <h2>Yeni iletişim mesajı geldi</h2>
+      <p><strong>Gönderen:</strong> ${escapeHtml(name)}<br>
+        <strong>E-posta:</strong> ${escapeHtml(email || "Belirtilmedi")}<br>
+        <strong>Telefon:</strong> ${escapeHtml(phone || "Belirtilmedi")}<br>
+        <strong>Konu:</strong> ${escapeHtml(cleanSubject || "Genel iletişim")}</p>
+      <div style="padding:14px;border-left:3px solid #ff6542;background:#fff7f3;white-space:pre-wrap">${escapeHtml(message)}</div>
+      <p><a href="https://printable.com.tr/admin" style="color:#ff6542;font-weight:700">Mesajı yönetim panelinde aç</a></p>
     </div>`
   });
 }
@@ -2300,8 +2498,7 @@ app.delete("/api/katlac/:id", requireAdmin, async (req, res) => {
    sütunlarını UPDATE eder, satırın tamamını değil. */
 app.get("/api/settings", requireAdmin, async (req, res) => {
   const s = await db.prepare(`
-    SELECT show_stock, track_stock, min_cart_total, company_title, legal_address,
-           tax_office, tax_number, mersis, return_address
+    SELECT show_stock, track_stock, min_cart_total, company_title, legal_address
     FROM site_settings WHERE id = 1
   `).get() || {};
   res.json({
@@ -2309,11 +2506,7 @@ app.get("/api/settings", requireAdmin, async (req, res) => {
     track_stock: s.track_stock ?? 0,
     min_cart_total: s.min_cart_total ?? 0,
     company_title: s.company_title || "",
-    legal_address: s.legal_address || "",
-    tax_office: s.tax_office || "",
-    tax_number: s.tax_number || "",
-    mersis: s.mersis || "",
-    return_address: s.return_address || ""
+    legal_address: s.legal_address || ""
   });
 });
 
@@ -2328,8 +2521,8 @@ app.put("/api/settings", requireAdmin, async (req, res) => {
     UPDATE site_settings SET
       show_stock=@show_stock, track_stock=@track_stock, min_cart_total=@min_cart_total,
       company_title=@company_title, legal_address=@legal_address,
-      tax_office=@tax_office, tax_number=@tax_number, mersis=@mersis,
-      return_address=@return_address, updated_at=NOW()
+      tax_office=NULL, tax_number=NULL, mersis=NULL, return_address=NULL,
+      updated_at=NOW()
     WHERE id = 1
   `).run({
     // Checkbox işaretli değilse tarayıcı alanı hiç göndermez; yokluğu "kapalı" demek.
@@ -2337,11 +2530,7 @@ app.put("/api/settings", requireAdmin, async (req, res) => {
     track_stock: req.body.track_stock === true || req.body.track_stock === "1" || req.body.track_stock === 1 ? 1 : 0,
     min_cart_total: minTutar,
     company_title: metin(req.body.company_title),
-    legal_address: metin(req.body.legal_address),
-    tax_office: metin(req.body.tax_office),
-    tax_number: metin(req.body.tax_number),
-    mersis: metin(req.body.mersis),
-    return_address: metin(req.body.return_address)
+    legal_address: metin(req.body.legal_address)
   });
   res.json({ ok: true });
 });
@@ -2411,6 +2600,12 @@ function resolveImagePath(body, file) {
   if (body.image_key) return storage.publicUrl(body.image_key);
   if (file) return `/uploads/${file.filename}`;
   return body.image_url?.trim() || body.current_image || null;
+}
+
+function resolveGalleryMediaType(body, file, mediaPath) {
+  if (file?.mimetype?.startsWith("video/")) return "video";
+  if (body.media_type === "video") return "video";
+  return /\.(mp4|webm)(?:[?#]|$)/i.test(mediaPath || "") ? "video" : "image";
 }
 
 const seoMetniKisalt = (value, max) => {
@@ -2485,7 +2680,7 @@ app.get("/api/stats", requireAdmin, async (req, res) => {
     products: (await db.prepare("SELECT COUNT(*) count FROM products").get()).count,
     customers: (await db.prepare("SELECT COUNT(*) count FROM customers").get()).count,
     orders: (await db.prepare("SELECT COUNT(*) count FROM orders").get()).count,
-    revenue: (await db.prepare("SELECT COALESCE(SUM(total), 0) total FROM orders").get()).total,
+    revenue: (await db.prepare("SELECT COALESCE(SUM(total), 0) total FROM orders WHERE payment_status = 'paid'").get()).total,
     quotes: (await db.prepare("SELECT COUNT(*) count FROM quotes WHERE status = 'new'").get()).count,
     messages: (await db.prepare("SELECT COUNT(*) count FROM messages WHERE is_read = 0").get()).count
   };
@@ -2545,7 +2740,7 @@ async function decorateProducts(products) {
     `).all(...ids),
     // Galeri de tek sorguda: ürün başına ayrı sorgu N+1 demek olurdu.
     db.prepare(`
-      SELECT id, product_id, color_id, image_path, image_alt, sort_order
+      SELECT id, product_id, color_id, image_path, image_alt, media_type, sort_order
       FROM product_images WHERE product_id IN ${list}
       ORDER BY sort_order ASC, id ASC
     `).all(...ids),
@@ -2595,7 +2790,7 @@ const satisOlcekleri = (rows, fallbackPrice = null) => (rows || [])
 
 // Tek ürün için: POST/PUT sonrası dönen kayıtta kullanılır.
 const imagesOfProduct = db.prepare(`
-  SELECT id, color_id, image_path, image_alt, sort_order
+  SELECT id, color_id, image_path, image_alt, media_type, sort_order
   FROM product_images WHERE product_id = ?
   ORDER BY sort_order ASC, id ASC
 `);
@@ -2647,6 +2842,87 @@ async function logPrice(productId, price, salePrice) {
 const priceChanged = (before, price, salePrice) =>
   Number(before.price) !== Number(price) || (before.sale_price ?? null) !== (salePrice ?? null);
 
+/* Shopier senkronizasyonu ürün kaydını geri almamalı: Shopier geçici olarak
+   erişilemezse Printable ürünü yine kaydedilir, hata panelde görünür ve aynı
+   ürün daha sonra yeniden gönderilebilir. Aynı Node örneğinde eşzamanlı iki
+   galeri isteğinin iki ayrı Shopier ürünü açmasını da bu kilit engeller. */
+const activeShopierSyncs = new Map();
+
+function shopierCompatibilityImage(productId) {
+  const relativePath = path.join("assets", "shopier", `${productId}.jpg`);
+  return fs.existsSync(path.join(ROOT, relativePath))
+    ? `https://www.printable.com.tr/${relativePath.split(path.sep).join("/")}`
+    : null;
+}
+
+async function performShopierSync(productId) {
+  let product = await db.prepare("SELECT * FROM products WHERE id = ?").get(productId);
+  if (!product) return null;
+
+  if (!shopier.isConfigured()) {
+    await db.prepare(`
+      UPDATE products SET shopier_sync_status = 'not_configured',
+        shopier_sync_error = 'SHOPIER_API_KEY sunucu ortam değişkeni henüz tanımlı değil.'
+      WHERE id = ?
+    `).run(productId);
+    return withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(productId));
+  }
+
+  await db.prepare(`
+    UPDATE products SET shopier_sync_status = 'syncing', shopier_sync_error = NULL WHERE id = ?
+  `).run(productId);
+  product = await withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(productId));
+  product.shopier_image_path = shopierCompatibilityImage(product.id);
+
+  try {
+    let result;
+    try {
+      result = await shopier.syncProduct(product);
+    } catch (error) {
+      /* Shopier kaydı panelden silindiyse eski kimliğe PUT 404 verir. Başka bir
+         mağaza/anahtardan kalmış kimlik de bu mağazaya 403 döner. API anahtarının
+         genel yazma yetkisi üstte doğrulandığı için iki durumda da eşlemeyi bırakıp
+         Printable ürününü bu mağazada bir kez yeniden aç. */
+      if ([403, 404].includes(error?.status) && product.shopier_product_id) {
+        result = await shopier.syncProduct({
+          ...product,
+          shopier_product_id: null,
+          shopier_product_url: null
+        });
+      } else {
+        throw error;
+      }
+    }
+
+    await db.prepare(`
+      UPDATE products SET shopier_product_id = @shopier_product_id,
+        shopier_product_url = @shopier_product_url, shopier_sync_status = 'synced',
+        shopier_sync_error = NULL, shopier_synced_at = CURRENT_TIMESTAMP
+      WHERE id = @id
+    `).run({
+      id: productId,
+      shopier_product_id: result.productId,
+      shopier_product_url: result.productUrl || null
+    });
+  } catch (error) {
+    const message = String(error?.message || "Bilinmeyen Shopier senkronizasyon hatası").slice(0, 1000);
+    console.error(`[Shopier] Ürün ${productId} senkronize edilemedi: ${message}`);
+    await db.prepare(`
+      UPDATE products SET shopier_sync_status = 'failed', shopier_sync_error = ? WHERE id = ?
+    `).run(message, productId);
+  }
+
+  return withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(productId));
+}
+
+function synchronizeProductWithShopier(productId) {
+  const key = String(productId);
+  if (activeShopierSyncs.has(key)) return activeShopierSyncs.get(key);
+  const running = performShopierSync(productId).finally(() => activeShopierSyncs.delete(key));
+  activeShopierSyncs.set(key, running);
+  return running;
+}
+
 /* Maliyet verisi TİCARİ SIR: /api/products herkese açık, ürünün kaça mal
    olduğu müşteriye ya da rakibe gitmemeli. Yalnızca giriş yapmış yöneticiye
    dönüyor. Ayrı bir uç açmak yerine burada süzmek yeterli — panel zaten bu
@@ -2656,7 +2932,12 @@ const priceChanged = (before, price, salePrice) =>
    adı ve satış fiyatı. Müşteri zaten bu ikisini görmek zorunda — seçtiği
    varyant ve ödeyeceği tutar. Silinen `cost_scales` ise maliyeti taşıyor. */
 const maliyetiGizle = (urun) => {
-  const { unit_cost, cost_inputs, cost_updated_at, cost_scales, ...kalan } = urun;
+  const {
+    unit_cost, cost_inputs, cost_updated_at, cost_scales,
+    shopier_product_id, shopier_product_url, shopier_sync_status,
+    shopier_sync_error, shopier_synced_at,
+    ...kalan
+  } = urun;
   return kalan;
 };
 
@@ -2757,7 +3038,13 @@ app.post("/api/products", requireAdmin, upload.single("image"), async (req, res)
   await setProductColors(result.lastInsertRowid, req.body.color_ids);
   await setProductCategories(result.lastInsertRowid, req.body.category_ids);
   await logPrice(result.lastInsertRowid, product.price, product.sale_price);
-  res.status(201).json(await withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(result.lastInsertRowid)));
+  res.status(201).json(await synchronizeProductWithShopier(result.lastInsertRowid));
+});
+
+app.post("/api/products/:id/shopier-sync", requireAdmin, async (req, res) => {
+  const product = await db.prepare("SELECT id FROM products WHERE id = ?").get(req.params.id);
+  if (!product) return res.status(404).json({ error: "Ürün bulunamadı." });
+  res.json(await synchronizeProductWithShopier(product.id));
 });
 
 app.patch("/api/products/:id/active", requireAdmin, async (req, res) => {
@@ -2824,7 +3111,7 @@ app.put("/api/products/:id", requireAdmin, upload.single("image"), async (req, r
   if (priceChanged(current, product.price, product.sale_price)) {
     await logPrice(current.id, product.price, product.sale_price);
   }
-  res.json(await withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(current.id)));
+  res.json(await synchronizeProductWithShopier(current.id));
 });
 
 /* ---------- Ürün galerisi ----------
@@ -2833,12 +3120,13 @@ app.put("/api/products/:id", requireAdmin, upload.single("image"), async (req, r
    yükleme hatası ürünün tamamının kaydını düşürürdü. Her fotoğraf kendi
    isteğiyle gelir; biri patlarsa diğerleri kaydedilmiş olur. */
 
-app.post("/api/products/:id/images", requireAdmin, upload.single("image"), async (req, res) => {
+app.post("/api/products/:id/images", requireAdmin, galleryUpload.single("image"), async (req, res) => {
   const product = await db.prepare("SELECT id FROM products WHERE id = ?").get(req.params.id);
   if (!product) return res.status(404).json({ error: "Ürün bulunamadı." });
 
   const yol = resolveImagePath({ image_key: req.body.image_key, image_url: req.body.image_url }, req.file);
-  if (!yol) return res.status(400).json({ error: "Fotoğraf dosyası veya adresi gerekli." });
+  if (!yol) return res.status(400).json({ error: "Fotoğraf veya video dosyası ya da adresi gerekli." });
+  const mediaType = resolveGalleryMediaType(req.body, req.file, yol);
 
   // Yeni fotoğraf sona eklenir; sıralamayı admin sürükleyerek değil, sıra
   // numarasıyla değiştiriyor (basit ve dokunmatik ekranda güvenilir).
@@ -2846,16 +3134,18 @@ app.post("/api/products/:id/images", requireAdmin, upload.single("image"), async
   const renkId = toInt(req.body.color_id) || null;
 
   const sonuc = await db.prepare(`
-    INSERT INTO product_images (product_id, color_id, image_path, image_alt, sort_order)
-    VALUES (@product_id, @color_id, @image_path, @image_alt, @sort_order)
+    INSERT INTO product_images (product_id, color_id, image_path, image_alt, media_type, sort_order)
+    VALUES (@product_id, @color_id, @image_path, @image_alt, @media_type, @sort_order)
   `).run({
     product_id: product.id,
     color_id: renkId,
     image_path: yol,
     image_alt: req.body.image_alt?.trim() || null,
+    media_type: mediaType,
     sort_order: Number(son.son) + 1
   });
 
+  await synchronizeProductWithShopier(product.id);
   res.status(201).json(await db.prepare("SELECT * FROM product_images WHERE id = ?").get(sonuc.lastInsertRowid));
 });
 
@@ -2873,6 +3163,7 @@ app.patch("/api/products/:id/images/:imageId", requireAdmin, async (req, res) =>
     image_alt: req.body.image_alt === undefined ? row.image_alt : (req.body.image_alt?.trim() || null),
     sort_order: req.body.sort_order === undefined ? row.sort_order : toInt(req.body.sort_order)
   });
+  await synchronizeProductWithShopier(req.params.id);
   res.json(await db.prepare("SELECT * FROM product_images WHERE id = ?").get(row.id));
 });
 
@@ -2881,15 +3172,17 @@ app.delete("/api/products/:id/images/:imageId", requireAdmin, async (req, res) =
     .get(req.params.imageId, req.params.id);
   if (!row) return res.status(404).json({ error: "Fotoğraf bulunamadı." });
   await db.prepare("DELETE FROM product_images WHERE id = ?").run(row.id);
+  await synchronizeProductWithShopier(req.params.id);
   res.status(204).end();
 });
 
 /* Galerideki bir fotoğrafı kapak yap. Kapak products.image_path'te durur:
    ürün kartları, arama sonuçları ve paylaşım görseli onu kullanıyor. */
 app.post("/api/products/:id/images/:imageId/cover", requireAdmin, async (req, res) => {
-  const row = await db.prepare("SELECT image_path, image_alt FROM product_images WHERE id = ? AND product_id = ?")
+  const row = await db.prepare("SELECT image_path, image_alt, media_type FROM product_images WHERE id = ? AND product_id = ?")
     .get(req.params.imageId, req.params.id);
   if (!row) return res.status(404).json({ error: "Fotoğraf bulunamadı." });
+  if (row.media_type === "video") return res.status(400).json({ error: "Video kapak görseli olamaz." });
   /* Alt metin de taşınır: kapak değişip alt metin eski fotoğrafınki kalırsa
      ürün sayfası yanlış görseli tarif eder (SEO ve ekran okuyucu için hatalı).
      Galeri fotoğrafının alt metni boşsa üründekine dokunmuyoruz. */
@@ -2897,7 +3190,7 @@ app.post("/api/products/:id/images/:imageId/cover", requireAdmin, async (req, re
     UPDATE products SET image_path = ?, image_alt = COALESCE(?, image_alt), updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `).run(row.image_path, row.image_alt || null, req.params.id);
-  res.json(await withColors(await db.prepare("SELECT * FROM products WHERE id = ?").get(req.params.id)));
+  res.json(await synchronizeProductWithShopier(req.params.id));
 });
 
 app.delete("/api/products/:id", requireAdmin, async (req, res) => {
@@ -3101,15 +3394,14 @@ app.put("/api/pricing", requireAdmin, async (req, res) => {
     UPDATE pricing_settings SET
       setup_fee=@setup_fee, size_fee_per_cm=@size_fee_per_cm,
       min_order_total=@min_order_total, shell_share=@shell_share,
-      color_change_fee=@color_change_fee, tax_rate=@tax_rate, updated_at=CURRENT_TIMESTAMP
+      color_change_fee=@color_change_fee, updated_at=CURRENT_TIMESTAMP
     WHERE id=1
   `).run({
     setup_fee: Math.max(0, Number(req.body.setup_fee) || 0),
     size_fee_per_cm: Math.max(0, Number(req.body.size_fee_per_cm) || 0),
     min_order_total: Math.max(0, Number(req.body.min_order_total) || 0),
     shell_share: Math.min(1, Math.max(0, Number.isFinite(shell) ? shell : 0.15)),
-    color_change_fee: Math.max(0, Number(req.body.color_change_fee) || 0),
-    tax_rate: Math.min(100, Math.max(0, Number(req.body.tax_rate) ?? 20))
+    color_change_fee: Math.max(0, Number(req.body.color_change_fee) || 0)
   });
   res.json(await pricingSettings());
 });
@@ -3229,7 +3521,32 @@ app.post("/api/quotes", modelUploadMiddleware, async (req, res) => {
     }
   });
 
-  res.status(201).json(await withParts(await db.prepare("SELECT * FROM quotes WHERE id = ?").get(result.lastInsertRowid)));
+  const savedQuote = await db.prepare("SELECT * FROM quotes WHERE id = ?").get(result.lastInsertRowid);
+  const ownerNotified = await notifyNewQuote({
+    quoteNumber: savedQuote.quote_number,
+    name: savedQuote.customer_name,
+    email: savedQuote.email,
+    phone: savedQuote.phone,
+    fileName: savedQuote.file_name,
+    materialName: savedQuote.material_name,
+    infill: savedQuote.infill,
+    quantity: savedQuote.quantity,
+    width: savedQuote.width,
+    height: savedQuote.height,
+    depth: savedQuote.depth,
+    volumeCm3: savedQuote.volume_cm3,
+    partCount: parts.length,
+    colorCount: Math.max(1, distinctColors.size),
+    painted: Boolean(savedQuote.painted),
+    note: savedQuote.note,
+    total: savedQuote.total
+  }).catch((error) => {
+    console.error(`3D teklif bildirimi gönderilemedi (${quoteNumber}):`, error.message);
+    return false;
+  });
+  if (!ownerNotified) console.error(`3D teklif bildirimi gönderilemedi: ${quoteNumber}`);
+
+  res.status(201).json({ ...await withParts(savedQuote), notification_sent: ownerNotified });
 });
 
 const partsOfQuote = db.prepare("SELECT * FROM quote_parts WHERE quote_id = ? ORDER BY part_index");
@@ -3415,7 +3732,8 @@ app.put("/api/seo/site", requireAdmin, async (req, res) => {
     UPDATE site_settings SET
       site_name=@site_name, site_url=@site_url, description=@description,
       logo_path=@logo_path, social_links=@social_links, default_og_image=@default_og_image,
-      phone=@phone, email=@email, whatsapp=@whatsapp, contact_address=@contact_address, working_hours=@working_hours,
+      phone=@phone, email=@email, whatsapp=@whatsapp,
+      contact_address=NULL, working_hours=NULL,
       updated_at=CURRENT_TIMESTAMP
     WHERE id=1
   `).run({
@@ -3427,9 +3745,7 @@ app.put("/api/seo/site", requireAdmin, async (req, res) => {
     default_og_image: req.body.default_og_image?.trim() || null,
     phone: req.body.phone?.trim() || null,
     email: req.body.email?.trim() || null,
-    whatsapp: req.body.whatsapp?.trim() || null,
-    contact_address: req.body.contact_address?.trim() || null,
-    working_hours: req.body.working_hours?.trim() || null
+    whatsapp: req.body.whatsapp?.trim() || null
   });
 
   res.json(await db.prepare("SELECT * FROM site_settings WHERE id = 1").get());
@@ -3965,41 +4281,202 @@ app.delete("/api/campaigns/:id", requireAdmin, async (req, res) => {
   res.status(204).end();
 });
 
-// Turkish national ID (TC Kimlik No): 11 digits with two trailing checksum digits.
-function isValidTC(value) {
-  const tc = String(value || "").trim();
-  if (!/^[1-9][0-9]{10}$/.test(tc)) return false;
-  const d = tc.split("").map(Number);
-  const oddSum = d[0] + d[2] + d[4] + d[6] + d[8];
-  const evenSum = d[1] + d[3] + d[5] + d[7];
-  if ((((oddSum * 7) - evenSum) % 10 + 10) % 10 !== d[9]) return false;
-  return d.slice(0, 10).reduce((a, b) => a + b, 0) % 10 === d[10];
-}
-const isValidVKN = (value) => /^[0-9]{10}$/.test(String(value || "").trim());
+const paytrHmac = (value) => crypto
+  .createHmac("sha256", PAYTR_MERCHANT_KEY)
+  .update(String(value), "utf8")
+  .digest("base64");
 
-// One-shot checkout: create the customer, validate the e-fatura details, price the
-// items server-side (never trusting client prices), and write the order atomically.
+const paymentStatusToken = (reference) => crypto
+  .createHmac("sha256", SESSION_SECRET)
+  .update(`paytr-status:${reference}`, "utf8")
+  .digest("hex");
+
+function safeTextEqual(left, right) {
+  const a = Buffer.from(String(left || ""), "utf8");
+  const b = Buffer.from(String(right || ""), "utf8");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function paytrClientIp(req) {
+  const value = String(req.ip || req.socket?.remoteAddress || "").replace(/^::ffff:/, "");
+  return value.slice(0, 39);
+}
+
+/* PayTR sepet satırlarının toplamı tahsilat tutarıyla birebir eşleşsin. İndirim
+   ve sipariş indirimi ürün satırlarına oransal dağıtılır;
+   son satır kuruş farkını kapatır. */
+function paytrBasket(items, total) {
+  const paidItems = items.filter((item) => Number(item.line_total) > 0);
+  const subtotal = paidItems.reduce((sum, item) => sum + Number(item.line_total), 0);
+  const totalCents = Math.round(Number(total) * 100);
+  let allocated = 0;
+
+  return paidItems.map((item, index) => {
+    const cents = index === paidItems.length - 1
+      ? totalCents - allocated
+      : Math.round(totalCents * Number(item.line_total) / subtotal);
+    allocated += cents;
+    const scale = item.scale ? ` (${item.scale})` : "";
+    const quantity = Number(item.quantity) > 1 ? ` × ${Number(item.quantity)}` : "";
+    return [`${item.product_name}${scale}${quantity}`.slice(0, 120), (cents / 100).toFixed(2), 1];
+  });
+}
+
+async function requestPaytrIframe({ req, order, customer, items, origin, statusToken }) {
+  const paymentAmount = String(Math.round(Number(order.total) * 100));
+  const userBasket = Buffer.from(JSON.stringify(paytrBasket(items, order.total)), "utf8").toString("base64");
+  const userIp = paytrClientIp(req);
+  const hashString = [
+    PAYTR_MERCHANT_ID,
+    userIp,
+    order.payment_reference,
+    customer.email,
+    paymentAmount,
+    userBasket,
+    PAYTR_NO_INSTALLMENT,
+    PAYTR_MAX_INSTALLMENT,
+    "TL",
+    PAYTR_TEST_MODE
+  ].join("");
+  const paytrToken = paytrHmac(hashString + PAYTR_MERCHANT_SALT);
+  const resultUrl = (state) => {
+    const url = new URL("/odeme", origin);
+    url.searchParams.set("paytr", state);
+    url.searchParams.set("ref", order.payment_reference);
+    url.searchParams.set("token", statusToken);
+    return url.toString();
+  };
+  const form = new URLSearchParams({
+    merchant_id: PAYTR_MERCHANT_ID,
+    user_ip: userIp,
+    merchant_oid: order.payment_reference,
+    email: customer.email,
+    payment_amount: paymentAmount,
+    paytr_token: paytrToken,
+    user_basket: userBasket,
+    debug_on: PAYTR_DEBUG_ON,
+    no_installment: PAYTR_NO_INSTALLMENT,
+    max_installment: PAYTR_MAX_INSTALLMENT,
+    user_name: customer.name.slice(0, 60),
+    user_address: order.shipping_address.slice(0, 400),
+    user_phone: customer.phone.slice(0, 20),
+    merchant_ok_url: resultUrl("success"),
+    merchant_fail_url: resultUrl("failed"),
+    timeout_limit: PAYTR_TIMEOUT_LIMIT,
+    currency: "TL",
+    test_mode: PAYTR_TEST_MODE,
+    lang: "tr"
+  });
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+  try {
+    const response = await fetch(PAYTR_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: form,
+      signal: controller.signal
+    });
+    const raw = await response.text();
+    let payload;
+    try { payload = JSON.parse(raw); } catch { payload = null; }
+    if (!response.ok || payload?.status !== "success" || !payload.token) {
+      throw new Error(payload?.reason || `PayTR token isteği başarısız (${response.status}).`);
+    }
+    return `${PAYTR_IFRAME_BASE}${encodeURIComponent(payload.token)}`;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function releaseOrderReservations(tx, order) {
+  const uses = await tx.prepare("SELECT campaign_id FROM campaign_uses WHERE order_id = ?").all(order.id);
+  for (const use of uses) {
+    await tx.prepare("UPDATE campaigns SET used_count = GREATEST(0, used_count - 1) WHERE id = ?").run(use.campaign_id);
+  }
+  if (uses.length) await tx.prepare("DELETE FROM campaign_uses WHERE order_id = ?").run(order.id);
+
+  if (Number(order.inventory_deducted) === 1) {
+    const quantities = await tx.prepare(`
+      SELECT product_id, SUM(quantity)::int AS quantity
+      FROM order_items
+      WHERE order_id = ? AND product_id IS NOT NULL AND line_total > 0
+      GROUP BY product_id
+    `).all(order.id);
+    for (const item of quantities) {
+      await tx.prepare("UPDATE products SET stock = stock + ? WHERE id = ?").run(item.quantity, item.product_id);
+    }
+  }
+}
+
+async function markPendingPaymentFailed(reference, code, message) {
+  return db.transaction(async (tx) => {
+    const order = await tx.prepare("SELECT * FROM orders WHERE payment_reference = ? FOR UPDATE").get(reference);
+    if (!order || order.payment_status !== "pending") return false;
+    await releaseOrderReservations(tx, order);
+    await tx.prepare(`
+      UPDATE orders SET payment_status = 'failed', payment_failure_code = ?,
+        payment_failure_message = ?, inventory_deducted = 0, updated_at = NOW()
+      WHERE id = ?
+    `).run(String(code || "payment_failed").slice(0, 50), String(message || "Ödeme tamamlanamadı.").slice(0, 500), order.id);
+    return true;
+  });
+}
+
+async function notifyPaidOrder(orderId) {
+  const order = await db.prepare(`
+    SELECT o.*, c.name customer_name, c.email customer_email, c.phone customer_phone
+    FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.id = ?
+  `).get(orderId);
+  if (!order) return;
+  const items = await db.prepare("SELECT * FROM order_items WHERE order_id = ? ORDER BY id").all(order.id);
+  const tasks = [];
+  if (process.env.RESEND_API_KEY && order.customer_email) {
+    tasks.push(sendOrderReceivedEmail({
+      to: order.customer_email,
+      name: order.customer_name,
+      orderNumber: order.order_number,
+      items,
+      total: order.total
+    }));
+  }
+  if (process.env.RESEND_API_KEY && STORE_NOTIFICATION_EMAILS.length) {
+    tasks.push(notifyNewOrder({
+      name: order.customer_name,
+      email: order.customer_email,
+      phone: order.customer_phone,
+      orderNumber: order.order_number,
+      items,
+      total: order.total
+    }));
+  }
+  const results = await Promise.allSettled(tasks);
+  if (results.some((result) => result.status === "rejected" || result.value === false)) {
+    console.error(`Ödenen sipariş e-postası gönderilemedi: ${order.order_number}`);
+  }
+}
+
+// Ödeme başlangıcı: sipariş "pending" açılır ve kart formu PayTR iframe'ine taşınır.
+// Siparişi "paid" yapan tek yer aşağıdaki imzalı PayTR callback'idir.
 app.post("/api/checkout", async (req, res) => {
   const body = req.body || {};
   const customer = body.customer || {};
-  const invoice = body.invoice || {};
   const items = Array.isArray(body.items) ? body.items : [];
+
+  if (!PAYTR_CONFIGURED) {
+    return res.status(503).json({ error: "Kartlı ödeme altyapısı henüz etkinleştirilmemiş." });
+  }
 
   if (!customer.name?.trim()) return res.status(400).json({ error: "Ad soyad zorunludur." });
   if (!customer.phone?.trim()) return res.status(400).json({ error: "Telefon numarası zorunludur." });
+  const customerEmail = normalizeCustomerEmail(customer.email);
+  if (!validCustomerEmail(customerEmail) || customerEmail.length > 100 || /[^\x00-\x7F]/.test(customerEmail)) {
+    return res.status(400).json({ error: "PayTR ödemesi için geçerli bir e-posta adresi zorunludur." });
+  }
   if (!customer.city?.trim()) return res.status(400).json({ error: "İl zorunludur." });
   if (!customer.district?.trim()) return res.status(400).json({ error: "İlçe zorunludur." });
   if (!customer.address?.trim()) return res.status(400).json({ error: "Açık adres zorunludur." });
   if (!items.length) return res.status(400).json({ error: "Sepetiniz boş." });
-
-  const invoiceType = invoice.type === "corporate" ? "corporate" : "individual";
-  if (invoiceType === "individual") {
-    if (!isValidTC(invoice.tc_no)) return res.status(400).json({ error: "Geçerli bir TC Kimlik Numarası girin." });
-  } else {
-    if (!invoice.company_name?.trim()) return res.status(400).json({ error: "Şirket unvanı zorunludur." });
-    if (!invoice.tax_office?.trim()) return res.status(400).json({ error: "Vergi dairesi zorunludur." });
-    if (!isValidVKN(invoice.tax_number)) return res.status(400).json({ error: "Geçerli bir vergi numarası girin (10 hane)." });
-  }
 
   if (body.payment_method !== "kart") {
     return res.status(400).json({ error: "Yalnızca kredi veya banka kartıyla ödeme kabul edilir." });
@@ -4012,12 +4489,13 @@ app.post("/api/checkout", async (req, res) => {
   // Katalogda karşılığı kalmayan kalemler yukarıda düşürülür; hepsi düştüyse sipariş açma.
   if (!normalized.length) return res.status(400).json({ error: "Sepetinizdeki ürünler artık satışta değil. Sepetinizi güncelleyip tekrar deneyin." });
   const subtotal = round2(normalized.reduce((sum, item) => sum + item.line_total, 0));
+  if (subtotal <= 0) return res.status(400).json({ error: "Sepet toplamı ödeme için geçerli değil." });
 
   /* Minimum sepet tutarı burada da kontrol edilir. Ödeme sayfası kullanıcıyı
      zaten uyarıyor ama o sadece arayüz; isteği doğrudan atan biri sınırı
      aşabilirdi. Kontrol indirim ÖNCESİ ara toplama göre: kupon kullanan
      müşteri minimumun altına düşmüş sayılmasın. */
-  const magaza = await db.prepare("SELECT min_cart_total, track_stock FROM site_settings WHERE id = 1").get() || {};
+  const magaza = await db.prepare("SELECT min_cart_total, track_stock, site_url FROM site_settings WHERE id = 1").get() || {};
   const minCart = Number(magaza.min_cart_total ?? 0);
   if (minCart > 0 && subtotal < minCart) {
     return res.status(400).json({ error: `Minimum sipariş tutarı ${minCart.toFixed(2)} TL. Sepetinize biraz daha ürün ekleyin.` });
@@ -4045,11 +4523,11 @@ app.post("/api/checkout", async (req, res) => {
   const discount = Math.min(campaigns.discount, subtotal);
   const netTotal = round2(subtotal - discount);
 
-  // Prices are KDV-hariç (net); VAT is added on top — and on the *discounted*
-  // net, not the original. Shipping is recipient-paid, so it is not added.
-  const taxRate = (await pricingSettings())?.tax_rate ?? KDV_RATE;
+  // Vitrindeki fiyat nihai ürün fiyatıdır. Kampanya indirimi düşüldükten sonra
+  // ayrıca KDV eklenmez; kargo alıcı ödemeliyse o da çevrimiçi tahsilata girmez.
+  const taxRate = KDV_RATE;
 
-  const orderNumber = await db.transaction(async (tx) => {
+  const pendingOrder = await db.transaction(async (tx) => {
     /* Kontenjan rezervasyonu — sipariş yazılmadan ÖNCE, çünkü kontenjan
        dolmuşsa indirim de düşmeli. Kontrol ile artırma tek ifadede: kararı
        veritabanı veriyor, satır güncellenmediyse kontenjan o an dolmuş
@@ -4076,11 +4554,11 @@ app.post("/api/checkout", async (req, res) => {
     const uygulananNet = round2(subtotal - uygulananIndirim);
 
     const cust = await tx.prepare("INSERT INTO customers (name, email, phone, address, city) VALUES (?,?,?,?,?)").run(
-      customer.name.trim(), customer.email?.trim() || null, customer.phone.trim(), customer.address.trim(), customer.city?.trim() || null
+      customer.name.trim(), customerEmail, customer.phone.trim(), customer.address.trim(), customer.city?.trim() || null
     );
 
-    const taxAmount = round2(uygulananNet * taxRate / 100);
-    const grandTotal = round2(uygulananNet + taxAmount);
+    const taxAmount = 0;
+    const grandTotal = uygulananNet;
     const shippingMethod = grandTotal >= FREE_SHIPPING_THRESHOLD ? "free" : "recipient_paid";
     // Compose the structured address (mahalle / ilçe / il / posta kodu) into one line.
     const locality = [
@@ -4089,20 +4567,24 @@ app.post("/api/checkout", async (req, res) => {
       customer.postal_code?.trim()
     ].filter(Boolean).join(" ");
     const shippingAddress = [customer.address.trim(), locality].filter(Boolean).join(" — ");
-    const billingAddress = invoice.same_as_shipping === false && invoice.billing_address?.trim()
-      ? invoice.billing_address.trim()
-      : shippingAddress;
-    const generatedNumber = `PRN-${Date.now().toString().slice(-8)}`;
+    const generatedNumber = `PRN-${Date.now().toString().slice(-8)}${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
+    // PayTR merchant_oid yalnızca alfanümerik olmalı; ziyaretçiye gösterilen sipariş
+    // numarasından ayrı ve tahmin edilmesi zor bir ödeme referansı kullanıyoruz.
+    const paymentReference = `PAY${Date.now().toString(36)}${crypto.randomBytes(8).toString("hex")}`.toUpperCase();
 
     const order = await tx.prepare(`
       INSERT INTO orders (order_number, customer_id, status, payment_status, shipping_address, subtotal, discount, total, notes,
         invoice_type, tc_no, tax_office, tax_number, company_name, billing_address, payment_method,
+        payment_provider, payment_reference, inventory_deducted,
         tax_rate, tax_amount, shipping_method, campaign_summary)
       VALUES (@order_number, @customer_id, 'new', 'pending', @shipping_address, @subtotal, @discount, @total, @notes,
         @invoice_type, @tc_no, @tax_office, @tax_number, @company_name, @billing_address, @payment_method,
+        'paytr', @payment_reference, @inventory_deducted,
         @tax_rate, @tax_amount, @shipping_method, @campaign_summary)
     `).run({
       order_number: generatedNumber,
+      payment_reference: paymentReference,
+      inventory_deducted: stokTakibi ? 1 : 0,
       customer_id: cust.lastInsertRowid,
       shipping_address: shippingAddress,
       subtotal,
@@ -4113,12 +4595,12 @@ app.post("/api/checkout", async (req, res) => {
         : null,
       total: grandTotal,
       notes: body.notes?.trim() || null,
-      invoice_type: invoiceType,
-      tc_no: invoiceType === "individual" ? String(invoice.tc_no).trim() : null,
-      tax_office: invoiceType === "corporate" ? invoice.tax_office.trim() : null,
-      tax_number: invoiceType === "corporate" ? String(invoice.tax_number).trim() : null,
-      company_name: invoiceType === "corporate" ? invoice.company_name.trim() : null,
-      billing_address: billingAddress,
+      invoice_type: null,
+      tc_no: null,
+      tax_office: null,
+      tax_number: null,
+      company_name: null,
+      billing_address: shippingAddress,
       payment_method: paymentMethod,
       tax_rate: taxRate,
       tax_amount: taxAmount,
@@ -4161,7 +4643,7 @@ app.post("/api/checkout", async (req, res) => {
         order_number: generatedNumber,
         customer_name: customer.name.trim(),
         customer_phone: customer.phone.trim(),
-        customer_email: customer.email?.trim() || null,
+        customer_email: customerEmail,
         discount_amount: Number(c.amount) || 0
       });
     }
@@ -4170,36 +4652,158 @@ app.post("/api/checkout", async (req, res) => {
     // yalnızca bilgi amaçlı bir sayı olarak kalır.
     if (stokTakibi) {
       const dus = tx.prepare("UPDATE products SET stock = GREATEST(0, stock - ?) WHERE id = ?");
-      for (const item of normalized) await dus.run(item.quantity, item.product_id);
+      for (const item of normalized.filter((row) => Number(row.line_total) > 0)) {
+        await dus.run(item.quantity, item.product_id);
+      }
     }
 
-    return { order_number: generatedNumber, shipping_method: shippingMethod, total: grandTotal };
+    return {
+      id: order.lastInsertRowid,
+      order_number: generatedNumber,
+      payment_reference: paymentReference,
+      shipping_address: shippingAddress,
+      shipping_method: shippingMethod,
+      total: grandTotal
+    };
   });
 
-  // E-posta teslimatı sipariş kaydını asla geri almamalı. Resend geçici olarak
-  // yanıt veremese bile sipariş panelde kalır ve atölye tarafından işlenebilir.
-  if (customer.email?.trim()) {
-    const sent = await sendOrderReceivedEmail({
-      to: customer.email.trim(),
-      name: customer.name.trim(),
-      orderNumber: orderNumber.order_number,
+  const statusToken = paymentStatusToken(pendingOrder.payment_reference);
+  let siteOrigin;
+  try {
+    siteOrigin = new URL(magaza.site_url || `${req.protocol}://${req.get("host")}`).origin;
+  } catch {
+    siteOrigin = `${req.protocol}://${req.get("host")}`;
+  }
+
+  try {
+    const iframeUrl = await requestPaytrIframe({
+      req,
+      order: pendingOrder,
+      customer: {
+        name: customer.name.trim(),
+        email: customerEmail,
+        phone: customer.phone.trim()
+      },
       items: normalized,
-      total: orderNumber.total
-    }).catch(() => false);
-    if (!sent) console.error(`Sipariş e-postası gönderilemedi: ${orderNumber.order_number}`);
+      origin: siteOrigin,
+      statusToken
+    });
+    return res.status(201).json({
+      order_number: pendingOrder.order_number,
+      iframe_url: iframeUrl,
+      shipping_method: pendingOrder.shipping_method,
+      total: pendingOrder.total
+    });
+  } catch (error) {
+    console.error(`PayTR iframe tokenı alınamadı (${pendingOrder.order_number}):`, error.message);
+    await markPendingPaymentFailed(pendingOrder.payment_reference, "token_error", error.message);
+    return res.status(502).json({ error: "Güvenli ödeme ekranı şu anda açılamadı. Lütfen biraz sonra tekrar deneyin." });
   }
-  const ownerNotified = await notifyNewOrder({
-    name: customer.name.trim(),
-    email: customer.email?.trim(),
-    phone: customer.phone.trim(),
-    orderNumber: orderNumber.order_number,
-    items: normalized,
-    total: orderNumber.total
-  }).catch(() => false);
-  if (STORE_NOTIFICATION_EMAILS.length && !ownerNotified) {
-    console.error(`Yeni sipariş bildirimi gönderilemedi: ${orderNumber.order_number}`);
+});
+
+/* PayTR Bildirim URL'si: Mağaza Paneli'nde tam olarak
+   https://www.printable.com.tr/api/paytr/callback tanımlanmalı. Başarı/fail dönüş
+   sayfaları bilgilendirme içindir; ödeme durumunu yalnızca bu imzalı POST değiştirir. */
+app.post("/api/paytr/callback", async (req, res) => {
+  if (!PAYTR_CONFIGURED) {
+    return res.status(503).type("text/plain").send("PAYTR notification failed");
   }
-  res.status(201).json(orderNumber);
+
+  const reference = String(req.body.merchant_oid || "");
+  const status = String(req.body.status || "");
+  const totalAmount = String(req.body.total_amount || "");
+  const receivedHash = String(req.body.hash || "");
+  if (!/^[A-Za-z0-9]{1,64}$/.test(reference) || !["success", "failed"].includes(status) || !/^\d+$/.test(totalAmount)) {
+    return res.status(400).type("text/plain").send("PAYTR notification failed");
+  }
+
+  const expectedHash = paytrHmac(`${reference}${PAYTR_MERCHANT_SALT}${status}${totalAmount}`);
+  if (!safeTextEqual(receivedHash, expectedHash)) {
+    console.error(`PayTR callback imzası geçersiz: ${reference}`);
+    return res.status(400).type("text/plain").send("PAYTR notification failed");
+  }
+
+  let paidOrderId = null;
+  try {
+    const result = await db.transaction(async (tx) => {
+      const order = await tx.prepare("SELECT * FROM orders WHERE payment_reference = ? FOR UPDATE").get(reference);
+      if (!order) return { missing: true };
+      // PayTR aynı bildirimi tekrar gönderebilir. İlk kesin sonuçtan sonra yalnızca OK dön.
+      if (order.payment_status !== "pending") return { duplicate: true };
+
+      if (status === "failed") {
+        await releaseOrderReservations(tx, order);
+        await tx.prepare(`
+          UPDATE orders SET payment_status = 'failed', payment_failure_code = ?,
+            payment_failure_message = ?, payment_test_mode = ?, inventory_deducted = 0,
+            updated_at = NOW()
+          WHERE id = ?
+        `).run(
+          String(req.body.failed_reason_code || "payment_failed").slice(0, 50),
+          String(req.body.failed_reason_msg || "Ödeme tamamlanamadı.").slice(0, 500),
+          req.body.test_mode === "1" ? 1 : 0,
+          order.id
+        );
+        return { failed: true };
+      }
+
+      const expectedCents = Math.round(Number(order.total) * 100);
+      const collectedCents = Number.parseInt(totalAmount, 10);
+      // total_amount imzanın parçasıdır; taksit vade farkıyla beklenenden yüksek
+      // olabilir ama daha düşük bir tahsilatı sipariş ödemesi sayamayız.
+      if (!Number.isSafeInteger(collectedCents) || collectedCents < expectedCents) {
+        return { amountMismatch: true, expectedCents, collectedCents };
+      }
+
+      await tx.prepare(`
+        UPDATE orders SET payment_status = 'paid', payment_collected_amount = ?,
+          payment_test_mode = ?, paid_at = NOW(), payment_failure_code = NULL,
+          payment_failure_message = NULL, updated_at = NOW()
+        WHERE id = ?
+      `).run(collectedCents, req.body.test_mode === "1" ? 1 : 0, order.id);
+      return { paid: true, orderId: order.id };
+    });
+
+    if (result.missing) {
+      console.error(`PayTR callback siparişi bulunamadı: ${reference}`);
+      return res.status(404).type("text/plain").send("PAYTR notification failed");
+    }
+    if (result.amountMismatch) {
+      console.error(`PayTR tutar uyuşmazlığı (${reference}): beklenen ${result.expectedCents}, gelen ${result.collectedCents}`);
+      return res.status(400).type("text/plain").send("PAYTR notification failed");
+    }
+    if (result.paid) paidOrderId = result.orderId;
+  } catch (error) {
+    console.error(`PayTR callback işlenemedi (${reference}):`, error.message);
+    return res.status(500).type("text/plain").send("PAYTR notification failed");
+  }
+
+  // Bildirimler ödeme onayından sonra gider; e-posta arızası ödeme kaydını bozmaz.
+  if (paidOrderId) await notifyPaidOrder(paidOrderId).catch((error) => {
+    console.error(`Ödenen sipariş bildirimi gönderilemedi (${reference}):`, error.message);
+  });
+  return res.type("text/plain").send("OK");
+});
+
+// Başarı/fail yönlendirme sayfası callback'ten bağımsızdır. Tarayıcı yalnızca
+// kendisine verilen HMAC'li kısa tokenla bu siparişin ödeme durumunu okuyabilir.
+app.get("/api/paytr/status", async (req, res) => {
+  const reference = String(req.query.ref || "");
+  const token = String(req.query.token || "");
+  if (!/^[A-Za-z0-9]{1,64}$/.test(reference) || !safeTextEqual(token, paymentStatusToken(reference))) {
+    return res.status(404).json({ error: "Ödeme kaydı bulunamadı." });
+  }
+  const order = await db.prepare(`
+    SELECT order_number, payment_status, payment_failure_message, shipping_method
+    FROM orders WHERE payment_reference = ?
+  `).get(reference);
+  if (!order) return res.status(404).json({ error: "Ödeme kaydı bulunamadı." });
+  return res.json({
+    order_number: order.order_number,
+    payment_status: order.payment_status,
+    failure_message: order.payment_status === "failed" ? order.payment_failure_message || "Ödeme tamamlanamadı." : "",
+    shipping_method: order.shipping_method
+  });
 });
 
 app.patch("/api/orders/:id", requireAdmin, async (req, res) => {
@@ -4233,17 +4837,16 @@ app.patch("/api/orders/:id", requireAdmin, async (req, res) => {
   res.json(updated);
 });
 
-// Public site info — KDV oranı + iletişim bilgileri (storefront ve /iletisim kullanır).
+// Public site info — iletişim ve vitrin ayarları.
 app.get("/api/site-info", async (req, res) => {
-  const site = await db.prepare("SELECT phone, email, contact_address, working_hours, social_links, show_stock, min_cart_total FROM site_settings WHERE id = 1").get() || {};
-  const pricing = await db.prepare("SELECT tax_rate FROM pricing_settings WHERE id = 1").get() || {};
+  const site = await db.prepare("SELECT phone, email, legal_address, working_hours, social_links, show_stock, min_cart_total FROM site_settings WHERE id = 1").get() || {};
   const { wa } = await contactInfo();
   res.json({
-    tax_rate: pricing.tax_rate ?? 20,
+    tax_rate: KDV_RATE,
     phone: site.phone || "",
     email: site.email || "",
     whatsapp: wa ? `https://wa.me/${wa}` : "",
-    address: site.contact_address || "",
+    address: site.legal_address || "",
     working_hours: site.working_hours || "",
     social_links: site.social_links || "",
     show_stock: site.show_stock ?? 1,
@@ -4284,14 +4887,26 @@ app.post("/api/contact", async (req, res) => {
   const name = req.body.name?.trim();
   const message = req.body.message?.trim();
   if (!name || !message) return res.status(400).json({ error: "Ad soyad ve mesaj alanları zorunludur." });
-  await db.prepare("INSERT INTO messages (name, email, phone, subject, message) VALUES (?,?,?,?,?)").run(
+  const contact = {
     name,
-    req.body.email?.trim() || null,
-    req.body.phone?.trim() || null,
-    req.body.subject?.trim() || null,
+    email: req.body.email?.trim() || null,
+    phone: req.body.phone?.trim() || null,
+    subject: req.body.subject?.trim() || null,
     message
+  };
+  await db.prepare("INSERT INTO messages (name, email, phone, subject, message) VALUES (?,?,?,?,?)").run(
+    contact.name,
+    contact.email,
+    contact.phone,
+    contact.subject,
+    contact.message
   );
-  res.status(201).json({ ok: true });
+  const ownerNotified = await notifyNewContactMessage(contact).catch((error) => {
+    console.error("İletişim formu bildirimi gönderilemedi:", error.message);
+    return false;
+  });
+  if (!ownerNotified) console.error("İletişim formu bildirimi gönderilemedi.");
+  res.status(201).json({ ok: true, notification_sent: ownerNotified });
 });
 
 app.get("/api/messages", requireAdmin, async (req, res) => {

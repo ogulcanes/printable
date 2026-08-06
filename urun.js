@@ -45,6 +45,17 @@
      (ölçek, ambalaj, kullanım); onları gizlemek bilgi kaybı olurdu. */
   let seciliRenkId = null;
 
+  const galeriMedyaTuru = (item) =>
+    item?.media_type === "video" || /\.(mp4|webm)(?:[?#]|$)/i.test(item?.image_path || item?.src || "")
+      ? "video"
+      : "image";
+
+  const anaMedyaHTML = (kare) => kare?.type === "video"
+    ? `<video id="gallery-main-video" src="${escapeHtml(kare.src)}" controls playsinline preload="metadata"
+              aria-label="${escapeHtml(kare.alt || "Ürün videosu")}"></video>`
+    : `<img id="gallery-main-image" src="${escapeHtml(kare?.src) || "/assets/printable-logo.svg"}"
+            alt="${escapeHtml(kare?.alt || "Ürün görseli")}">`;
+
   /* Seçili ölçek (küçük/büyük boy gibi). Ölçek yalnızca bir etiket değil, kendi
      fiyatı olan bir varyant: seçim değişince sayfadaki fiyat da, sepete giden
      satır da değişir. Varsayılan en ucuzu — kartta gördüğü fiyat bu, sayfa
@@ -56,12 +67,17 @@
 
   function galeriKareleri(product) {
     const kapak = product.image_path
-      ? [{ src: product.image_path, alt: product.image_alt || product.name, colorId: null }]
+      ? [{ src: product.image_path, alt: product.image_alt || product.name, colorId: null, type: "image" }]
       : [];
     // Kapak zaten listede: aynı dosya iki kez görünmesin.
     const ekler = (product.images || [])
       .filter((g) => g.image_path !== product.image_path)
-      .map((g) => ({ src: g.image_path, alt: g.image_alt || product.name, colorId: g.color_id }));
+      .map((g) => ({
+        src: g.image_path,
+        alt: g.image_alt || product.name,
+        colorId: g.color_id,
+        type: galeriMedyaTuru(g)
+      }));
 
     if (!seciliRenkId) return [...kapak, ...ekler];
 
@@ -74,15 +90,14 @@
 
   function galeriyiBagla(product) {
     const thumbs = document.querySelector("#gallery-thumbs");
-    const ana = document.querySelector("#gallery-main-image");
+    const ana = document.querySelector(".gallery-main");
     if (!thumbs || !ana) return;
     thumbs.addEventListener("click", (event) => {
       const buton = event.target.closest("[data-gallery-index]");
       if (!buton) return;
       const kare = galeriKareleri(product)[Number(buton.dataset.galleryIndex)];
       if (!kare) return;
-      ana.src = kare.src;
-      ana.alt = kare.alt;
+      ana.innerHTML = anaMedyaHTML(kare);
       thumbs.querySelectorAll(".gallery-thumb").forEach((b) => b.classList.toggle("active", b === buton));
     });
   }
@@ -133,15 +148,20 @@
       <div class="product-detail__grid">
         <div class="product-detail__media">
           <div class="gallery-main">
-            <img id="gallery-main-image" src="${escapeHtml(galeriKareleri(product)[0]?.src) || "/assets/printable-logo.svg"}"
-                 alt="${escapeHtml(galeriKareleri(product)[0]?.alt || product.image_alt || product.name)}">
+            ${anaMedyaHTML(galeriKareleri(product)[0] || {
+              src: "/assets/printable-logo.svg",
+              alt: product.image_alt || product.name,
+              type: "image"
+            })}
           </div>
           ${galeriKareleri(product).length > 1 ? `
             <div class="gallery-thumbs" id="gallery-thumbs">
               ${galeriKareleri(product).map((k, i) => `
-                <button type="button" class="gallery-thumb ${i === 0 ? "active" : ""}" data-gallery-index="${i}"
-                        aria-label="${i + 1}. fotoğrafı göster">
-                  <img src="${escapeHtml(k.src)}" alt="">
+                <button type="button" class="gallery-thumb ${i === 0 ? "active" : ""} ${k.type === "video" ? "gallery-thumb--video" : ""}" data-gallery-index="${i}"
+                        aria-label="${i + 1}. ${k.type === "video" ? "videoyu oynat" : "fotoğrafı göster"}">
+                  ${k.type === "video"
+                    ? `<video src="${escapeHtml(k.src)}" muted playsinline preload="metadata" tabindex="-1"></video><span aria-hidden="true">▶</span>`
+                    : `<img src="${escapeHtml(k.src)}" alt="">`}
                 </button>`).join("")}
             </div>` : ""}
         </div>
@@ -153,9 +173,9 @@
                  <span>${product.rating.average} · ${product.rating.count} değerlendirme</span></a>`
             : `<a class="product-detail__rating product-detail__rating--empty" href="#reviews-section">${stars(0)}
                  <span>Henüz değerlendirilmemiş</span></a>`}
-          <p class="product-detail__price">${money(price)} <span class="price-tax">+ KDV</span>${onSale ? ` <s>${money(product.price)}</s> <span class="discount-badge">-%${off}</span>` : ""}</p>
+          <p class="product-detail__price">${money(price)}${onSale ? ` <s>${money(product.price)}</s> <span class="discount-badge">-%${off}</span>` : ""}</p>
           ${onSale ? `<p class="product-detail__save">${money(product.price - product.sale_price)} tasarruf edin</p>` : ""}
-          <p class="product-detail__tax">Fiyata KDV eklenir · Kargo alıcı ödemeli</p>
+          <p class="product-detail__tax">KDV dahil · Kargo alıcı ödemeli</p>
           ${olcekSecici}
           ${swatches ? `<div class="product-detail__colors"><span>Renkler</span><div class="swatches">${swatches}</div></div>` : ""}
           ${product.description ? `<p class="product-detail__desc">${escapeHtml(product.description)}</p>` : ""}

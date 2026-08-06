@@ -77,7 +77,7 @@ async function api(path, options = {}) {
   return response.json();
 }
 
-/* Görseli sunucudan geçirmek yerine doğrudan depoya yükler.
+/* Görseli/videoyu sunucudan geçirmek yerine doğrudan depoya yükler.
    Sunucusuz platformun istek gövdesi sınırı ~4.5 MB; telefonla çekilmiş bir ürün
    fotoğrafı bunu rahatlıkla aşar. Sunucudan imzalı bir adres alıp dosyayı oraya
    yüklüyor, forma yalnızca anahtarı koyuyoruz.
@@ -87,21 +87,27 @@ async function api(path, options = {}) {
 async function hoistImageUpload(formData) {
   const file = formData.get("image");
   if (!(file instanceof File) || !file.size) return;
+  const mediaType = file.type.startsWith("video/") ? "video" : "image";
 
   const signRes = await fetch("/api/uploads/sign", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ kind: "image", filename: file.name })
+    body: JSON.stringify({ kind: mediaType === "video" ? "media" : "image", filename: file.name })
   });
   if (signRes.status === 503) return;            // depolama kapalı → eski yol
   const signed = await signRes.json();
   if (!signRes.ok) throw new Error(signed.error || "Yükleme adresi alınamadı.");
 
-  const put = await fetch(signed.signedUrl, { method: "PUT", body: file });
-  if (!put.ok) throw new Error("Görsel yüklenemedi.");
+  const put = await fetch(signed.signedUrl, {
+    method: "PUT",
+    headers: file.type ? { "Content-Type": file.type } : undefined,
+    body: file
+  });
+  if (!put.ok) throw new Error(mediaType === "video" ? "Video yüklenemedi." : "Görsel yüklenemedi.");
 
   formData.delete("image");
   formData.set("image_key", signed.path);
+  if (mediaType === "video") formData.set("media_type", "video");
 }
 
 function showTab(name) {
@@ -216,6 +222,15 @@ function renderProducts() {
           ${product.rating?.count ? `<span class="badge">${product.rating.average} ★ (${product.rating.count} yorum)</span>` : ""}
           ${maliyetRozeti(product)}
           ${satilabilir ? "" : '<span class="badge orange">Ölçek/fiyat eksik</span>'}
+          ${product.shopier_sync_status === "synced"
+            ? `<span class="badge green">Shopier güncel</span>${product.shopier_product_url
+              ? ` <a class="badge blue" href="${escapeHtml(product.shopier_product_url)}" target="_blank" rel="noopener">Shopier'de aç</a>`
+              : ""}`
+            : product.shopier_sync_status === "failed"
+              ? `<span class="badge orange" title="${escapeHtml(product.shopier_sync_error || "Senkronizasyon hatası")}">Shopier hata</span>`
+              : product.shopier_sync_status === "not_configured"
+                ? '<span class="badge orange">Shopier anahtarı bekleniyor</span>'
+                : `<span class="badge">Shopier ${product.shopier_sync_status === "syncing" ? "gönderiliyor" : "bekliyor"}</span>`}
           <span class="badge">Eklendi: ${formatDateTime(product.created_at)}</span>
         </div>
         <div class="price-history" data-history-for="${product.id}" hidden></div>
@@ -227,6 +242,7 @@ function renderProducts() {
           <span>Aktif</span>
         </label>
         <button data-edit-product="${product.id}">Düzenle</button>
+        <button data-sync-shopier="${product.id}">${product.shopier_product_id ? "Shopier'i güncelle" : "Shopier'e gönder"}</button>
         <button data-history-product="${product.id}">Fiyat geçmişi</button>
         <button class="danger" data-delete-product="${product.id}">Sil</button>
       </div>
@@ -271,6 +287,14 @@ const quoteStatusLabels = {
   won: "Kazanıldı",
   lost: "Kaybedildi"
 };
+const quoteStatusClasses = {
+  new: "is-new",
+  contacted: "is-contacted",
+  quoted: "is-quoted",
+  won: "is-won",
+  lost: "is-lost"
+};
+const quoteFilters = { search: "", status: "" };
 
 function renderMaterials() {
   qs("#material-count").textContent = `${state.materials.length} malzeme`;
@@ -295,54 +319,133 @@ function renderMaterials() {
   `).join("") || "<p>Henüz malzeme yok.</p>";
 
   const form = qs("#pricing-form");
-  ["setup_fee", "size_fee_per_cm", "min_order_total", "shell_share", "color_change_fee", "tax_rate"].forEach((key) => {
+  ["setup_fee", "size_fee_per_cm", "min_order_total", "shell_share", "color_change_fee"].forEach((key) => {
     form.elements[key].value = state.pricing[key] ?? "";
   });
 }
 
 function renderQuotes() {
-  qs("#quote-count").textContent = `${state.quotes.length} teklif`;
-  qs("#quote-list").innerHTML = state.quotes.map((quote) => `
-    <article class="row">
-      <span class="brand-mark">3D</span>
-      <div>
-        <h3>${escapeHtml(quote.quote_number)} - ${escapeHtml(quote.customer_name)}</h3>
-        <p>${escapeHtml(quote.file_name) || "Dosya yok"} | ${quote.width ?? "?"} x ${quote.height ?? "?"} x ${quote.depth ?? "?"} mm | ${Number(quote.volume_cm3).toFixed(2)} cm³</p>
-        <div class="meta-line">
-          <span class="badge ${quote.status === "new" ? "orange" : "green"}">${quoteStatusLabels[quote.status] || quote.status}</span>
-          <span class="badge blue">${money(quote.total)}</span>
-          ${quote.painted ? '<span class="badge orange">Boyalı 3MF - orijinal dosyayla basın</span>' : ""}
-          ${(() => {
-            const colors = new Set((quote.parts || []).map((p) => p.color_name).filter(Boolean)).size;
-            return colors > 1 ? `<span class="badge orange">${colors} renk - filament değişimi</span>` : "";
-          })()}
-          <span class="badge">${escapeHtml(quote.material_name) || "-"}</span>
-          <span class="badge">%${quote.infill} dolgu</span>
-          <span class="badge">${quote.quantity} adet</span>
-          <span class="badge">${escapeHtml(quote.email || quote.phone) || "-"}</span>
+  const search = quoteFilters.search.trim().toLocaleLowerCase("tr-TR");
+  const quotes = state.quotes.filter((quote) => {
+    if (quoteFilters.status && quote.status !== quoteFilters.status) return false;
+    if (!search) return true;
+    const haystack = [quote.quote_number, quote.customer_name, quote.email, quote.phone, quote.file_name]
+      .filter(Boolean).join(" ").toLocaleLowerCase("tr-TR");
+    return haystack.includes(search);
+  });
+
+  qs("#quote-count").textContent = quotes.length === state.quotes.length
+    ? `${state.quotes.length} teklif`
+    : `${quotes.length} / ${state.quotes.length} teklif`;
+
+  const downloadUrl = (item) => {
+    if (item?.download_url) return item.download_url;
+    return String(item?.file_path || "").startsWith("/uploads/") ? item.file_path : "";
+  };
+  const measure = (value) => value == null || value === "" ? "—" : Number(value).toFixed(2);
+
+  qs("#quote-list").innerHTML = quotes.map((quote) => {
+    const parts = quote.parts || [];
+    const colorCount = new Set(parts.map((part) => part.color_name).filter(Boolean)).size;
+    const mainDownload = downloadUrl(quote);
+    const statusLabel = quoteStatusLabels[quote.status] || quote.status;
+    const statusClassName = quoteStatusClasses[quote.status] || "";
+    const contact = [quote.email, quote.phone].filter(Boolean).map(escapeHtml).join(" · ") || "İletişim bilgisi yok";
+    const dimensions = `${measure(quote.width)} × ${measure(quote.height)} × ${measure(quote.depth)} mm`;
+
+    return `
+      <article class="quote-card ${statusClassName}" data-quote-card="${quote.id}">
+        <header class="quote-card__header">
+          <span class="quote-card__icon" aria-hidden="true">3D</span>
+          <div class="quote-card__identity">
+            <div class="quote-card__eyebrow">
+              <span>${escapeHtml(quote.quote_number)}</span>
+              <span class="quote-status ${statusClassName}">${escapeHtml(statusLabel)}</span>
+            </div>
+            <h3>${escapeHtml(quote.customer_name) || "İsimsiz müşteri"}</h3>
+            <p>${contact}</p>
+          </div>
+          <div class="quote-card__amount">
+            <span>Teklif toplamı</span>
+            <strong>${money(quote.total)}</strong>
+            <small>${formatDateTime(quote.created_at)}</small>
+          </div>
+        </header>
+
+        <div class="quote-card__body">
+          <div class="quote-model">
+            <span class="quote-model__label">Yüklenen model</span>
+            <strong title="${escapeHtml(quote.file_name)}">${escapeHtml(quote.file_name) || "Dosya adı yok"}</strong>
+          </div>
+
+          <dl class="quote-metrics">
+            <div><dt>Ölçüler</dt><dd>${dimensions}</dd></div>
+            <div><dt>Hacim</dt><dd>${Number(quote.volume_cm3 || 0).toFixed(2)} cm³</dd></div>
+            <div><dt>Malzeme</dt><dd>${escapeHtml(quote.material_name) || "—"}</dd></div>
+            <div><dt>Dolgu</dt><dd>%${Number(quote.infill || 0)}</dd></div>
+            <div><dt>Adet</dt><dd>${Number(quote.quantity || 0)}</dd></div>
+          </dl>
+
+          ${(quote.painted || colorCount > 1) ? `
+            <div class="quote-alerts">
+              ${quote.painted ? '<span>Boyalı 3MF · orijinal dosyayla basın</span>' : ""}
+              ${colorCount > 1 ? `<span>${colorCount} renk · filament değişimi gerekli</span>` : ""}
+            </div>` : ""}
+
+          ${parts.length ? `
+            <details class="quote-parts">
+              <summary>
+                <span><strong>Model parçaları</strong><em>${parts.length}</em></span>
+                <small>${colorCount || 1} renk · toplam ${Number(quote.volume_cm3 || 0).toFixed(2)} cm³</small>
+                <b aria-hidden="true">⌄</b>
+              </summary>
+              <div class="quote-parts__grid">
+                ${parts.map((part) => {
+                  const partDownload = downloadUrl(part);
+                  return `
+                    <div class="quote-part">
+                      <span class="quote-part__color" style="background:${escapeHtml(part.color_hex) || "#ddd"}" aria-hidden="true"></span>
+                      <span class="quote-part__info">
+                        <strong>${escapeHtml(part.name) || `Parça ${part.part_index}`}</strong>
+                        <small>${escapeHtml(part.color_name) || "Renk yok"} · ${Number(part.volume_cm3 || 0).toFixed(2)} cm³</small>
+                      </span>
+                      ${partDownload
+                        ? `<a href="${escapeHtml(partDownload)}" download aria-label="${escapeHtml(part.name) || `Parça ${part.part_index}`} dosyasını indir">İndir</a>`
+                        : '<span class="quote-part__missing">Dosya yok</span>'}
+                    </div>`;
+                }).join("")}
+              </div>
+            </details>` : `
+            <div class="quote-single-color">
+              <span class="quote-part__color" style="background:${escapeHtml(quote.color_hex) || "#ddd"}" aria-hidden="true"></span>
+              <span>Tek parça · ${escapeHtml(quote.color_name) || "Renk seçilmemiş"}</span>
+            </div>`}
+
+          ${quote.note ? `<div class="quote-note"><strong>Müşteri notu</strong><p>${escapeHtml(quote.note)}</p></div>` : ""}
         </div>
-        <div class="meta-line">
-          ${(quote.parts || []).length
-            ? quote.parts.map((part) => `
-                <span class="badge">
-                  <span class="color-dot" style="background:${escapeHtml(part.color_hex) || "#ddd"}"></span>
-                  ${escapeHtml(part.name) || `Parça ${part.part_index}`}: ${escapeHtml(part.color_name) || "renk yok"} (${Number(part.volume_cm3).toFixed(2)} cm³)
-                  ${part.file_path ? `<a href="${escapeHtml(part.file_path)}" download>STL</a>` : ""}
-                </span>
-              `).join("")
-            : `<span class="badge">${escapeHtml(quote.color_name) || "Renk yok"}</span>`}
-        </div>
-        ${quote.note ? `<p>Not: ${escapeHtml(quote.note)}</p>` : ""}
-      </div>
-      <div class="row-actions">
-        ${quote.file_path ? `<a class="small-button" href="${escapeHtml(quote.file_path)}" download>STL indir</a>` : ""}
-        <select data-quote-status="${quote.id}">
-          ${Object.entries(quoteStatusLabels).map(([value, label]) => `<option value="${value}" ${value === quote.status ? "selected" : ""}>${label}</option>`).join("")}
-        </select>
-        <button class="danger" data-delete-quote="${quote.id}">Sil</button>
-      </div>
-    </article>
-  `).join("") || "<p>Henüz teklif yok.</p>";
+
+        <footer class="quote-card__actions">
+          <div>
+            ${mainDownload
+              ? `<a class="quote-download" href="${escapeHtml(mainDownload)}" download>${quote.painted ? "Orijinal 3MF'yi indir" : "Ana model dosyasını indir"}</a>`
+              : '<span class="quote-download quote-download--disabled">Ana dosya yok</span>'}
+          </div>
+          <div class="quote-workflow">
+            <label>
+              <span>Teklif durumu</span>
+              <select data-quote-status="${quote.id}" aria-label="${escapeHtml(quote.quote_number)} durumu">
+                ${Object.entries(quoteStatusLabels).map(([value, label]) => `<option value="${value}" ${value === quote.status ? "selected" : ""}>${label}</option>`).join("")}
+              </select>
+            </label>
+            <button class="quote-delete danger" type="button" data-delete-quote="${quote.id}">Teklifi sil</button>
+          </div>
+        </footer>
+      </article>`;
+  }).join("") || `
+    <div class="quote-empty">
+      <strong>${state.quotes.length ? "Filtreye uygun teklif bulunamadı." : "Henüz teklif yok."}</strong>
+      <p>${state.quotes.length ? "Arama kelimesini veya durum filtresini değiştirin." : "Yeni müşteri teklifleri burada görünecek."}</p>
+    </div>`;
 }
 
 function renderColors() {
@@ -412,7 +515,7 @@ function renderCategories() {
 }
 
 const SEO_PAGE_FIELDS = ["title", "description", "canonical", "og_title", "og_description", "og_image", "robots"];
-const SEO_SITE_FIELDS = ["site_name", "site_url", "description", "logo_path", "default_og_image", "phone", "email", "whatsapp", "contact_address", "working_hours", "social_links"];
+const SEO_SITE_FIELDS = ["site_name", "site_url", "description", "logo_path", "default_og_image", "phone", "email", "whatsapp", "social_links"];
 
 function fillSeoPageForm(slug) {
   const page = state.seo.pages.find((item) => item.slug === slug);
@@ -479,18 +582,19 @@ function renderOrders() {
         <div class="meta-line">
           <span class="badge ${statusClass[order.status] || ""}">${statusLabels[order.status] || order.status}</span>
           <span class="badge blue">${money(order.total)}</span>
-          <span class="badge">KDV %${order.tax_rate ?? 20}: ${money(order.tax_amount)}</span>
+          ${Number(order.tax_amount) > 0 ? `<span class="badge">KDV %${order.tax_rate}: ${money(order.tax_amount)}</span>` : ""}
           <span class="badge">Kargo: ${order.shipping_method === "free" ? "Ücretsiz" : order.shipping_method === "recipient_paid" ? "Alıcı ödemeli" : "-"}</span>
           <span class="badge">${paymentLabels[order.payment_status] || order.payment_status}</span>
           <span class="badge">${paymentMethodLabels[order.payment_method] || "Ödeme yöntemi belirtilmemiş"}</span>
           <span class="badge">${escapeHtml(order.tracking_code) || "Takip kodu yok"}</span>
         </div>
-        <div class="meta-line">
-          <span class="badge ${order.invoice_type === "corporate" ? "blue" : ""}">${order.invoice_type === "corporate" ? "Kurumsal fatura" : "Bireysel fatura"}</span>
-          ${order.invoice_type === "corporate"
-            ? `<span class="badge">${escapeHtml(order.company_name) || "-"}</span><span class="badge">VKN ${escapeHtml(order.tax_number) || "-"}</span><span class="badge">${escapeHtml(order.tax_office) || "-"}</span>`
-            : `<span class="badge">TC ${escapeHtml(order.tc_no) || "-"}</span>`}
-        </div>
+        ${order.invoice_type ? `
+          <div class="meta-line">
+            <span class="badge ${order.invoice_type === "corporate" ? "blue" : ""}">${order.invoice_type === "corporate" ? "Kurumsal fatura" : "Bireysel fatura"}</span>
+            ${order.invoice_type === "corporate"
+              ? `<span class="badge">${escapeHtml(order.company_name) || "-"}</span><span class="badge">VKN ${escapeHtml(order.tax_number) || "-"}</span><span class="badge">${escapeHtml(order.tax_office) || "-"}</span>`
+              : `<span class="badge">TC ${escapeHtml(order.tc_no) || "-"}</span>`}
+          </div>` : ""}
       </div>
       <div class="row-actions">
         <select data-order-status="${order.id}">
@@ -573,7 +677,7 @@ function renderSettings() {
   form.elements.show_stock.checked = Number(state.settings.show_stock) === 1;
   form.elements.track_stock.checked = Number(state.settings.track_stock) === 1;
   form.elements.min_cart_total.value = Number(state.settings.min_cart_total) || 0;
-  ["company_title", "legal_address", "tax_office", "tax_number", "mersis", "return_address"]
+  ["company_title", "legal_address"]
     .forEach((alan) => { form.elements[alan].value = state.settings[alan] || ""; });
 }
 
@@ -795,27 +899,32 @@ function renderGallery(product) {
     + urunRenkleri.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
 
   const renkAdi = (id) => urunRenkleri.find((c) => c.id === id)?.name || "";
-  const foto = product.images || [];
+  const medya = product.images || [];
 
-  qs("#product-gallery").innerHTML = foto.map((g, i) => `
+  qs("#product-gallery").innerHTML = medya.map((g, i) => {
+    const video = g.media_type === "video" || /\.(mp4|webm)(?:[?#]|$)/i.test(g.image_path || "");
+    return `
     <figure class="gallery-item">
-      <img src="${escapeHtml(g.image_path)}" alt="${escapeHtml(g.image_alt) || ""}">
+      ${video
+        ? `<video src="${escapeHtml(g.image_path)}" aria-label="${escapeHtml(g.image_alt) || "Ürün videosu"}" controls muted playsinline preload="metadata"></video>`
+        : `<img src="${escapeHtml(g.image_path)}" alt="${escapeHtml(g.image_alt) || ""}">`}
       <figcaption>
         <select data-gallery-color="${g.id}">
           <option value="">Renk yok</option>
           ${urunRenkleri.map((c) => `<option value="${c.id}" ${c.id === g.color_id ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}
         </select>
         ${g.color_id && !renkAdi(g.color_id) ? '<span class="badge orange">Renk silinmiş</span>' : ""}
-        <input type="text" data-gallery-alt="${g.id}" value="${escapeHtml(g.image_alt) || ""}" placeholder="Alt metin (SEO)">
+        <input type="text" data-gallery-alt="${g.id}" value="${escapeHtml(g.image_alt) || ""}" placeholder="Medya açıklaması">
         <div class="gallery-item__actions">
           <button type="button" class="small-button" data-gallery-up="${g.id}" ${i === 0 ? "disabled" : ""}>↑</button>
-          <button type="button" class="small-button" data-gallery-down="${g.id}" ${i === foto.length - 1 ? "disabled" : ""}>↓</button>
-          <button type="button" class="small-button" data-gallery-cover="${g.id}">Kapak yap</button>
+          <button type="button" class="small-button" data-gallery-down="${g.id}" ${i === medya.length - 1 ? "disabled" : ""}>↓</button>
+          ${video ? '<span class="badge orange">Video</span>' : `<button type="button" class="small-button" data-gallery-cover="${g.id}">Kapak yap</button>`}
           <button type="button" class="small-button danger" data-gallery-delete="${g.id}">Sil</button>
         </div>
       </figcaption>
     </figure>
-  `).join("") || "<p class='field-note'>Henüz galeri fotoğrafı yok.</p>";
+  `;
+  }).join("") || "<p class='field-note'>Henüz galeri medyası yok.</p>";
 }
 
 // Düzenlenen ürünü state'ten tazeleyip galeriyi yeniden çizer.
@@ -858,6 +967,7 @@ function costHesapla(g) {
   const netMaliyet = malzeme + elektrik + iscilikAmortisman;
 
   const karliFiyat = netMaliyet * (1 + g.karMarji / 100);
+  const karliFiyatKdvDahil = karliFiyat * (1 + g.kdv / 100);
   const kargoDahil = karliFiyat + g.kargo;
   const kdvTutari = kargoDahil * (g.kdv / 100);
   const kdvDahil = kargoDahil + kdvTutari;
@@ -876,10 +986,10 @@ function costHesapla(g) {
      iki farklı tanım aynı ekranda olmamalı. */
   const belirlenenKar = g.belirlenen - netMaliyet;
   const belirlenenMarj = g.belirlenen > 0 ? (belirlenenKar / g.belirlenen) * 100 : null;
-  // Vitrindeki fiyatlar KDV hariç; müşterinin ödeyeceği tutar bu.
-  const belirlenenKdvli = g.belirlenen * (1 + g.kdv / 100);
+  // Belirlenen fiyat vitrindeki nihai fiyattır; kasada ayrıca KDV eklenmez.
+  const belirlenenKdvli = g.belirlenen;
 
-  return { malzeme, elektrik, iscilikAmortisman, netMaliyet, karliFiyat, kargoDahil,
+  return { malzeme, elektrik, iscilikAmortisman, netMaliyet, karliFiyat, karliFiyatKdvDahil, kargoDahil,
     kdvTutari, kdvDahil, komisyonFiyati, komisyonKdv, komisyonlaFiyat, fark,
     belirlenenKar, belirlenenMarj, belirlenenKdvli };
 }
@@ -908,8 +1018,8 @@ function renderCost() {
     satir("Toplam elektrik mâliyeti", h.elektrik),
     satir("Toplam işçilik ve amortisman", h.iscilikAmortisman),
     satir("Toplam net mâliyet", h.netMaliyet, "cost-cell--strong"),
-    satir(`Kârlı satış fiyatı${belirlenenSecili ? "" : ` ${etiket}`}`,
-      h.karliFiyat, belirlenenSecili ? "" : "cost-cell--price"),
+    satir(`Kârlı nihai satış fiyatı${belirlenenSecili ? "" : ` ${etiket}`}`,
+      h.karliFiyatKdvDahil, belirlenenSecili ? "" : "cost-cell--price"),
     satir("Kargo dâhil", h.kargoDahil),
     satir("KDV tutarı", h.kdvTutari),
     satir("KDV dâhil", h.kdvDahil),
@@ -924,7 +1034,7 @@ function renderCost() {
       satir(`Belirlenen satış fiyatı ${etiket}`, g.belirlenen, "cost-cell--price"),
       satir(`Belirlenen fiyatta kâr <small>%${h.belirlenenMarj.toFixed(1)} marj</small>`,
         h.belirlenenKar, h.belirlenenKar < 0 ? "cost-cell--loss" : "cost-cell--gain"),
-      satir(`Müşteri öder <small>KDV %${g.kdv} dâhil</small>`, h.belirlenenKdvli)
+      satir("Müşteri ürün için öder", h.belirlenenKdvli)
     ] : [])
   ].join("");
 
@@ -1141,13 +1251,13 @@ qs("#cost-assign").addEventListener("click", async () => {
      İkisi de boşsa (marj da 0) fiyat yazılmaz: ölçek yalnızca iç maliyet
      kaydı olur ve mağazada görünmez.
 
-     KDV ve kargo bilerek dışarıda: vitrindeki bütün fiyatlar KDV hariç ve
-     kargo alıcı ödemeli ("Fiyata KDV eklenir · Kargo alıcı ödemeli"). Yani
-     buraya 62 yazarsan müşteri kasada 74.40 öder. */
+     Belirlenen fiyat doluysa vitrindeki nihai fiyat odur. Maliyetten hesaplanan
+     fiyat kullanılırsa hesaplanan KDV satış fiyatına burada dahil edilir; kasada
+     yeniden eklenmez. Kargo alıcı ödemeliyse ürün fiyatının dışında kalır. */
   const belirlenen = yuvarla(g.belirlenen);
   const fiyat = belirlenen > 0
     ? belirlenen
-    : (g.karMarji > 0 ? yuvarla(h.karliFiyat) : null);
+    : (g.karMarji > 0 ? yuvarla(h.karliFiyatKdvDahil) : null);
   const olcek = g.olcek || "Standart";
   const idler = [...costSecili];
 
@@ -1162,11 +1272,10 @@ qs("#cost-assign").addEventListener("click", async () => {
   renderCostProducts();
 
   const marj = fiyat && fiyat > 0 ? ((fiyat - maliyet) / fiyat) * 100 : null;
-  const kdvli = fiyat === null ? null : fiyat * (1 + g.kdv / 100);
   const fiyatCumlesi = fiyat === null
     ? " Belirlenen fiyat ve hedef kâr marjı boş olduğu için satış fiyatı yazılmadı — ölçek yalnızca maliyet kaydı."
-    : ` Satış fiyatı ${money(fiyat)} (${belirlenen > 0 ? "belirlenen fiyat" : "maliyetten hesaplandı"}, KDV hariç)`
-      + `, kâr ${money(fiyat - maliyet)} · %${marj.toFixed(1)} marj. Müşteri KDV dâhil ${money(kdvli)} öder.`;
+    : ` Satış fiyatı ${money(fiyat)} (${belirlenen > 0 ? "belirlenen fiyat" : "maliyetten hesaplandı"}, nihai müşteri fiyatı)`
+      + `, kâr ${money(fiyat - maliyet)} · %${marj.toFixed(1)} marj. Müşteri ürün için ${money(fiyat)} öder.`;
 
   if (idler.length === 1) {
     const urun = state.products.find((p) => p.id === idler[0]);
@@ -1510,7 +1619,7 @@ qs("#gallery-upload-btn").addEventListener("click", async () => {
   const secici = qs("#gallery-files");
   const dosyalar = [...secici.files];
   if (!galeriUrunId) return alert("Önce ürünü kaydedin.");
-  if (!dosyalar.length) return alert("Yüklenecek fotoğraf seçin.");
+  if (!dosyalar.length) return alert("Yüklenecek fotoğraf veya video seçin.");
 
   const renkId = qs("#gallery-color").value;
   const durum = qs("#gallery-status");
@@ -1534,8 +1643,8 @@ qs("#gallery-upload-btn").addEventListener("click", async () => {
 
   secici.value = "";
   durum.textContent = hatalar.length
-    ? `${yuklenen} fotoğraf yüklendi, ${hatalar.length} tanesi başarısız: ${hatalar.join(" | ")}`
-    : `${yuklenen} fotoğraf yüklendi.`;
+    ? `${yuklenen} medya öğesi yüklendi, ${hatalar.length} tanesi başarısız: ${hatalar.join(" | ")}`
+    : `${yuklenen} medya öğesi yüklendi.`;
   await galeriyiTazele();
 });
 
@@ -1547,7 +1656,7 @@ qs("#product-gallery").addEventListener("click", async (event) => {
   const asagi = t.dataset.galleryDown;
 
   if (sil) {
-    if (!confirm("Bu fotoğraf silinsin mi?")) return;
+    if (!confirm("Bu galeri öğesi silinsin mi?")) return;
     await api(`/api/products/${galeriUrunId}/images/${sil}`, { method: "DELETE" });
     await galeriyiTazele();
   } else if (kapak) {
@@ -1633,7 +1742,7 @@ qs("#settings-form").addEventListener("submit", async (event) => {
     track_stock: form.elements.track_stock.checked ? 1 : 0,
     min_cart_total: form.elements.min_cart_total.value.trim() || 0
   };
-  ["company_title", "legal_address", "tax_office", "tax_number", "mersis", "return_address"]
+  ["company_title", "legal_address"]
     .forEach((alan) => { govde[alan] = form.elements[alan].value; });
 
   await api("/api/settings", {
@@ -1877,6 +1986,20 @@ qs("#reset-product").addEventListener("click", () => {
 });
 
 qs("#product-list").addEventListener("click", async (event) => {
+  const shopierId = event.target.dataset.syncShopier;
+  if (shopierId) {
+    const button = event.target;
+    button.disabled = true;
+    button.textContent = "Gönderiliyor…";
+    const updated = await api(`/api/products/${shopierId}/shopier-sync`, { method: "POST" });
+    const index = state.products.findIndex((item) => item.id === Number(shopierId));
+    if (index >= 0) state.products[index] = updated;
+    renderProducts();
+    if (updated.shopier_sync_status === "failed" || updated.shopier_sync_status === "not_configured") {
+      alert(updated.shopier_sync_error || "Shopier senkronizasyonu tamamlanamadı.");
+    }
+    return;
+  }
   const editId = event.target.dataset.editProduct;
   const deleteId = event.target.dataset.deleteProduct;
   if (editId) {
@@ -2007,20 +2130,37 @@ qs("#pricing-form").addEventListener("submit", async (event) => {
   alert("Fiyat katsayıları kaydedildi.");
 });
 
+qs("#quote-search")?.addEventListener("input", (event) => {
+  quoteFilters.search = event.target.value;
+  renderQuotes();
+});
+
+qs("#quote-status-filter")?.addEventListener("change", (event) => {
+  quoteFilters.status = event.target.value;
+  renderQuotes();
+});
+
 qs("#quote-list").addEventListener("change", async (event) => {
   const id = event.target.dataset.quoteStatus;
   if (!id) return;
-  await api(`/api/quotes/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status: event.target.value })
-  });
-  await refresh();
+  const select = event.target;
+  select.disabled = true;
+  try {
+    await api(`/api/quotes/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: select.value })
+    });
+    await refresh();
+  } finally {
+    select.disabled = false;
+  }
 });
 
 qs("#quote-list").addEventListener("click", async (event) => {
   const id = event.target.dataset.deleteQuote;
-  if (!id || !confirm("Bu teklif silinsin mi?")) return;
+  const quote = state.quotes.find((item) => item.id === Number(id));
+  if (!id || !confirm(`${quote?.quote_number || "Bu teklif"} kalıcı olarak silinsin mi?`)) return;
   await api(`/api/quotes/${id}`, { method: "DELETE" });
   await refresh();
 });
