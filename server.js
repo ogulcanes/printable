@@ -119,7 +119,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "19";
+const SCHEMA_VERSION = "21";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -896,6 +896,13 @@ const extraSeoPages = [
     og_description: "Verilerinizi nasıl işlediğimizi sade bir dille açıkladık."
   },
   {
+    slug: "tasarim", label: "Özel tasarım sayfası",
+    title: "Özel Parça Tasarımı ve Teknik Çizim | Printable",
+    description: "Dosyanız yoksa parçanızı biz çizeriz: yedek parça, adaptör, kasnak ve özel aparatların 3D tasarımını yapıp basıyoruz.",
+    og_title: "Özel Parça Tasarımı ve Teknik Çizim | Printable",
+    og_description: "Ölçüyü siz verin, çizimi ve baskısını biz yapalım."
+  },
+  {
     slug: "anahtarlik-katalogu", label: "Anahtarlık toptan kataloğu",
     title: "Toptan Anahtarlık Kataloğu | Printable",
     description: "3D baskılı anahtarlık koleksiyonunu inceleyin, istediğiniz modelleri seçip Excel listesi olarak indirin.",
@@ -904,6 +911,16 @@ const extraSeoPages = [
   }
 ];
 for (const page of extraSeoPages) await addSeoPage.run(page);
+
+/* Paylaşım görseli. ON CONFLICT DO NOTHING satırı zaten varsa hiçbir alanı
+   güncellemez, bu yüzden og_image ayrı geliyor. SADECE boşsa doldurur —
+   adminden girilen bir görselin üstüne asla yazmaz. Varsayılan site görseli
+   bu sayfada yanlış: reklam ve WhatsApp paylaşımında ejderha tepsi fotoğrafı
+   yerine çizim işlerini gösteren kart çıkmalı. */
+await db.prepare(`
+  UPDATE seo_pages SET og_image = @og_image
+   WHERE slug = 'tasarim' AND COALESCE(NULLIF(TRIM(og_image), ''), '') = ''
+`).run({ og_image: "/assets/tasarim/tasarim-og-1200x630.jpg" });
 
 const SITE_CONTACT = {
   phone: "0543 687 4208",
@@ -1285,6 +1302,25 @@ async function seoHead(req, slug) {
       }
     ]
   };
+  /* /tasarim reklamda öne çıkarılacak bir HİZMET sayfası, ürün listesi değil.
+     Organization + WebSite bunu anlatmıyor; arama motoruna ne sattığımızı
+     söyleyen düğüm bu. Yalnızca o slug'a eklenir. */
+  if (slug === "tasarim") {
+    jsonLd["@graph"].push({
+      "@type": "Service",
+      name: "Özel parça tasarımı ve 3D baskı",
+      serviceType: "3D modelleme ve 3D baskı hizmeti",
+      description: "Ölçü, fotoğraf veya krokiden yola çıkarak yedek parça, adaptör, kasnak ve özel aparatların 3D tasarımını yapıp üretiyoruz.",
+      ...(canonical ? { url: canonical } : {}),
+      provider: { "@type": "Organization", name: site.site_name || "Printable", url: siteUrl },
+      areaServed: { "@type": "Country", name: "Türkiye" },
+      availableChannel: {
+        "@type": "ServiceChannel",
+        serviceUrl: absoluteUrl(req, "/iletisim", site.site_url)
+      }
+    });
+  }
+
   // "<" is escaped so a value can never break out of the script element.
   tags.push(`<script type="application/ld+json">${JSON.stringify(jsonLd).replace(/</g, "\\u003c")}</script>`);
 
@@ -1500,7 +1536,7 @@ async function renderFooter() {
       </div>
       <div class="container footer__grid">
         <div><h3>Kategoriler</h3><a href="/urunler">Figürler</a><a href="/urunler">Anahtarlıklar</a><a href="/urunler">Fidget & Stres</a><a href="/urunler">Düdükler</a></div>
-        <div><h3>Kurumsal</h3><a href="/katalog">Katalog</a><a href="/hakkinda">Hakkımızda</a><a href="/iletisim">İletişim</a><a href="/stl-teklif">Özel 3D baskı</a><a href="/urunler">Tüm ürünler</a></div>
+        <div><h3>Kurumsal</h3><a href="/katalog">Katalog</a><a href="/hakkinda">Hakkımızda</a><a href="/iletisim">İletişim</a><a href="/stl-teklif">Özel 3D baskı</a><a href="/tasarim">Özel tasarım</a><a href="/urunler">Tüm ürünler</a></div>
         <div><h3>Müşteri Desteği</h3><a href="/iletisim">Bize ulaşın</a><a href="/iade">İade & Değişim</a><a href="/sss">Kargo</a><a href="/sss">S.S.S.</a></div>
         <div><h3>Yasal</h3><a href="/mesafeli-satis">Mesafeli Satış Sözleşmesi</a><a href="/iade">İade ve Cayma Hakkı</a><a href="/gizlilik">Gizlilik ve KVKK</a></div>
         <div class="footer-logo printable-wordmark">
@@ -1604,6 +1640,7 @@ app.get("/landing", async (req, res) => await sendPage(req, res, "landing.html",
 app.get("/katlac-spinball", async (req, res) => res.redirect(301, "/landing"));
 app.get("/urunler", async (req, res) => await sendPage(req, res, "urunler.html", "urunler"));
 app.get("/stl-teklif", async (req, res) => await sendPage(req, res, "stl-teklif.html", "stl-teklif"));
+app.get("/tasarim", async (req, res) => await sendPage(req, res, "tasarim.html", "tasarim"));
 app.get("/hakkinda", async (req, res) => await sendPage(req, res, "hakkinda.html", "hakkinda"));
 app.get("/iletisim", async (req, res) => await sendPage(req, res, "iletisim.html", "iletisim"));
 app.get("/hesap", async (req, res) => await sendPage(req, res, "hesap.html", "hesap"));
@@ -1732,6 +1769,7 @@ app.get("/sitemap.xml", async (req, res) => {
     { loc: "/landing", priority: "0.9" },
     { loc: "/urunler", priority: "0.9" },
     { loc: "/stl-teklif", priority: "0.8" },
+    { loc: "/tasarim", priority: "0.7" },
     { loc: "/hakkinda", priority: "0.5" },
     { loc: "/iletisim", priority: "0.5" },
     { loc: "/katalog", priority: "0.8" },

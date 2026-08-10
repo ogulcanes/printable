@@ -7805,3 +7805,67 @@ body.catalog-view-table .catalog-table-view { display: block; overflow-x: auto; 
 @media (prefers-reduced-motion: reduce) {
   .keychain-card, .keychain-export-hint { transition: none; }
 }
+
+/* ---- Custom part design showcase (/tasarim + home teaser) ---- */
+.design-section { padding: 10px 0 44px; }
+.design-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 20px;
+}
+.design-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  overflow: hidden;
+  transition: transform .25s ease, box-shadow .25s ease;
+}
+.design-card:hover { transform: translateY(-3px); box-shadow: 0 18px 34px rgba(23,23,34,.10); }
+.design-card__media { background: var(--soft); }
+/* The renders are CAD screenshots that already carry their own grey backdrop,
+   so a fixed 4/3 box keeps the cards the same height with almost no crop. */
+.design-card__media img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+.design-card__body { padding: 16px 18px 20px; }
+.design-card__tag {
+  display: inline-block;
+  margin-bottom: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255,101,66,.10);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+.design-card h3 { margin: 0 0 6px; font-size: 18px; }
+.design-card p { margin: 0; color: var(--muted); font-size: 14.5px; line-height: 1.6; }
+
+/* Numbered process list on /tasarim. `.page-prose ul` does not reach an <ol>. */
+.design-steps { margin: 0 0 18px; padding-left: 20px; line-height: 1.7; }
+.design-steps li { margin-bottom: 10px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .design-card { transition: none; }
+  .design-card:hover { transform: none; }
+}
+
+/* Escape hatch on the upload step for visitors who arrive without a file. */
+.stl-design-note {
+  max-width: 460px;
+  margin: 14px 0 0;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--soft);
+  color: #6b6660;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.stl-design-note a { color: var(--accent); font-weight: 700; }
