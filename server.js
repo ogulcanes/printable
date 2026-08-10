@@ -797,11 +797,11 @@ if (!existingSeoPages) {
     {
       slug: "home",
       label: "Ana sayfa",
-      title: "Printable | 3D Baskı Figür, Oyuncak ve Anahtarlık",
-      description: "Hazır 3D baskı figür, oyuncak, anahtarlık ve fidget ürünleri. STL dosyanızı yükleyin, 3D baskı için anında fiyat alın.",
+      title: "3D Baskı Ürünleri ve Özel Parça Tasarımı | Printable",
+      description: "Hazır 3D baskı figür, oyuncak ve anahtarlık ürünleri. Modeliniz yoksa parçanızı biz çizeriz; STL dosyanızı yükleyip anında fiyat alın.",
       canonical: "",
-      og_title: "Printable | 3D Baskı Ürünleri ve STL Baskı Hizmeti",
-      og_description: "Eklemli figürler, sevimli anahtarlıklar, fidget ve düdükler. Kendi STL dosyanızı da bastırın.",
+      og_title: "3D Baskı Ürünleri ve Özel Parça Tasarımı | Printable",
+      og_description: "Hazır ürünler, ölçüye göre özel parça çizimi ve STL baskı — hepsi tek atölyede.",
       og_image: "",
       robots: "index,follow"
     },
@@ -1351,6 +1351,7 @@ async function renderHeader(active) {
         <nav class="main-links" id="main-links" aria-label="Ana menü">
           ${await link("/", "Ana Sayfa", "home")}
           ${await link("/urunler", "Ürünler", "urunler")}
+          ${await link("/tasarim", "Özel Tasarım", "tasarim")}
           ${await link("/hakkinda", "Hakkımızda", "hakkinda")}
           ${await link("/iletisim", "İletişim", "iletisim")}
         </nav>
