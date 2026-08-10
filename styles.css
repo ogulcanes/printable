@@ -7879,3 +7879,56 @@ body.catalog-view-table .catalog-table-view { display: block; overflow-x: auto; 
 }
 .promise-bar__grid a:hover,
 .promise-bar__grid a:focus-visible { color: var(--accent); text-decoration: underline; }
+
+/* ---- Header / footer CTA ----
+   The only filled button in the site chrome. Every selector here is deliberately
+   over-qualified: `.header-actions a` (0,2,0) paints header links grey and
+   `.footer a` (0,1,1) forces footer links to `display: block` + muted 13px, so a
+   bare `.header-cta` / `.footer-cta` (0,1,0) lost both colour and layout — the
+   button rendered as grey text on an orange bar, stretched to the column. */
+.header-actions .header-cta,
+.footer .footer-cta,
+.main-links .nav-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: box-shadow .2s ease, transform .2s ease;
+}
+.header-actions .header-cta:hover,
+.footer .footer-cta:hover,
+.main-links .nav-cta:hover {
+  color: #fff;
+  box-shadow: 0 12px 24px rgba(255,101,66,.28);
+  transform: translateY(-1px);
+}
+
+.header-actions .header-cta { margin-left: 6px; padding: 10px 18px; font-size: 14px; }
+.footer .footer-cta { margin: 14px 0 16px; padding: 12px 22px; font-size: 15px; }
+
+/* Masaüstünde menü zaten açık; bu kopya yalnızca açılır menü için. */
+.main-links .nav-cta { display: none; }
+
+@media (max-width: 1050px) {
+  /* Hamburgerin yanında yer yok: buton açılır menünün içine geçer. */
+  .header-actions .header-cta { display: none; }
+  .main-links .nav-cta {
+    display: inline-flex;
+    margin-top: 6px;
+    padding: 13px 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .header-actions .header-cta,
+  .footer .footer-cta,
+  .main-links .nav-cta { transition: none; }
+  .header-actions .header-cta:hover,
+  .footer .footer-cta:hover,
+  .main-links .nav-cta:hover { transform: none; }
+}

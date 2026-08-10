@@ -1354,6 +1354,9 @@ async function renderHeader(active) {
           ${await link("/tasarim", "Özel Tasarım", "tasarim")}
           ${await link("/hakkinda", "Hakkımızda", "hakkinda")}
           ${await link("/iletisim", "İletişim", "iletisim")}
+          <!-- Aynı CTA'nın mobil kopyası: 1050px altında header-actions'ta
+               hamburgere yer kalmıyor, buton açılır menünün içine geçiyor. -->
+          <a class="nav-cta" href="/stl-teklif">Ücretsiz Teklif Al</a>
         </nav>
         <nav class="header-actions" aria-label="Mağaza işlemleri">
           <button class="search-toggle icon-button" type="button" aria-label="Arama aç" aria-expanded="false">
@@ -1367,6 +1370,7 @@ async function renderHeader(active) {
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
             <span class="account-link__label">Hesabım</span>
           </a>
+          <a class="header-cta" href="/stl-teklif">Ücretsiz Teklif Al</a>
         </nav>
       </div>
       <form class="search search-popover" role="search">
@@ -1546,6 +1550,7 @@ async function renderFooter() {
           </a>
           <p>Hazır 3D modellerden özenle üretilen baskı ürünleri.</p>
           <p>Türkiye</p>
+          <a class="footer-cta" href="/stl-teklif">Ücretsiz Teklif Al</a>
           <div class="footer-contact">${contactRow}</div>
           ${socialRow}
         </div>
