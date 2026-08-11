@@ -121,7 +121,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "22";
+const SCHEMA_VERSION = "23";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -638,6 +638,13 @@ for (const [table, column, type] of [
   ["orders", "payment_failure_code", "TEXT"],
   ["orders", "payment_failure_message", "TEXT"],
   ["orders", "payment_collected_amount", "INTEGER"],
+  /* Ölçüm kimlikleri. Satın alma olayı ödeme onaylandığında SUNUCUDAN
+     gönderiliyor; o an istek PayTR'den geliyor, müşterinin tarayıcısından
+     değil, dolayısıyla çerezler yok. Bu yüzden client_id sipariş
+     oluşturulurken yakalanıp burada saklanıyor — onsuz satış GA4'te
+     kimsesiz bir olay olur ve reklam tıklamasıyla ilişkilendirilemez. */
+  ["orders", "ga_client_id", "TEXT"],
+  ["orders", "ga_session_id", "TEXT"],
   ["orders", "payment_test_mode", "INTEGER"],
   ["orders", "inventory_deducted", "INTEGER NOT NULL DEFAULT 0"],
   ["orders", "paid_at", "TIMESTAMPTZ"],
@@ -1237,6 +1244,79 @@ const googleAnalyticsTag = /^G-[A-Z0-9]+$/.test(GA_MEASUREMENT_ID)
   ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}"></script>
     <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag("js",new Date());gtag("config","${GA_MEASUREMENT_ID}");</script>`
   : "";
+
+/* ---------- Sunucu taraflı satın alma ölçümü (GA4 Measurement Protocol) ----------
+ *
+ * Satın alma olayı eskiden yalnızca tarayıcıdan gidiyordu: müşteri ödeme sonrası
+ * "ödemeniz onaylandı" ekranına döndüğünde. Tarayıcıyı erken kapatan müşterinin
+ * satışı GA4'e hiç düşmüyordu — para hesaba geçiyor, ölçüm kaçıyordu.
+ *
+ * Artık olayı PayTR ödemeyi onayladığı anda sunucu gönderiyor; müşteri ne
+ * yaparsa yapsın kayıt oluşuyor.
+ *
+ * api_secret GİZLİDİR, istemciye asla gönderilmez (GA4 → Veri akışları →
+ * Measurement Protocol API gizli anahtarları'ndan üretilir). Tanımlı değilse
+ * fonksiyon sessizce çıkar; ölçüm eksikliği sipariş akışını bozmamalı. */
+const GA_API_SECRET = process.env.GA_API_SECRET || "";
+
+/* GA4'ün `_ga` çerezi "GA1.1.<client_id>" biçimindedir; client_id iki parçadır
+   (rastgele sayı + ilk ziyaret zaman damgası). Oturum kimliği ise mülke özel
+   `_ga_<ölçüm kimliği>` çerezinde, "GS2.1.s<session_id>$..." içinde durur. */
+function gaKimlikleri(req) {
+  const cookies = parseCookies(req);
+  const ga = cookies._ga || "";
+  const parcalar = ga.split(".");
+  const clientId = parcalar.length >= 4 ? `${parcalar[2]}.${parcalar[3]}` : null;
+
+  const oturumCerezi = Object.entries(cookies).find(([ad]) => ad.startsWith("_ga_"));
+  const eslesme = oturumCerezi ? String(oturumCerezi[1]).match(/(?:^|\.)s?(\d{9,})/) : null;
+  return { clientId, sessionId: eslesme ? eslesme[1] : null };
+}
+
+async function gaSatinAlmaBildir(orderId) {
+  if (!GA_API_SECRET || !/^G-[A-Z0-9]+$/.test(GA_MEASUREMENT_ID)) return;
+
+  const order = await db.prepare(`
+    SELECT order_number, total, ga_client_id, ga_session_id FROM orders WHERE id = ?
+  `).get(orderId);
+  /* client_id yoksa göndermiyoruz. Rastgele bir kimlikle göndermek satışı
+     GA4'te kimsesiz bir kullanıcıya yazar: ciro görünür ama hangi reklamın
+     getirdiği kaybolur — ölçümün asıl amacı da buydu. */
+  if (!order?.ga_client_id) return;
+
+  const items = (await db.prepare(`
+    SELECT product_id, product_name, quantity, unit_price FROM order_items WHERE order_id = ?
+  `).all(orderId)).map((i) => ({
+    item_id: String(i.product_id ?? ""),
+    item_name: i.product_name,
+    price: Number(i.unit_price) || 0,
+    quantity: Number(i.quantity) || 1
+  }));
+
+  const govde = {
+    client_id: order.ga_client_id,
+    events: [{
+      name: "purchase",
+      params: {
+        /* Aynı transaction_id ile gelen satın almaları GA4 tekilleştiriyor;
+           tarayıcı da aynı olayı göndermiş olsa iki kez sayılmaz. */
+        transaction_id: order.order_number,
+        currency: "TRY",
+        value: Number(order.total) || 0,
+        items,
+        ...(order.ga_session_id ? { session_id: order.ga_session_id } : {}),
+        engagement_time_msec: 1
+      }
+    }]
+  };
+
+  const yanit = await fetch(
+    `https://www.google-analytics.com/mp/collect?measurement_id=${encodeURIComponent(GA_MEASUREMENT_ID)}&api_secret=${encodeURIComponent(GA_API_SECRET)}`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(govde) }
+  );
+  // MP başarıda 204 döner ve gövde vermez; hata ayrıntısı yalnızca debug ucunda.
+  if (!yanit.ok) throw new Error(`GA4 Measurement Protocol ${yanit.status}`);
+}
 
 // Absolute URLs — Open Graph and canonical are ignored by crawlers when relative.
 function absoluteUrl(req, value, siteUrl) {
@@ -4955,14 +5035,21 @@ app.post("/api/checkout", async (req, res) => {
       INSERT INTO orders (order_number, customer_id, status, payment_status, shipping_address, subtotal, discount, total, notes,
         invoice_type, tc_no, tax_office, tax_number, company_name, billing_address, payment_method,
         payment_provider, payment_reference, inventory_deducted,
-        tax_rate, tax_amount, shipping_method, campaign_summary)
+        tax_rate, tax_amount, shipping_method, campaign_summary,
+        ga_client_id, ga_session_id)
       VALUES (@order_number, @customer_id, 'new', 'pending', @shipping_address, @subtotal, @discount, @total, @notes,
         @invoice_type, @tc_no, @tax_office, @tax_number, @company_name, @billing_address, @payment_method,
         'paytr', @payment_reference, @inventory_deducted,
-        @tax_rate, @tax_amount, @shipping_method, @campaign_summary)
+        @tax_rate, @tax_amount, @shipping_method, @campaign_summary,
+        @ga_client_id, @ga_session_id)
     `).run({
       order_number: generatedNumber,
       payment_reference: paymentReference,
+      /* Ölçüm kimlikleri BURADA yakalanmalı: bu istek müşterinin tarayıcısından
+         geliyor, çerezler burada. Ödeme onayı PayTR'den sunucuya geliyor ve
+         orada çerez yok. */
+      ga_client_id: gaKimlikleri(req).clientId,
+      ga_session_id: gaKimlikleri(req).sessionId,
       inventory_deducted: stokTakibi ? 1 : 0,
       customer_id: cust.lastInsertRowid,
       shipping_address: shippingAddress,
@@ -5160,6 +5247,11 @@ app.post("/api/paytr/callback", async (req, res) => {
   // Bildirimler ödeme onayından sonra gider; e-posta arızası ödeme kaydını bozmaz.
   if (paidOrderId) await notifyPaidOrder(paidOrderId).catch((error) => {
     console.error(`Ödenen sipariş bildirimi gönderilemedi (${reference}):`, error.message);
+  });
+  /* Ölçüm de aynı mantıkla: PayTR'ye "OK" dönmeyi hiçbir koşulda engellemez.
+     Burada hata fırlatırsak PayTR bildirimi başarısız sayıp tekrar dener. */
+  if (paidOrderId) await gaSatinAlmaBildir(paidOrderId).catch((error) => {
+    console.error(`GA4 satın alma olayı gönderilemedi (${reference}):`, error.message);
   });
   return res.type("text/plain").send("OK");
 });

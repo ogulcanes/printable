@@ -41,7 +41,14 @@
     /* Sepet AZ SONRA boşaltılıyor; satırları ölçüme önce geçir yoksa dönüşüm
        ürünsüz kaydedilir. Tutar sunucudan geliyor (kargo, kupon ve kampanya
        uygulanmış hâli) — sepetten hesaplasak reklam raporundaki ciro yanlış
-       olurdu. */
+       olurdu.
+
+       Aynı satın alma sunucudan da bildiriliyor (server.js: gaSatinAlmaBildir).
+       Bilerek: sunucu tarafı müşteri sayfaya dönmese bile kaydeder, buradaki
+       ise ölçüm anahtarı tanımlı değilken tek güvence. İkisi de AYNI
+       transaction_id'yi (sipariş numarası) gönderdiği için GA4 tekilleştirir.
+       Sipariş sayısıyla GA4'teki işlem sayısı ilk günlerde karşılaştırılmalı —
+       tutmuyorsa bu iki yoldan biri kapatılmalı. */
     const satirlar = cart.map(olayUrunu);
     olay("purchase", {
       transaction_id: data.order_number,
