@@ -137,7 +137,7 @@
         </div>
         <div class="carousel-shell">
           <button class="carousel-button" type="button" data-carousel="prev" aria-label="Önceki ürün">‹</button>
-          <div class="products products--carousel" id="store-products"></div>
+          <div class="products products--carousel" id="store-products"><!--vitrin-yeni--></div>
           <button class="carousel-button" type="button" data-carousel="next" aria-label="Sonraki ürün">›</button>
         </div>
       </section>
@@ -174,17 +174,18 @@
         </div>
       </section>
 
-      <section class="sale-band" id="sale-section" hidden>
+      <!-- hidden niteligini sunucu kaldirir: indirimde urun varsa bolum ilk HTML de acik gelir. -->
+      <section class="sale-band" id="sale-section"<!--indirim-gizli-->>
         <div class="container">
           <div class="sale-band__head">
             <div>
               <p class="section-kicker">Sınırlı fırsat</p>
               <h2>İndirimdeki Ürünler</h2>
-              <p class="sale-band__lead" id="sale-lead"></p>
+              <p class="sale-band__lead" id="sale-lead"><!--indirim-ozet--></p>
             </div>
             <a class="sale-band__all" href="/urunler?indirim=1">Tüm indirimliler</a>
           </div>
-          <div class="products products--sale js-sale"></div>
+          <div class="products products--sale js-sale"><!--vitrin-indirim--></div>
         </div>
       </section>
 
@@ -210,7 +211,7 @@
             </div>
             <a href="/urunler">Tümünü gör</a>
           </div>
-          <div class="products products--quad js-featured"></div>
+          <div class="products products--quad js-featured"><!--vitrin-secki--></div>
         </div>
       </section>
 
@@ -233,7 +234,7 @@
           </div>
           <a href="/urunler">Tümünü gör</a>
         </div>
-        <div class="products products--ranked js-popular"></div>
+        <div class="products products--ranked js-popular"><!--vitrin-cok-satan--></div>
       </section>
 
       <!-- Compact rows, not cards — a third grid of the same tiles would read as
@@ -247,7 +248,7 @@
             </div>
             <a href="/urunler">Tümünü gör</a>
           </div>
-          <div class="products products--list js-recommended"></div>
+          <div class="products products--list js-recommended"><!--vitrin-onerilen--></div>
         </div>
       </section>
 

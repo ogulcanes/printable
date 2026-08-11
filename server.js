@@ -1839,6 +1839,40 @@ async function renderHero(sayfa) {
     .replace("<!--hero-metni-->", metin);
 }
 
+/* Ana sayfa vitrinleri. Seçim mantığı script.js'teki ile BİREBİR aynı olmalı —
+   JS aynı kutuları yeniden bastığında kartlar yer değiştirmesin. Eskiden ana
+   sayfanın 1602 kelimesinin 1000'i yalnızca JS ile geliyordu; tarayıcı için
+   sayfa üçte bir boyutundaydı. */
+async function renderHomeGrids(sayfa) {
+  const products = await db.prepare(
+    "SELECT * FROM products WHERE is_active = 1 ORDER BY created_at DESC, id DESC"
+  ).all();
+  const aktif = (await decorateProducts(products)).map(maliyetiGizle);
+  const izgara = (liste) => liste.map(sablonlar.productCardHTML).join("")
+    || `<p class="products-empty">Ürün bulunamadı.</p>`;
+
+  // En pahalı ürün panelde; sonraki dördü 2x2 ızgarada (script.js: featured).
+  const secki = [...aktif].sort((a, b) => (b.sale_price || b.price) - (a.sale_price || a.price));
+  const indirimli = aktif.filter((p) => p.sale_price && p.price > p.sale_price)
+    .sort((a, b) => sablonlar.discountPercent(b) - sablonlar.discountPercent(a));
+
+  /* İndirim bölümü boşken gizli kalmalı; ürün varsa hidden'ı sunucu kaldırır ki
+     bölüm ilk HTML'de açık gelsin ve JS onu açarken sayfa kaymasın. */
+  const enIyi = indirimli.length ? sablonlar.discountPercent(indirimli[0]) : 0;
+  const ozet = indirimli.length
+    ? `${indirimli.length} ürün indirimde · en yüksek indirim %${enIyi} · stoklarla sınırlı`
+    : "";
+
+  return sayfa
+    .replace("<!--vitrin-yeni-->", izgara(aktif))
+    .replace("<!--vitrin-secki-->", izgara(secki.slice(1, 5)))
+    .replace("<!--vitrin-cok-satan-->", izgara(aktif.slice(0, 5)))
+    .replace("<!--vitrin-onerilen-->", izgara([...aktif].reverse().slice(0, 4)))
+    .replace("<!--vitrin-indirim-->", indirimli.length ? izgara(indirimli.slice(0, 5)) : "")
+    .replace("<!--indirim-gizli-->", indirimli.length ? "" : " hidden")
+    .replace("<!--indirim-ozet-->", escapeHtml(ozet));
+}
+
 /* /landing vitrini. Seçim script.js'teki renderProductLanding ile aynı: sabit
    id listesi, eksik kalırsa katalog sırasından tamamlanır. */
 async function renderLandingStage() {
@@ -1901,7 +1935,9 @@ async function renderProductFilters(sayfa, query) {
 
 async function sendPage(req, res, file, slug) {
   const html = fs.readFileSync(path.join(ROOT, file), "utf8");
-  let sayfa = html.replace("<!--seo-->", (await seoHead(req, slug)) + (slug === "sss" ? faqPageSchema(html) : ""));
+  /* FAQPage şeması, sayfada .faq-item varsa basılır — slug listesi tutmak,
+     yeni bir S.S.S. bölümü eklendiğinde unutulacak bir adım demekti. */
+  let sayfa = html.replace("<!--seo-->", (await seoHead(req, slug)) + faqPageSchema(html));
   // Yasal sayfa yer tutucuları — diğer sayfalarda bunlar zaten yok, replace no-op.
   if (sayfa.includes("<!--satici-->")) sayfa = sayfa.replaceAll("<!--satici-->", await renderSellerBlock());
   if (sayfa.includes("<!--iade-adresi-->")) sayfa = sayfa.replace("<!--iade-adresi-->", await renderReturnAddress());
@@ -1911,6 +1947,7 @@ async function sendPage(req, res, file, slug) {
   if (sayfa.includes("<!--urun-izgarasi-->")) sayfa = sayfa.replace("<!--urun-izgarasi-->", await renderProductGrid(req.query));
   if (sayfa.includes("<!--landing-vitrin-->")) sayfa = sayfa.replace("<!--landing-vitrin-->", await renderLandingStage());
   if (sayfa.includes("<!--hero-slaytlari-->")) sayfa = await renderHero(sayfa);
+  if (sayfa.includes("<!--vitrin-yeni-->")) sayfa = await renderHomeGrids(sayfa);
   res.type("html").send(await injectShell(sayfa, slug, await pageCustomer(req, res)));
 }
 
