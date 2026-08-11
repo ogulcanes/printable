@@ -1329,8 +1329,16 @@ async function seoHead(req, slug) {
 
 // One header for every public page, injected server-side so the navbar can never
 // drift between pages again. `active` marks the current main-await link (home | urunler | stl-teklif).
-async function renderHeader(active) {
+async function renderHeader(active, customer) {
   const link = (href, label, key) => `<a${active === key ? ' class="active"' : ""} href="${href}">${label}</a>`;
+  /* Müşterinin adı çerezden zaten biliniyor; HTML'e burada basılır. Eskiden
+     yalnızca script.js /api/customer/session dönüşünde yazıyordu, yani giriş
+     yapmış kullanıcı HER sayfa açılışında önce "Hesabım" görüp sonra adının
+     belirmesini izliyordu. Sunucu bilgiyi ilk baytta gönderebiliyorken bunu
+     bir isteğin dönüşüne bırakmak gereksizdi. */
+  const accountLabel = customer?.name || "Hesabım";
+  const accountClass = `admin-link icon-button${customer ? " is-authenticated" : ""}`;
+  const accountAria = customer ? `${customer.name} hesabı` : "Müşteri hesabım";
   return `
     <div class="top-strip">
       <div class="container top-strip__inner">
@@ -1366,9 +1374,9 @@ async function renderHeader(active) {
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 8h14l-1.4 7.2a2 2 0 0 1-2 1.6H9a2 2 0 0 1-2-1.7L5.8 4H3"/><path d="M9.5 20.5h.01M17.5 20.5h.01"/></svg>
             <strong id="cart-count">0</strong>
           </a>
-          <a class="admin-link icon-button" href="/hesap" aria-label="Müşteri hesabım">
+          <a class="${accountClass}" href="/hesap" aria-label="${escapeHtml(accountAria)}">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
-            <span class="account-link__label">Hesabım</span>
+            <span class="account-link__label">${escapeHtml(accountLabel)}</span>
           </a>
           <a class="header-cta" href="/stl-teklif">Ücretsiz Teklif Al</a>
         </nav>
@@ -1572,10 +1580,10 @@ async function renderChatButton() {
     </div>`;
 }
 
-async function injectShell(html, headActive) {
+async function injectShell(html, headActive, customer) {
   return html
     .replace("</head>", `${googleAnalyticsTag}\n  </head>`)
-    .replace("<!--header-->", await renderHeader(headActive))
+    .replace("<!--header-->", await renderHeader(headActive, customer))
     .replace("<!--cart-->", renderCartPanel())
     .replace("<!--footer-->", await renderFooter())
     .replace("<!--chat-->", await renderChatButton());
@@ -1638,7 +1646,18 @@ async function sendPage(req, res, file, slug) {
   if (sayfa.includes("<!--iade-adresi-->")) sayfa = sayfa.replace("<!--iade-adresi-->", await renderReturnAddress());
   if (sayfa.includes("<!--guncelleme-->")) sayfa = sayfa.replace("<!--guncelleme-->", guncellemeSatiri());
   if (sayfa.includes("<!--contact-details-->")) sayfa = sayfa.replace("<!--contact-details-->", await renderContactDetails());
-  res.type("html").send(await injectShell(sayfa, slug));
+  res.type("html").send(await injectShell(sayfa, slug, await pageCustomer(req, res)));
+}
+
+/* Sayfa HTML'i artık müşterinin adını taşıyor, yani kişisel. Paylaşımlı bir
+   önbelleğe düşerse bir ziyaretçiye başkasının adı gösterilir. Bugün sayfalara
+   hiç Cache-Control verilmiyor (Vercel de fonksiyon çıktısını kendiliğinden
+   önbelleğe almıyor), ama bu güvenlik araya bir CDN girdiği gün sessizce
+   kaybolurdu. Yalnızca oturum varken işaretlenir; anonim sayfa eskisi gibi. */
+async function pageCustomer(req, res) {
+  const customer = await currentCustomer(req);
+  if (customer) res.setHeader("Cache-Control", "private, no-store");
+  return customer;
 }
 
 app.get("/", async (req, res) => await sendPage(req, res, "index.html", "home"));
@@ -1744,7 +1763,9 @@ app.get("/urun/:id", async (req, res) => {
   // withColors await edilmezse productMetaTags'e ürün yerine Promise gider ve
   // başlık "undefined | Printable" olur.
   const decorated = await withColors(product);
-  res.type("html").send(await injectShell(html.replace("<!--seo-->", await productMetaTags(req, decorated)), "urunler"));
+  res.type("html").send(await injectShell(
+    html.replace("<!--seo-->", await productMetaTags(req, decorated)), "urunler", await pageCustomer(req, res)
+  ));
 });
 
 // Checkout flow — noindex (a transactional page crawlers should not list).
@@ -1755,7 +1776,7 @@ app.get("/odeme", async (req, res) => {
     `<meta name="robots" content="noindex,nofollow">`
   ].join("\n    ");
   const html = fs.readFileSync(path.join(ROOT, "odeme.html"), "utf8");
-  res.type("html").send(await injectShell(html.replace("<!--seo-->", head), ""));
+  res.type("html").send(await injectShell(html.replace("<!--seo-->", head), "", await pageCustomer(req, res)));
 });
 
 // Tell crawlers what to index and where the sitemap is. Admin and API paths are off-limits.

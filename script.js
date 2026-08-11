@@ -41,14 +41,25 @@ const searchPopover = document.querySelector(".search-popover");
 const customerAccountLink = document.querySelector('a[href="/hesap"].icon-button');
 const customerAccountLabel = customerAccountLink?.querySelector(".account-link__label");
 
+/* Adı artık sunucu ilk baytta basıyor (renderHeader), bu istek yalnızca
+   mutabakat için: başka bir sekmede çıkış yapıldıysa ya da sayfa geri/ileri
+   önbelleğinden geldiyse başlıktaki ad bayatlamış olabilir. Bu yüzden yalnız
+   giriş durumunu değil, çıkış durumunu da uygulaması gerekiyor — eskiden
+   `if (!authed) return;` diyordu ve bayat ad ekranda kalırdı. */
 if (customerAccountLink) {
   fetch("/api/customer/session")
     .then((response) => response.json())
     .then(({ authed, customer }) => {
-      if (!authed) return;
-      customerAccountLink.classList.add("is-authenticated");
-      if (customerAccountLabel) customerAccountLabel.textContent = customer.name;
-      customerAccountLink.setAttribute("aria-label", `${customer.name} hesabı`);
+      const label = authed ? customer.name : "Hesabım";
+      const aria = authed ? `${customer.name} hesabı` : "Müşteri hesabım";
+      customerAccountLink.classList.toggle("is-authenticated", Boolean(authed));
+      // Değer aynıysa DOM'a dokunma: sunucu zaten doğru bastıysa gereksiz boyama olmasın.
+      if (customerAccountLabel && customerAccountLabel.textContent !== label) {
+        customerAccountLabel.textContent = label;
+      }
+      if (customerAccountLink.getAttribute("aria-label") !== aria) {
+        customerAccountLink.setAttribute("aria-label", aria);
+      }
     })
     .catch(() => {});
 }
