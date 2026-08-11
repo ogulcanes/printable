@@ -121,7 +121,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "21";
+const SCHEMA_VERSION = "22";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -898,6 +898,13 @@ const extraSeoPages = [
     og_description: "Verilerinizi nasıl işlediğimizi sade bir dille açıkladık."
   },
   {
+    slug: "landing", label: "Ürün seçkisi (landing) sayfası",
+    title: "Printable Ürün Seçkisi | 3D Baskı Ürünleri",
+    description: "Öne çıkan 3D baskı figür, oyuncak, anahtarlık ve fidget ürünlerini fiyatlarıyla inceleyin; Katlaç ve Spinball koleksiyonlarını keşfedin.",
+    og_title: "Printable Ürün Seçkisi | 3D Baskı Ürünleri",
+    og_description: "Öne çıkan 3D baskı ürünlerini fiyatlarıyla görün, seçin ve doğrudan sepetinize ekleyin."
+  },
+  {
     slug: "tasarim", label: "Özel tasarım sayfası",
     title: "Özel Parça Tasarımı ve Teknik Çizim | Printable",
     description: "Dosyanız yoksa parçanızı biz çizeriz: yedek parça, adaptör, kasnak ve özel aparatların 3D tasarımını yapıp basıyoruz.",
@@ -919,10 +926,18 @@ for (const page of extraSeoPages) await addSeoPage.run(page);
    adminden girilen bir görselin üstüne asla yazmaz. Varsayılan site görseli
    bu sayfada yanlış: reklam ve WhatsApp paylaşımında ejderha tepsi fotoğrafı
    yerine çizim işlerini gösteren kart çıkmalı. */
-await db.prepare(`
-  UPDATE seo_pages SET og_image = @og_image
-   WHERE slug = 'tasarim' AND COALESCE(NULLIF(TRIM(og_image), ''), '') = ''
-`).run({ og_image: "/assets/tasarim/tasarim-og-1200x630.jpg" });
+const varsayilanOgGorselleri = [
+  { slug: "tasarim", og_image: "/assets/tasarim/tasarim-og-1200x630.jpg" },
+  // Landing'in meta'sı eskiden HTML'e gömülüydü ve kendi paylaşım görseli vardı;
+  // sunucuya devredilirken kaybolmasın.
+  { slug: "landing", og_image: "/assets/shopier/21.jpg" }
+];
+for (const g of varsayilanOgGorselleri) {
+  await db.prepare(`
+    UPDATE seo_pages SET og_image = @og_image
+     WHERE slug = @slug AND COALESCE(NULLIF(TRIM(og_image), ''), '') = ''
+  `).run(g);
+}
 
 const SITE_CONTACT = {
   phone: "0543 687 4208",
