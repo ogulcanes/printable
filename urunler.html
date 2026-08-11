@@ -73,8 +73,12 @@
               </select>
             </label>
           </div>
-          <div id="active-filters" class="active-filters" hidden></div>
-          <div class="products products--grid" id="catalog-grid"></div>
+          <!--aktif-filtreler--><div id="active-filters" class="active-filters" hidden></div>
+          <!-- Sunucu doldurur; urunler.js filtre değiştikçe aynı kutuyu yeniden
+               basar (product-templates.js, iki tarafta da aynı fonksiyon).
+               Boş başlayınca kataloğun tamamı JS'e bağlıydı: tarayıcıya giden
+               HTML'de tek bir ürün adı bile yoktu. -->
+          <div class="products products--grid" id="catalog-grid"><!--urun-izgarasi--></div>
         </div>
       </section>
     </main>

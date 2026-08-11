@@ -12,14 +12,8 @@
 
   if (!id) { detail.innerHTML = notFound(); return; }
 
-  // Reviews are public, unauthenticated input — never interpolate them raw.
-  const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
-  const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ESC[char]);
-
-  const stars = (rating) => {
-    const rounded = Math.round(Number(rating) || 0);
-    return `<span class="stars" aria-label="5 üzerinden ${rating}">${"★".repeat(rounded)}${"☆".repeat(5 - rounded)}</span>`;
-  };
+  /* escapeHtml ve stars product-templates.js'ten geliyor. Yorumlar kimliksiz
+     ziyaretçi girdisi — hiçbir yerde ham basılmıyor. */
 
   const reviewDate = (value) => {
     if (!value) return "";
@@ -45,48 +39,12 @@
      (ölçek, ambalaj, kullanım); onları gizlemek bilgi kaybı olurdu. */
   let seciliRenkId = null;
 
-  const galeriMedyaTuru = (item) =>
-    item?.media_type === "video" || /\.(mp4|webm)(?:[?#]|$)/i.test(item?.image_path || item?.src || "")
-      ? "video"
-      : "image";
-
-  const anaMedyaHTML = (kare) => kare?.type === "video"
-    ? `<video id="gallery-main-video" src="${escapeHtml(kare.src)}" controls playsinline preload="metadata"
-              aria-label="${escapeHtml(kare.alt || "Ürün videosu")}"></video>`
-    : `<img id="gallery-main-image" src="${escapeHtml(kare?.src) || "/assets/printable-logo.svg"}"
-            alt="${escapeHtml(kare?.alt || "Ürün görseli")}">`;
-
   /* Seçili ölçek (küçük/büyük boy gibi). Ölçek yalnızca bir etiket değil, kendi
      fiyatı olan bir varyant: seçim değişince sayfadaki fiyat da, sepete giden
      satır da değişir. Varsayılan en ucuzu — kartta gördüğü fiyat bu, sayfa
      açılınca aynı rakamı görmeli. Ölçeksiz ürünlerde null kalır. */
   let seciliOlcekId = null;
-  const olceklerOf = (product) => product.scales || [];
-  const seciliOlcek = (product) =>
-    olceklerOf(product).find((s) => s.id === seciliOlcekId) || olceklerOf(product)[0] || null;
-
-  function galeriKareleri(product) {
-    const kapak = product.image_path
-      ? [{ src: product.image_path, alt: product.image_alt || product.name, colorId: null, type: "image" }]
-      : [];
-    // Kapak zaten listede: aynı dosya iki kez görünmesin.
-    const ekler = (product.images || [])
-      .filter((g) => g.image_path !== product.image_path)
-      .map((g) => ({
-        src: g.image_path,
-        alt: g.image_alt || product.name,
-        colorId: g.color_id,
-        type: galeriMedyaTuru(g)
-      }));
-
-    if (!seciliRenkId) return [...kapak, ...ekler];
-
-    const tumu = [...kapak, ...ekler];
-    return [
-      ...tumu.filter((k) => k.colorId === seciliRenkId),
-      ...tumu.filter((k) => k.colorId !== seciliRenkId)
-    ];
-  }
+  // olceklerOf / seciliOlcek / galeriKareleri / anaMedyaHTML: product-templates.js
 
   function galeriyiBagla(product) {
     const thumbs = document.querySelector("#gallery-thumbs");
@@ -95,7 +53,7 @@
     thumbs.addEventListener("click", (event) => {
       const buton = event.target.closest("[data-gallery-index]");
       if (!buton) return;
-      const kare = galeriKareleri(product)[Number(buton.dataset.galleryIndex)];
+      const kare = galeriKareleri(product, seciliRenkId)[Number(buton.dataset.galleryIndex)];
       if (!kare) return;
       ana.innerHTML = anaMedyaHTML(kare);
       thumbs.querySelectorAll(".gallery-thumb").forEach((b) => b.classList.toggle("active", b === buton));
@@ -103,99 +61,11 @@
   }
 
   function render(product) {
-    const olcekler = olceklerOf(product);
-    const olcek = seciliOlcek(product);
-    // Ölçekli üründe fiyat ölçekten gelir; sale_price o üründe uygulanmıyor
-    // (sunucu da öyle hesaplıyor — normalizeCartItems).
-    const price = olcek ? olcek.price : (product.sale_price || product.price);
-    const inStock = product.stock > 0;
-    const onSale = !olcekler.length && product.sale_price && product.price > product.sale_price;
-    const off = onSale ? Math.round((1 - product.sale_price / product.price) * 100) : 0;
-    const cats = (product.categories || [])
-      .map((c) => `<a class="chip" href="/urunler?kategori=${c.id}">${escapeHtml(c.name)}</a>`).join("");
-    // Rengin kendi fotoğrafı varsa nokta tıklanabilir olur; yoksa sade kalır
-    // — tıklayınca hiçbir şey olmayan bir düğme kullanıcıyı yanıltır.
-    /* Ölçek seçimi. Birden fazla ölçek varsa fiyatlı butonlar; tek ölçek varsa
-       seçtirecek bir şey yok, yalnızca hangi boy olduğu yazılıyor. */
-    const olcekSecici = olcekler.length > 1
-      ? `<div class="product-detail__scales">
-           <span class="product-detail__scales-title">Ölçek</span>
-           <div class="scale-picker" role="radiogroup" aria-label="Ölçek seçin">
-             ${olcekler.map((s) => `
-               <button type="button" class="scale-option ${s.id === olcek.id ? "active" : ""}"
-                       role="radio" aria-checked="${s.id === olcek.id}" data-scale-pick="${s.id}">
-                 <strong>${escapeHtml(s.scale)}</strong>
-                 <span>${money(s.price)}</span>
-               </button>`).join("")}
-           </div>
-         </div>`
-      : olcek
-        ? `<p class="product-detail__scale-single">Ölçek: <strong>${escapeHtml(olcek.scale)}</strong></p>`
-        : "";
-
-    const renkliFotoVar = (renkId) => (product.images || []).some((g) => g.color_id === renkId);
-    const swatches = (product.colors || [])
-      .map((c) => renkliFotoVar(c.id)
-        ? `<button type="button" class="color-dot color-dot--action ${seciliRenkId === c.id ? "active" : ""}" style="background:${escapeHtml(c.hex)}" title="${escapeHtml(c.name)} fotoğraflarını göster" aria-label="${escapeHtml(c.name)} fotoğraflarını göster" data-color-pick="${c.id}"></button>`
-        : `<span class="color-dot" style="background:${escapeHtml(c.hex)}" title="${escapeHtml(c.name)}"></span>`).join("");
-
-    detail.innerHTML = `
-      <nav class="breadcrumb" aria-label="Sayfa yolu">
-        <a href="/">Ana Sayfa</a><span aria-hidden="true">/</span>
-        <a href="/urunler">Ürünler</a><span aria-hidden="true">/</span>
-        <strong>${escapeHtml(product.name)}</strong>
-      </nav>
-      <div class="product-detail__grid">
-        <div class="product-detail__media">
-          <div class="gallery-main">
-            ${anaMedyaHTML(galeriKareleri(product)[0] || {
-              src: "/assets/printable-logo.svg",
-              alt: product.image_alt || product.name,
-              type: "image"
-            })}
-          </div>
-          ${galeriKareleri(product).length > 1 ? `
-            <div class="gallery-thumbs" id="gallery-thumbs">
-              ${galeriKareleri(product).map((k, i) => `
-                <button type="button" class="gallery-thumb ${i === 0 ? "active" : ""} ${k.type === "video" ? "gallery-thumb--video" : ""}" data-gallery-index="${i}"
-                        aria-label="${i + 1}. ${k.type === "video" ? "videoyu oynat" : "fotoğrafı göster"}">
-                  ${k.type === "video"
-                    ? `<video src="${escapeHtml(k.src)}" muted playsinline preload="metadata" tabindex="-1"></video><span aria-hidden="true">▶</span>`
-                    : `<img src="${escapeHtml(k.src)}" alt="">`}
-                </button>`).join("")}
-            </div>` : ""}
-        </div>
-        <div class="product-detail__info">
-          ${cats ? `<div class="product-detail__cats">${cats}</div>` : ""}
-          <h1>${escapeHtml(product.name)}</h1>
-          ${product.rating?.count
-            ? `<a class="product-detail__rating" href="#reviews-section">${stars(product.rating.average)}
-                 <span>${product.rating.average} · ${product.rating.count} değerlendirme</span></a>`
-            : `<a class="product-detail__rating product-detail__rating--empty" href="#reviews-section">${stars(0)}
-                 <span>Henüz değerlendirilmemiş</span></a>`}
-          <p class="product-detail__price">${money(price)}${onSale ? ` <s>${money(product.price)}</s> <span class="discount-badge">-%${off}</span>` : ""}</p>
-          ${onSale ? `<p class="product-detail__save">${money(product.price - product.sale_price)} tasarruf edin</p>` : ""}
-          <p class="product-detail__tax">KDV dahil · Kargo alıcı ödemeli</p>
-          ${olcekSecici}
-          ${swatches ? `<div class="product-detail__colors"><span>Renkler</span><div class="swatches">${swatches}</div></div>` : ""}
-          ${product.description ? `<p class="product-detail__desc">${escapeHtml(product.description)}</p>` : ""}
-          <ul class="product-detail__specs">
-            ${product.color ? `<li><span>Malzeme</span><strong>${escapeHtml(product.color)}</strong></li>` : ""}
-            ${product.sku ? `<li><span>Ürün kodu</span><strong>${escapeHtml(product.sku)}</strong></li>` : ""}
-            ${stokGoster || !inStock
-              ? `<li><span>Stok</span><strong class="${inStock ? "spec-in" : "spec-out"}">${inStock ? product.stock + " adet" : "Tükendi"}</strong></li>`
-              : ""}
-          </ul>
-          <div class="product-detail__actions">
-            <label class="qty-field">Adet
-              <input type="number" id="detail-qty" min="1" max="${Math.max(1, product.stock || 99)}" value="1" ${inStock ? "" : "disabled"}>
-            </label>
-            <button type="button" id="detail-add" ${inStock ? "" : "disabled"}>${inStock ? "Sepete ekle" : "Tükendi"}</button>
-            <a class="btn-outline" href="/stl-teklif">Kendi modelinizi bastırın</a>
-          </div>
-        </div>
-      </div>
-    `;
+    /* İşaretleme product-templates.js'te — sunucu ilk HTML'i AYNI fonksiyonla
+       basıyor. Şablonu burada tutmak, sunucu sürümüyle zamanla ayrışıp sayfanın
+       JS yüklenince zıplamasına yol açardı. Burada yalnızca durum ve olay
+       bağlama kalıyor. */
+    detail.innerHTML = productDetailHTML(product, { seciliOlcekId, seciliRenkId, stokGoster });
 
     galeriyiBagla(product);
 
@@ -219,7 +89,7 @@
 
     document.querySelector("#detail-add")?.addEventListener("click", () => {
       const qty = Math.max(1, parseInt(document.querySelector("#detail-qty").value, 10) || 1);
-      addToCart(product, qty, seciliOlcek(product));
+      addToCart(product, qty, seciliOlcek(product, seciliOlcekId));
       if (typeof cartPanel !== "undefined" && cartPanel) cartPanel.classList.add("open");
     });
   }

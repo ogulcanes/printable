@@ -6,6 +6,8 @@ const express = require("express");
 const multer = require("multer");
 const crypto = require("crypto");
 const db = require("./db.js");
+// Ürün kartı/detayı işaretlemesi. Tarayıcı da AYNI dosyayı yüklüyor.
+const sablonlar = require("./product-templates.js");
 const storage = require("./storage.js");
 const shopier = require("./shopier.js");
 
@@ -1592,6 +1594,12 @@ async function renderChatButton() {
 
 async function injectShell(html, headActive, customer) {
   return html
+    /* Ürün şablonları script.js'ten ÖNCE yüklenmeli — script.js oradaki
+       isimleri (money, productCardHTML…) kullanıyor. Her sayfanın HTML'ine tek
+       tek yazmak yerine buradan enjekte ediliyor: yeni bir sayfa eklendiğinde
+       unutulacak bir adım kalmasın. */
+    .replace(/<script src="\/?script\.js"><\/script>/,
+      '<script src="/product-templates.js"></script>\n    <script src="/script.js"></script>')
     .replace("</head>", `${googleAnalyticsTag}\n  </head>`)
     .replace("<!--header-->", await renderHeader(headActive, customer))
     .replace("<!--cart-->", renderCartPanel())
@@ -1676,11 +1684,45 @@ const metinAl = (parca) => parca
   .replace(/\s+/g, " ")
   .trim();
 
+/* /urunler kataloğunun ilk HTML'i. Sıralama urunler.js'in filtresiz
+   varsayılanıyla (en yeni önce) aynı olmalı, yoksa JS yüklenince kartlar yer
+   değiştirir. Kart işaretlemesi product-templates.js'ten geliyor — tarayıcı da
+   aynı fonksiyonu çağırıyor. */
+async function renderProductGrid(query) {
+  const products = await db.prepare(
+    "SELECT * FROM products WHERE is_active = 1 ORDER BY created_at DESC, id DESC"
+  ).all();
+  let suslu = (await decorateProducts(products)).map(maliyetiGizle);
+
+  /* Ana sayfadaki kategori kartları ve ürün sayfasındaki etiketler buraya
+     ?kategori=<id> ile geliyor; ?indirim=1 ve ?q= de var. Sunucu bunları
+     uygulamazsa ziyaretçi önce 47 ürünü görüp sonra listenin 17'ye düşmesini
+     izliyor — filtreyi JS'e bırakmak tam da kaldırmak istediğimiz sıçramayı
+     geri getirir. Süzme mantığı urunler.js'teki `matches` ile aynı. */
+  const kategori = Number(query.kategori);
+  if (kategori) {
+    suslu = suslu.filter((p) => (p.categories || []).some((c) => c.id === kategori));
+  }
+  if (query.indirim === "1") {
+    // Ölçekli üründe sale_price uygulanmıyor, o yüzden indirimli sayılmıyor.
+    suslu = suslu.filter((p) => !(p.scales || []).length && p.sale_price && p.price > p.sale_price);
+  }
+  const arama = String(query.q || "").trim().toLocaleLowerCase("tr-TR").slice(0, 80);
+  if (arama) {
+    suslu = suslu.filter((p) =>
+      `${p.name || ""} ${p.description || ""} ${(p.categories || []).map((c) => c.name).join(" ")}`
+        .toLocaleLowerCase("tr-TR").includes(arama));
+  }
+
+  return suslu.map(sablonlar.productCardHTML).join("")
+    || `<p class="products-empty">Ürün bulunamadı.</p>`;
+}
+
 /* /urunler filtre seçenekleri. İşaretleme urunler.js'teki renderCategoryFilters
    / renderColorFilters ile BİREBİR aynı olmalı: JS aynı kutuyu yeniden
    bastığında yükseklik değişmezse sayfa hiç kaymaz. Yan fayda, kategori ve renk
    adlarının JS'siz HTML'de de bulunması. */
-async function renderProductFilters(sayfa) {
+async function renderProductFilters(sayfa, query) {
   const categories = await db.prepare(
     "SELECT id, name FROM categories WHERE is_active = 1 ORDER BY sort_order, id"
   ).all();
@@ -1688,9 +1730,27 @@ async function renderProductFilters(sayfa) {
     "SELECT id, name, hex FROM colors WHERE is_active = 1 ORDER BY sort_order, id"
   ).all();
 
+  const seciliKategori = Number(query.kategori) || null;
+  const indirimli = query.indirim === "1";
+  const arama = String(query.q || "").trim().toLocaleLowerCase("tr-TR").slice(0, 80);
+
+  /* Aktif filtre etiketleri de sunucudan. Kutu boş+hidden başlayıp JS onu
+     doldurunca 32px büyüyor ve ürün ızgarasını aşağı itiyordu — kategori
+     bağlantısıyla gelen her ziyaretçide görülen bir kayma. İşaretleme
+     urunler.js'teki renderActiveChips ile aynı. */
+  const etiketler = [];
+  const kategoriAdi = categories.find((c) => c.id === seciliKategori);
+  if (kategoriAdi) etiketler.push(`<button type="button" class="chip" data-remove-category="${kategoriAdi.id}">${escapeHtml(kategoriAdi.name)} ✕</button>`);
+  if (indirimli) etiketler.push(`<button type="button" class="chip" data-remove-sale>İndirimli ✕</button>`);
+  if (arama) etiketler.push(`<button type="button" class="chip" data-remove-query>Arama: ${escapeHtml(arama)} ✕</button>`);
+  sayfa = sayfa.replace(
+    '<!--aktif-filtreler--><div id="active-filters" class="active-filters" hidden></div>',
+    `<div id="active-filters" class="active-filters"${etiketler.length ? "" : " hidden"}>${etiketler.join("")}</div>`
+  );
+
   const kategoriler = categories.map((category) => `
       <label class="filter-check">
-        <input type="checkbox" data-filter="category" value="${category.id}">
+        <input type="checkbox" data-filter="category" value="${category.id}"${category.id === seciliKategori ? " checked" : ""}>
         ${escapeHtml(category.name)}
       </label>
     `).join("") || "<p class='filter-empty'>Kategori yok.</p>";
@@ -1715,7 +1775,8 @@ async function sendPage(req, res, file, slug) {
   if (sayfa.includes("<!--iade-adresi-->")) sayfa = sayfa.replace("<!--iade-adresi-->", await renderReturnAddress());
   if (sayfa.includes("<!--guncelleme-->")) sayfa = sayfa.replace("<!--guncelleme-->", guncellemeSatiri());
   if (sayfa.includes("<!--contact-details-->")) sayfa = sayfa.replace("<!--contact-details-->", await renderContactDetails());
-  if (sayfa.includes("<!--filtre-kategoriler-->")) sayfa = await renderProductFilters(sayfa);
+  if (sayfa.includes("<!--filtre-kategoriler-->")) sayfa = await renderProductFilters(sayfa, req.query);
+  if (sayfa.includes("<!--urun-izgarasi-->")) sayfa = sayfa.replace("<!--urun-izgarasi-->", await renderProductGrid(req.query));
   res.type("html").send(await injectShell(sayfa, slug, await pageCustomer(req, res)));
 }
 
@@ -1832,9 +1893,20 @@ app.get("/urun/:id", async (req, res) => {
   const html = fs.readFileSync(path.join(ROOT, "urun.html"), "utf8");
   // withColors await edilmezse productMetaTags'e ürün yerine Promise gider ve
   // başlık "undefined | Printable" olur.
-  const decorated = await withColors(product);
+  const decorated = maliyetiGizle(await withColors(product));
+  /* Detay da ilk HTML'de. Ölçek/renk seçimi varsayılanla basılıyor — urun.js de
+     aynı varsayılanlarla açılıyor, dolayısıyla JS devraldığında işaretleme
+     değişmiyor. stokGoster istemcide /api/site-info'dan geliyor; burada aynı
+     değeri vermezsek stok satırı sonradan belirip sayfayı kaydırırdı. */
+  const ayar = await db.prepare("SELECT show_stock FROM site_settings WHERE id = 1").get() || {};
+  const detay = sablonlar.productDetailHTML(decorated, {
+    stokGoster: Number(ayar.show_stock ?? 1) === 1
+  });
   res.type("html").send(await injectShell(
-    html.replace("<!--seo-->", await productMetaTags(req, decorated)), "urunler", await pageCustomer(req, res)
+    html
+      .replace("<!--seo-->", await productMetaTags(req, decorated))
+      .replace("<!--urun-detayi-->", detay),
+    "urunler", await pageCustomer(req, res)
   ));
 });
 
@@ -1896,7 +1968,7 @@ app.get("/sitemap.xml", async (req, res) => {
   );
 });
 
-["styles.css", "script.js", "stl-viewer.js", "admin.css", "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js", "katalog.js", "hesap.js", "anahtarlik-katalog.js"].forEach((file) => {
+["styles.css", "script.js", "product-templates.js", "stl-viewer.js", "admin.css", "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js", "katalog.js", "hesap.js", "anahtarlik-katalog.js"].forEach((file) => {
   app.get(`/${file}`, async (req, res) => res.sendFile(path.join(ROOT, file)));
 });
 

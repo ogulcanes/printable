@@ -1,4 +1,8 @@
-const money = (value) => `${Number(value || 0).toFixed(2)} TL`;
+/* money, productScales, displayPrice, discountPercent, ratingHTML,
+   productCardHTML: product-templates.js. Sunucu da AYNI fonksiyonlari
+   cagirdigi icin ilk HTML ile JS yeniden bastiginda cikan HTML birebir ayni
+   oluyor; sayfa zipplamiyor ve tarayici ile ziyaretci ayni seyi goruyor.
+   Bu dosya product-templates.js YUKLENDIKTEN SONRA calismali. */
 
 // Cart persists in localStorage so it survives page navigation (to /odeme and back).
 const CART_KEY = "printable_cart";
@@ -20,17 +24,6 @@ let freeShippingThreshold = 599;
    Ölçeksiz ürünlerde (ve ölçekler eklenmeden önce doldurulmuş eski
    sepetlerde) anahtar "12:" olur — eski satırlar bozulmadan çalışır. */
 const lineKey = (item) => `${item.id}:${item.scale_id || ""}`;
-
-// Ürünün müşteriye açık ölçekleri: fiyatı girilmiş, ucuzdan pahalıya sıralı.
-const productScales = (product) => (product && product.scales) || [];
-
-/* Karttaki fiyat: ölçekli üründe EN UCUZ ölçeğin fiyatı ("… TL'den başlayan"),
-   ölçeksizde varsa indirimli fiyat. Ölçekli üründe sale_price uygulanmaz —
-   sunucu da öyle hesaplıyor (normalizeCartItems). */
-const displayPrice = (product) => {
-  const scales = productScales(product);
-  return scales.length ? scales[0].price : (product.sale_price || product.price);
-};
 
 const storeProducts = document.querySelector("#store-products");
 const cartPanel = document.querySelector("#cart-panel");
@@ -62,51 +55,6 @@ if (customerAccountLink) {
       }
     })
     .catch(() => {});
-}
-
-// Shared card markup — reused by every product row on the homepage and by /urunler.
-const discountPercent = (product) =>
-  product.sale_price && product.price > product.sale_price
-    ? Math.round((1 - product.sale_price / product.price) * 100)
-    : 0;
-
-// Approved-review average, filled in by the API. No reviews yet → no stars at
-// all, rather than an empty 5-star row that reads as a zero score.
-const ratingHTML = (product) => product.rating?.count
-  ? `<span class="card-rating" aria-label="5 üzerinden ${product.rating.average}">
-       <span class="stars">${"★".repeat(Math.round(product.rating.average))}${"☆".repeat(5 - Math.round(product.rating.average))}</span>
-       <small>(${product.rating.count})</small>
-     </span>`
-  : "";
-
-function productCardHTML(product) {
-  const off = discountPercent(product);
-  const scales = productScales(product);
-  /* Ölçekli üründe indirim rozeti ve üstü çizili fiyat gösterilmiyor: fiyat
-     ölçekten geliyor, sale_price o üründe uygulanmıyor (bkz. displayPrice). */
-  const priceHTML = scales.length
-    ? `${money(scales[0].price)}${scales.length > 1 ? `<span class="price-from">'den itibaren</span>` : ""}`
-    : `${money(product.sale_price || product.price)}${product.sale_price ? ` <s>${money(product.price)}</s>` : ""}`;
-  /* Birden fazla ölçek varsa karttan doğrudan sepete atmıyoruz — hangi boyu
-     istediğini müşteri seçmeli; buton ürün sayfasına götürür (bkz. aşağıdaki
-     data-add-product işleyicisi). Kartın görünümü değişmesin diye yine
-     <button>: .product-card button'un stili dört ayrı katmanda tanımlı,
-     yeni bir sınıf onların hepsini yeniden yazmayı gerektirirdi. */
-  const action = `<button data-add-product="${product.id}">${
-    scales.length > 1 ? "Ölçek seçin" : "Sepete ekle"}</button>`;
-  return `
-    <article class="product-card">
-      ${off && !scales.length ? `<span class="discount-badge">-%${off}</span>` : ""}
-      <a class="product-card__link" href="/urun/${product.id}">
-        <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" loading="lazy">
-        <h3>${product.name}</h3>
-      </a>
-      ${ratingHTML(product)}
-      <p>${priceHTML}</p>
-      <div class="swatches">${(product.colors || []).map((color) => `<span style="background:${color.hex}" title="${color.name}"></span>`).join("")}</div>
-      ${action}
-    </article>
-  `;
 }
 
 function fillProductGrid(target, products) {
