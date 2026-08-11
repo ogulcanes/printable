@@ -7975,3 +7975,15 @@ body.catalog-view-table .catalog-table-view { display: block; overflow-x: auto; 
    /landing'de CLS 0,12. Ürün görsellerinin tamamı 9:16 dikey; oran baştan
    verilince yerleşim görsel yüklenmesinden bağımsız hale geliyor. */
 .commerce-product img { aspect-ratio: 9 / 16; }
+
+/* Başlık ızgarası `1fr auto 1fr`: menü ancak yan sütunlar EŞİT olursa ortalanır.
+   Aksiyon tarafı (arama + sepet + hesap + CTA) 384px ile sütun payını 13px
+   aşıyor, sol sütunu eziyor ve menüyü sola kaydırıyordu — uzun bir müşteri
+   adında sapma 99px'e çıkıyordu.
+
+   Boşluğu daraltmak yerine menü hapından yer alınıyor: bağlantı başına 3px,
+   beş bağlantıda 30px. Böylece menünün iki yanındaki 34px'lik nefes korunuyor;
+   ızgara boşluğunu kısaltsaydık menü arama ikonuna yapışıyordu. */
+@media (min-width: 1051px) {
+  .main-links a { padding-inline: 12px; }
+}

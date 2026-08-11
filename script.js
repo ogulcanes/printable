@@ -43,7 +43,9 @@ if (customerAccountLink) {
   fetch("/api/customer/session")
     .then((response) => response.json())
     .then(({ authed, customer }) => {
-      const label = authed ? customer.name : "Hesabım";
+      // Sunucu da ilk adı basıyor (renderHeader); farklı yazsak başlık JS
+      // yüklenince değişir ve menüyü yeniden kaydırırdı.
+      const label = authed ? (customer.name.trim().split(/\s+/)[0] || "Hesabım") : "Hesabım";
       const aria = authed ? `${customer.name} hesabı` : "Müşteri hesabım";
       customerAccountLink.classList.toggle("is-authenticated", Boolean(authed));
       // Değer aynıysa DOM'a dokunma: sunucu zaten doğru bastıysa gereksiz boyama olmasın.

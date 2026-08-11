@@ -1338,7 +1338,10 @@ async function renderHeader(active, customer) {
      yapmış kullanıcı HER sayfa açılışında önce "Hesabım" görüp sonra adının
      belirmesini izliyordu. Sunucu bilgiyi ilk baytta gönderebiliyorken bunu
      bir isteğin dönüşüne bırakmak gereksizdi. */
-  const accountLabel = customer?.name || "Hesabım";
+  /* Başlıkta yalnızca ilk ad. Üç kelimelik bir isim aksiyon sütununu 386'dan
+     470px'e çıkarıyor ve `1fr auto 1fr` ızgarasında sol sütunu ezerek menüyü
+     merkezden 99px sola kaydırıyordu. Tam ad zaten /hesap sayfasında. */
+  const accountLabel = customer?.name?.trim().split(/\s+/)[0] || "Hesabım";
   const accountClass = `admin-link icon-button${customer ? " is-authenticated" : ""}`;
   const accountAria = customer ? `${customer.name} hesabı` : "Müşteri hesabım";
   return `
