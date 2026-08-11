@@ -1338,6 +1338,48 @@ async function seoHead(req, slug) {
     });
   }
 
+  /* /landing bir ürün seçkisi sayfası; ona uygun düğüm ItemList. Yalnızca
+     SUNUCUNUN BASTIĞI beş vitrin ürünü listeleniyor — aşağıdaki raf hâlâ JS ile
+     doluyor ve yapısal verinin sayfada görünmeyen içeriği anlatmaması gerekiyor.
+     Fiyatlar da aynı sorgudan geldiği için şema ile ekrandaki rakam ayrışamaz. */
+  if (slug === "landing") {
+    const urunler = await db.prepare(
+      "SELECT * FROM products WHERE is_active = 1 ORDER BY created_at DESC, id DESC"
+    ).all();
+    const secim = sablonlar.preferredProductList(
+      (await decorateProducts(urunler)).map(maliyetiGizle), [21, 53, 22, 39, 35], 5
+    );
+    if (secim.length) {
+      jsonLd["@graph"].push({
+        "@type": "ItemList",
+        name: "Öne çıkan 3D baskı ürünleri",
+        numberOfItems: secim.length,
+        itemListElement: secim.map((p, i) => {
+          const adres = absoluteUrl(req, `/urun/${p.id}`, site.site_url);
+          const gorsel = absoluteUrl(req, p.image_path, site.site_url);
+          return {
+            "@type": "ListItem",
+            position: i + 1,
+            item: {
+              "@type": "Product",
+              name: p.name,
+              ...(gorsel ? { image: gorsel } : {}),
+              url: adres,
+              brand: { "@type": "Brand", name: site.site_name || "Printable" },
+              offers: {
+                "@type": "Offer",
+                price: Number(sablonlar.displayPrice(p) || 0).toFixed(2),
+                priceCurrency: "TRY",
+                availability: p.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+                url: adres
+              }
+            }
+          };
+        })
+      });
+    }
+  }
+
   // "<" is escaped so a value can never break out of the script element.
   tags.push(`<script type="application/ld+json">${JSON.stringify(jsonLd).replace(/</g, "\\u003c")}</script>`);
 
