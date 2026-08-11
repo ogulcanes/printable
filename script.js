@@ -193,37 +193,8 @@ function renderFeaturePanel(product) {
   panel.hidden = false;
 }
 
-function preferredProductList(active, ids, limit, excluded = new Set()) {
-  const selected = [];
-  ids.forEach((id) => {
-    const product = active.find((item) => item.id === id);
-    if (product && !excluded.has(product.id) && !selected.some((item) => item.id === product.id)) selected.push(product);
-  });
-  active.forEach((product) => {
-    if (selected.length >= limit || excluded.has(product.id) || selected.some((item) => item.id === product.id)) return;
-    selected.push(product);
-  });
-  return selected.slice(0, limit);
-}
-
-function commerceStageCardHTML(product, index) {
-  const off = discountPercent(product);
-  const scales = productScales(product);
-  const inStock = Number(product.stock) > 0;
-  return `
-    <article class="commerce-product${index === 0 ? " commerce-product--lead" : ""}">
-      ${off ? `<span class="commerce-product__discount">%${off} indirim</span>` : ""}
-      <a href="/urun/${product.id}">
-        <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" ${index === 0 ? 'fetchpriority="high"' : 'loading="eager"'}>
-      </a>
-      <div>
-        ${index === 0 ? "<span>Vitrin ürünü</span>" : ""}
-        <h2>${product.name}</h2>
-        <strong>${money(displayPrice(product))}${scales.length > 1 ? "'den başlayan" : ""}</strong>
-        <button type="button" data-add-product="${product.id}" ${inStock ? "" : "disabled"}>${inStock ? (scales.length > 1 ? "Boyunu seç" : "Sepete ekle") : "Tükendi"}</button>
-      </div>
-    </article>`;
-}
+/* preferredProductList ve commerceStageCardHTML product-templates.js'e
+   tasindi: /landing vitrinini sunucu da basiyor. */
 
 function landingShelfCardHTML(product) {
   const off = discountPercent(product);

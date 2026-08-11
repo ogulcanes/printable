@@ -1718,6 +1718,17 @@ async function renderProductGrid(query) {
     || `<p class="products-empty">Ürün bulunamadı.</p>`;
 }
 
+/* /landing vitrini. Seçim script.js'teki renderProductLanding ile aynı: sabit
+   id listesi, eksik kalırsa katalog sırasından tamamlanır. */
+async function renderLandingStage() {
+  const products = await db.prepare(
+    "SELECT * FROM products WHERE is_active = 1 ORDER BY created_at DESC, id DESC"
+  ).all();
+  const suslu = (await decorateProducts(products)).map(maliyetiGizle);
+  return sablonlar.preferredProductList(suslu, [21, 53, 22, 39, 35], 5)
+    .map(sablonlar.commerceStageCardHTML).join("");
+}
+
 /* /urunler filtre seçenekleri. İşaretleme urunler.js'teki renderCategoryFilters
    / renderColorFilters ile BİREBİR aynı olmalı: JS aynı kutuyu yeniden
    bastığında yükseklik değişmezse sayfa hiç kaymaz. Yan fayda, kategori ve renk
@@ -1777,6 +1788,7 @@ async function sendPage(req, res, file, slug) {
   if (sayfa.includes("<!--contact-details-->")) sayfa = sayfa.replace("<!--contact-details-->", await renderContactDetails());
   if (sayfa.includes("<!--filtre-kategoriler-->")) sayfa = await renderProductFilters(sayfa, req.query);
   if (sayfa.includes("<!--urun-izgarasi-->")) sayfa = sayfa.replace("<!--urun-izgarasi-->", await renderProductGrid(req.query));
+  if (sayfa.includes("<!--landing-vitrin-->")) sayfa = sayfa.replace("<!--landing-vitrin-->", await renderLandingStage());
   res.type("html").send(await injectShell(sayfa, slug, await pageCustomer(req, res)));
 }
 

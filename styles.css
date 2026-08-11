@@ -7952,3 +7952,26 @@ body.catalog-view-table .catalog-table-view { display: block; overflow-x: auto; 
   white-space: nowrap;
   border: 0;
 }
+
+/* ---- Yükleme sırasında yer ayırma ----
+   Bu iki sayfanın gövdesi JS ile doluyor. Kutu sıfır yükseklikle başlayınca
+   içerik gelince altındaki her şeyi (dipnot, footer) aşağı itiyordu:
+   /katalog'da CLS 0,43, /anahtarlik-katalogu'nda 0,39 — eşik 0,1.
+
+   Sabit bir min-height TAHMİN olurdu ve ürün sayısı değişince yanlışa düşerdi.
+   Bir ekran yüksekliği ayırmak tahmin değil: iki listede de içerik her zaman
+   bir ekrandan uzun, yani dipnot ve footer zaten görüntü alanının dışında
+   başlıyor ve oradaki hareket CLS'e girmiyor. Kutu dolunca kural düşer. */
+.keychain-grid:empty { min-height: 100vh; }
+.catalog-loading { min-height: 100vh; }
+
+/* Ürün sayacı JS ile yazılıyor; boş <p> satır yüksekliği kadar büyüyüp
+   kataloğu 29px aşağı itiyordu. Satırı baştan ayır. */
+.catalog-count:empty::before { content: "\00a0"; }
+
+/* Vitrin görsellerinin kutusunu yüklenmeden önce ayır. Kart yüksekliği görselin
+   DOĞAL oranından geliyordu (img height:100%, ata yüksekliği belirsiz), yani
+   dosya inene kadar satır 235px'e çöküp sonra gerçek boyuna sıçrıyordu —
+   /landing'de CLS 0,12. Ürün görsellerinin tamamı 9:16 dikey; oran baştan
+   verilince yerleşim görsel yüklenmesinden bağımsız hale geliyor. */
+.commerce-product img { aspect-ratio: 9 / 16; }
