@@ -29,8 +29,19 @@ data/printable.sqlite                 gitignored, seeded on first boot
 | Running the app, previewing, verifying | `run-preview` |
 | Routes, auth, uploads, Vercel in `server.js` | `api-endpoint` |
 | `admin.html` / `admin.js` / `admin.css` | `admin-panel` |
-| DB columns, tables, seed data | `sqlite-schema` — a new column needs a migration, not just a `CREATE TABLE` edit |
+| DB columns, tables, seed data | `sqlite-schema` — a new column needs a migration, not just a `CREATE TABLE` edit, **and `SCHEMA_VERSION` must be bumped or none of it reaches an existing database** |
+| Product card / product detail markup | `product-templates.js` — one template, rendered by both the server and the browser (see below) |
 | Meta tags, OG/social previews, JSON-LD, alt text, a new public page | `seo` — meta is injected server-side; setting it from JS silently breaks social previews |
+
+## Product markup is rendered twice — never copy the template
+
+`product-templates.js` is loaded by **both** Node (`require` in `server.js`) and the browser (`<script>`, injected before `script.js` by `injectShell`). The server prints the first HTML for `/urunler`, `/urun/:id` and the `/landing` stage; the browser re-prints the same box on every interaction (filter, scale, colour). Both call the **same function**.
+
+Copying a template into `script.js` or `urun.js` is how this breaks: the two drift, and the page visibly jumps when JS takes over while crawlers see different content than customers. If you change product markup, change it in `product-templates.js` only, and keep every function there **pure** — no DOM access, no module-level state. Selection state (`seciliOlcekId`, `seciliRenkId`, `stokGoster`) is a parameter; the server passes the same defaults the client starts with.
+
+The same rule covers anything the server pre-renders into a JS-filled box — the `/urunler` filter lists and active-filter chips, the account name in the header. If the server's HTML and the JS re-render differ by even a wrapper class, the page shifts.
+
+Verify parity by calling the function in Node and in the browser with the same fixture and diffing the strings; the live catalogue has no priced scales or per-colour photos, so those branches are only reachable with synthetic data.
 
 ## Admin-managed content
 
