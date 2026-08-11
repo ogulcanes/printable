@@ -1820,7 +1820,8 @@ async function renderHero(sayfa) {
   const gorseller = slaytlar.map((s, i) => {
     const alt = s.image_alt || s.title || "Printable banner görseli";
     const oncelik = i === 0 ? ' fetchpriority="high"' : ' loading="lazy"';
-    return `<img class="hero__slide${i === 0 ? " is-active" : ""}" src="${escapeHtml(s.image_path)}" alt="${escapeHtml(alt)}"${oncelik}>`;
+    // Banner tam genişlikte; 1600px 2172px'lik orijinali gereksiz kılıyor.
+    return `<img class="hero__slide${i === 0 ? " is-active" : ""}" src="${escapeHtml(sablonlar.gorselAdresi(s.image_path, 1600))}" alt="${escapeHtml(alt)}"${oncelik}>`;
   }).join("\n              ");
 
   const ilk = slaytlar[0] || {};
@@ -5304,6 +5305,27 @@ app.delete("/api/messages/:id", requireAdmin, async (req, res) => {
 });
 
 app.get("/admin", requireAdmin, async (req, res) => res.sendFile(path.join(ROOT, "admin.html")));
+
+/* Eşleşmeyen adresler. Express'in varsayılanı İngilizce bir "Cannot GET /..."
+   satırıydı: ziyaretçi sitenin tamamen çöktüğünü sanıp çıkıyordu. Kendi
+   sayfamız gerçek 404 döner, başlık/footer'ı taşır ve nereye gidileceğini
+   söyler. noindex — kırık adresler dizine girmemeli.
+   /api/ altı JSON döner; oradan HTML beklenmez. */
+app.use(async (req, res, next) => {
+  if (req.method !== "GET" || req.originalUrl.startsWith("/api/")) return next();
+  try {
+    const site = await db.prepare("SELECT site_name FROM site_settings WHERE id = 1").get() || {};
+    const head = [
+      `<title>Sayfa bulunamadı | ${escapeHtml(site.site_name || "Printable")}</title>`,
+      FAVICON_TAGS,
+      `<meta name="robots" content="noindex,follow">`
+    ].join("\n    ");
+    const html = fs.readFileSync(path.join(ROOT, "404.html"), "utf8");
+    res.status(404).type("html").send(
+      await injectShell(html.replace("<!--seo-->", head), "", await pageCustomer(req, res))
+    );
+  } catch (error) { next(error); }
+});
 
 /* Son durak: yukarıdaki sarmalayıcının yakaladığı her hata buraya düşer.
    Sessiz bir askıda kalma yerine log'a yazılıp 500 dönülür. */

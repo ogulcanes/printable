@@ -20,6 +20,22 @@
 
   const money = (value) => `${Number(value || 0).toFixed(2)} TL`;
 
+  /* Görseli gösterileceği boyutta ister.
+   *
+   * Supabase Storage'ın dönüştürme uç noktası hem küçültüyor hem tarayıcı
+   * destekliyorsa WebP veriyor: 1560 KB'lık bir banner 1600px'te 46 KB'a,
+   * 204 KB'lık ürün fotoğrafı 500px'te 40 KB'a iniyor. Kartlar 250px
+   * genişliğinde gösterilirken 1-2 MB'lık orijinali indirmenin anlamı yok.
+   *
+   * Supabase DIŞINDAKİ adresler olduğu gibi geçer — MakerWorld görselleri
+   * üçüncü tarafta, onları biz dönüştüremiyoruz. */
+  const gorselAdresi = (url, genislik) => {
+    const u = String(url || "");
+    if (!u.includes("/storage/v1/object/public/")) return u;
+    const [yol, sorgu] = u.split("?");
+    return `${yol.replace("/storage/v1/object/public/", "/storage/v1/render/image/public/")}?width=${genislik}&quality=78${sorgu ? "&" + sorgu : ""}`;
+  };
+
   const productScales = (product) => (product && product.scales) || [];
 
   /* Karttaki fiyat: ölçekli üründe EN UCUZ ölçeğin fiyatı, ölçeksizde varsa
@@ -72,7 +88,7 @@
     <article class="product-card">
       ${off && !scales.length ? `<span class="discount-badge">-%${off}</span>` : ""}
       <a class="product-card__link" href="/urun/${product.id}">
-        <img src="${escapeHtml(product.image_path || "/assets/printable-logo.svg")}" alt="${escapeHtml(product.image_alt || product.name)}" loading="lazy">
+        <img src="${escapeHtml(gorselAdresi(product.image_path, 500) || "/assets/printable-logo.svg")}" alt="${escapeHtml(product.image_alt || product.name)}" loading="lazy">
         <h3>${escapeHtml(product.name)}</h3>
       </a>
       ${ratingHTML(product)}
@@ -93,7 +109,7 @@
   const anaMedyaHTML = (kare) => kare?.type === "video"
     ? `<video id="gallery-main-video" src="${escapeHtml(kare.src)}" controls playsinline preload="metadata"
               aria-label="${escapeHtml(kare.alt || "Ürün videosu")}"></video>`
-    : `<img id="gallery-main-image" src="${escapeHtml(kare?.src) || "/assets/printable-logo.svg"}"
+    : `<img id="gallery-main-image" src="${escapeHtml(gorselAdresi(kare?.src, 1000)) || "/assets/printable-logo.svg"}"
             alt="${escapeHtml(kare?.alt || "Ürün görseli")}">`;
 
   const olceklerOf = (product) => product.scales || [];
@@ -188,7 +204,7 @@
                         aria-label="${i + 1}. ${k.type === "video" ? "videoyu oynat" : "fotoğrafı göster"}">
                   ${k.type === "video"
                     ? `<video src="${escapeHtml(k.src)}" muted playsinline preload="metadata" tabindex="-1"></video><span aria-hidden="true">▶</span>`
-                    : `<img src="${escapeHtml(k.src)}" alt="">`}
+                    : `<img src="${escapeHtml(gorselAdresi(k.src, 200))}" alt="">`}
                 </button>`).join("")}
             </div>` : ""}
         </div>
@@ -249,7 +265,7 @@ function commerceStageCardHTML(product, index) {
     <article class="commerce-product${index === 0 ? " commerce-product--lead" : ""}">
       ${off ? `<span class="commerce-product__discount">%${off} indirim</span>` : ""}
       <a href="/urun/${product.id}">
-        <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" ${index === 0 ? 'fetchpriority="high"' : 'loading="eager"'}>
+        <img src="${gorselAdresi(product.image_path, index === 0 ? 900 : 500) || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" ${index === 0 ? 'fetchpriority="high"' : 'loading="eager"'}>
       </a>
       <div>
         ${index === 0 ? "<span>Vitrin ürünü</span>" : ""}
@@ -262,7 +278,7 @@ function commerceStageCardHTML(product, index) {
 
   const disaAktar = {
     escapeHtml, money, stars, productScales, displayPrice, discountPercent, ratingHTML,
-    productCardHTML, productDetailHTML, commerceStageCardHTML, preferredProductList,
+    productCardHTML, productDetailHTML, commerceStageCardHTML, preferredProductList, gorselAdresi,
     olceklerOf, seciliOlcek, galeriKareleri, anaMedyaHTML, galeriMedyaTuru
   };
 

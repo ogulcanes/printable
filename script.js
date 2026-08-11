@@ -117,7 +117,7 @@ async function loadCategories() {
     categoryGrid.innerHTML = categories.map((category) => `
       <a class="category-card" href="/urunler?kategori=${category.id}">
         <span class="category-card__media">
-          <img src="${category.image_path || "/assets/printable-logo.svg"}" alt="${category.image_alt || ""}" loading="lazy">
+          <img src="${gorselAdresi(category.image_path, 500) || "/assets/printable-logo.svg"}" alt="${category.image_alt || ""}" loading="lazy">
         </span>
         <span class="category-card__body">
           <strong>${category.name}</strong>
@@ -750,7 +750,9 @@ function applyHeroSlides(slides) {
   const images = slides.map((slide, i) => {
     const img = document.createElement("img");
     img.className = i === 0 ? "hero__slide is-active" : "hero__slide";
-    img.src = slide.image_path;
+    // Sunucu da aynı boyutu istiyor (renderHero); farklı istesek tarayıcı
+    // aynı görseli ikinci kez indirirdi.
+    img.src = gorselAdresi(slide.image_path, 1600);
     img.alt = slide.image_alt || slide.title || "Printable banner görseli";
     if (i === 0) img.fetchPriority = "high";
     else img.loading = "lazy";
