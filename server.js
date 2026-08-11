@@ -1338,6 +1338,35 @@ async function seoHead(req, slug) {
     });
   }
 
+  /* Breadcrumb. Arama sonucunda ham adres yerine "Ana Sayfa › Ürünler" yolu
+     görünür — ürün sayfalarında zaten vardı (productMetaTags), alt sayfalarda
+     yoktu. Google en az iki basamak istiyor, o yüzden ana sayfaya eklenmiyor.
+     Ad olarak menüdeki/başlıktaki karşılığı kullanılıyor; Google "adres
+     yapısını değil, kullanıcının izlediği yolu yansıtın" diyor. */
+  const yolAdlari = {
+    urunler: "Ürünler",
+    tasarim: "Özel Tasarım",
+    "stl-teklif": "STL Teklif",
+    hakkinda: "Hakkımızda",
+    iletisim: "İletişim",
+    sss: "Sıkça Sorulan Sorular",
+    katalog: "Katalog",
+    "anahtarlik-katalogu": "Toptan Anahtarlık Kataloğu",
+    landing: "Ürün Seçkisi",
+    iade: "İade ve Cayma Hakkı",
+    gizlilik: "Gizlilik ve KVKK",
+    "mesafeli-satis": "Mesafeli Satış Sözleşmesi"
+  };
+  if (yolAdlari[slug]) {
+    jsonLd["@graph"].push({
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: "Ana Sayfa", item: siteUrl },
+        { "@type": "ListItem", position: 2, name: yolAdlari[slug], item: absoluteUrl(req, `/${slug}`, site.site_url) }
+      ]
+    });
+  }
+
   /* /landing bir ürün seçkisi sayfası; ona uygun düğüm ItemList. Yalnızca
      SUNUCUNUN BASTIĞI beş vitrin ürünü listeleniyor — aşağıdaki raf hâlâ JS ile
      doluyor ve yapısal verinin sayfada görünmeyen içeriği anlatmaması gerekiyor.
