@@ -1259,6 +1259,13 @@ const googleAnalyticsTag = /^G-[A-Z0-9]+$/.test(GA_MEASUREMENT_ID)
  * fonksiyon sessizce çıkar; ölçüm eksikliği sipariş akışını bozmamalı. */
 const GA_API_SECRET = process.env.GA_API_SECRET || "";
 
+/* Açılışta durumu bir kez yaz. Anahtar tanımlı değilken fonksiyon sessizce
+   çıkıyor; hata da log'a düşmediği için "çalışıyor" ile "hiç denenmedi"
+   dışarıdan ayırt edilemiyordu. Bu satır o belirsizliği kaldırır. */
+console.log(GA_API_SECRET
+  ? "GA4 sunucu taraflı satın alma ölçümü: ETKİN"
+  : "GA4 sunucu taraflı satın alma ölçümü: KAPALI (GA_API_SECRET tanımsız) — ölçüm yalnızca tarayıcıdan yapılacak");
+
 /* GA4'ün `_ga` çerezi "GA1.1.<client_id>" biçimindedir; client_id iki parçadır
    (rastgele sayı + ilk ziyaret zaman damgası). Oturum kimliği ise mülke özel
    `_ga_<ölçüm kimliği>` çerezinde, "GS2.1.s<session_id>$..." içinde durur. */
@@ -1316,6 +1323,8 @@ async function gaSatinAlmaBildir(orderId) {
   );
   // MP başarıda 204 döner ve gövde vermez; hata ayrıntısı yalnızca debug ucunda.
   if (!yanit.ok) throw new Error(`GA4 Measurement Protocol ${yanit.status}`);
+  // Başarıyı da yaz: siparişin ölçüme gidip gitmediği log'dan doğrulanabilsin.
+  console.log(`GA4 satın alma bildirildi: ${order.order_number} (${Number(order.total).toFixed(2)} TL)`);
 }
 
 // Absolute URLs — Open Graph and canonical are ignored by crawlers when relative.
