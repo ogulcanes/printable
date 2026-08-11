@@ -5173,7 +5173,7 @@ app.get("/api/paytr/status", async (req, res) => {
     return res.status(404).json({ error: "Ödeme kaydı bulunamadı." });
   }
   const order = await db.prepare(`
-    SELECT order_number, payment_status, payment_failure_message, shipping_method
+    SELECT order_number, payment_status, payment_failure_message, shipping_method, total
     FROM orders WHERE payment_reference = ?
   `).get(reference);
   if (!order) return res.status(404).json({ error: "Ödeme kaydı bulunamadı." });
@@ -5181,7 +5181,11 @@ app.get("/api/paytr/status", async (req, res) => {
     order_number: order.order_number,
     payment_status: order.payment_status,
     failure_message: order.payment_status === "failed" ? order.payment_failure_message || "Ödeme tamamlanamadı." : "",
-    shipping_method: order.shipping_method
+    shipping_method: order.shipping_method,
+    /* Dönüşüm ölçümü için: reklam raporunda "kaç sipariş" değil "kaç liralık
+       sipariş" görünsün. Müşterinin az önce ödediği tutar, referans+token
+       doğrulandıktan sonra dönüyor. */
+    total: order.total
   });
 });
 

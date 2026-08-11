@@ -38,6 +38,17 @@
   }
 
   function showPaidOrder(data) {
+    /* Sepet AZ SONRA boşaltılıyor; satırları ölçüme önce geçir yoksa dönüşüm
+       ürünsüz kaydedilir. Tutar sunucudan geliyor (kargo, kupon ve kampanya
+       uygulanmış hâli) — sepetten hesaplasak reklam raporundaki ciro yanlış
+       olurdu. */
+    const satirlar = cart.map(olayUrunu);
+    olay("purchase", {
+      transaction_id: data.order_number,
+      currency: "TRY",
+      value: Number(data.total) || 0,
+      items: satirlar
+    });
     cart.length = 0;
     saveCart();
     if (typeof renderCart === "function") renderCart();
@@ -346,6 +357,11 @@
     const button = qs("#co-submit");
     button.disabled = true;
     setError("#payment-error", "");
+    olay("begin_checkout", {
+      currency: "TRY",
+      value: cart.reduce((t, i) => t + i.price * i.quantity, 0),
+      items: cart.map(olayUrunu)
+    });
     try {
       const res = await fetch("/api/checkout", {
         method: "POST",

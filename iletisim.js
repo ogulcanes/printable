@@ -33,6 +33,10 @@
       if (!response.ok) throw new Error(payload.error || "Mesaj gönderilemedi.");
       form.reset();
       setStatus("Mesajınız alındı! En kısa sürede size döneceğiz.", true);
+      /* Çizim hizmeti reklamının dönüşümü bu. Yalnızca sunucu 2xx döndükten
+         sonra — gönderilemeyen bir formu dönüşüm saymak reklam bütçesini
+         yanlış yöne kaydırır. */
+      olay("generate_lead", { form_id: "contact-form", sayfa: location.pathname });
     } catch (error) {
       setStatus(error.message, false);
     } finally {

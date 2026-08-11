@@ -4,6 +4,38 @@
    oluyor; sayfa zipplamiyor ve tarayici ile ziyaretci ayni seyi goruyor.
    Bu dosya product-templates.js YUKLENDIKTEN SONRA calismali. */
 
+/* Dönüşüm ölçümü.
+ *
+ * GA4 kendiliğinden yalnızca "sayfa görüntülendi" diyor. Reklamın işe yarayıp
+ * yaramadığını anlamak için siteye para kazandıran ANI bildirmek gerekiyor:
+ * sepete ekleme, ödemeye başlama, tamamlanan sipariş (tutarıyla), iletişim
+ * formu ve WhatsApp tıklaması.
+ *
+ * gtag yoksa (ölçüm kimliği tanımlı değilse, reklam engelleyici varsa) sessizce
+ * hiçbir şey yapmaz — ölçüm eksikliği sitenin çalışmasını hiçbir koşulda
+ * bozmamalı. */
+function olay(ad, veri) {
+  try {
+    if (typeof gtag === "function") gtag("event", ad, veri || {});
+  } catch { /* ölçüm hatası akışı kesmez */ }
+}
+
+// GA4'ün beklediği ürün biçimi.
+const olayUrunu = (satir) => ({
+  item_id: String(satir.id),
+  item_name: satir.name,
+  price: Number(satir.price) || 0,
+  quantity: Number(satir.quantity) || 1,
+  ...(satir.scale ? { item_variant: satir.scale } : {})
+});
+
+/* WhatsApp, çizim hizmetinin ana dönüşüm yolu — tıklama sayfadan ayrılmakla
+   sonuçlandığı için delegasyonla yakalanıyor. */
+document.addEventListener("click", (event) => {
+  const wa = event.target.closest?.('a[href*="wa.me"]');
+  if (wa) olay("whatsapp_click", { link_url: wa.href, sayfa: location.pathname });
+}, true);
+
 // Cart persists in localStorage so it survives page navigation (to /odeme and back).
 const CART_KEY = "printable_cart";
 function loadCart() {
@@ -535,6 +567,11 @@ function addToCart(product, quantity = 1, scale = null) {
   else cart.push(satir);
   saveCart();
   renderCart();
+  olay("add_to_cart", {
+    currency: "TRY",
+    value: satir.price * quantity,
+    items: [olayUrunu(satir)]
+  });
 }
 
 document.addEventListener("click", (event) => {
