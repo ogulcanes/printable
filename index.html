@@ -6,7 +6,6 @@
     <!--seo-->
     <link rel="preload" href="/assets/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/assets/fonts/manrope-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="preconnect" href="https://images.unsplash.com">
     <link rel="preconnect" href="https://makerworld.bblmw.com">
     <link rel="stylesheet" href="styles.css">
   </head>
@@ -18,26 +17,17 @@
         <div class="container hero__grid">
           <div class="hero__slider">
             <div class="hero__slides" role="group" aria-label="Banner görselleri">
-              <img class="hero__slide is-active" src="https://images.unsplash.com/photo-1572044162444-ad60f128bdea?auto=format&fit=crop&w=1800&q=75" alt="Renk kartelası ve tasarım masası" fetchpriority="high">
-              <img class="hero__slide" src="https://images.unsplash.com/photo-1503694978374-8a2fa686963a?auto=format&fit=crop&w=1800&q=75" alt="Ofset baskı makinesinden çıkan baskılar" loading="lazy">
-              <img class="hero__slide" src="https://images.unsplash.com/photo-1622547748225-3fc4abd2cca0?auto=format&fit=crop&w=1800&q=75" alt="3D baskı için hazırlanmış model görseli" loading="lazy">
+              <!-- Sunucu doldurur (hero_slides). Burada elle yazilmis Unsplash
+                   stok gorselleri duruyordu: tarayici once onlari boyayip
+                   indiriyor, sonra JS gercek banneri getirip siliyordu — her
+                   acilista yanlis bir gorsel ve 430 KB bosa trafik. -->
+              <!--hero-slaytlari-->
 
               <button class="hero__arrow hero__arrow--prev" type="button" aria-label="Önceki görsel">&#8249;</button>
               <button class="hero__arrow hero__arrow--next" type="button" aria-label="Sonraki görsel">&#8250;</button>
               <div class="hero__dots"></div>
             </div>
-            <div class="hero__copy">
-              <h1>3D Baskı Figür, Oyuncak ve Anahtarlıklar</h1>
-              <span>Hazır 3D baskı ürünleri satın alın veya kendi STL dosyanızı yükleyip fiyat alın</span>
-              <div class="hero-actions">
-                <a class="btn btn--light" href="/stl-teklif">
-                  <span>STL yükle, fiyat al</span>
-                </a>
-                <a class="btn btn--ghost" href="/urunler">
-                  <span>Ürünleri incele</span>
-                </a>
-              </div>
-            </div>
+            <div class="hero__copy"><!--hero-metni--></div>
           </div>
         </div>
       </section>

@@ -1721,6 +1721,38 @@ async function renderProductGrid(query) {
     || `<p class="products-empty">Ürün bulunamadı.</p>`;
 }
 
+/* Banner. İşaretleme script.js'teki applyHeroSlides / renderHeroCopy ile birebir
+   aynı olmalı: JS aynı görselleri yeniden basınca hiçbir şey değişmesin.
+   Boş bırakılırsa .hero__copy'nin h1/span/buton iskeleti hiç oluşmaz ve
+   renderHeroCopy null'a yazmaya çalışır — bu yüzden slayt yoksa bile iskelet
+   basılıyor. */
+async function renderHero(sayfa) {
+  const slaytlar = await db.prepare(
+    "SELECT image_path, image_alt, title, subtitle, primary_label, primary_href, secondary_label, secondary_href FROM hero_slides WHERE is_active = 1 ORDER BY sort_order, id"
+  ).all();
+
+  const gorseller = slaytlar.map((s, i) => {
+    const alt = s.image_alt || s.title || "Printable banner görseli";
+    const oncelik = i === 0 ? ' fetchpriority="high"' : ' loading="lazy"';
+    return `<img class="hero__slide${i === 0 ? " is-active" : ""}" src="${escapeHtml(s.image_path)}" alt="${escapeHtml(alt)}"${oncelik}>`;
+  }).join("\n              ");
+
+  const ilk = slaytlar[0] || {};
+  const buton = (sinif, etiket, adres) =>
+    `<a class="btn ${sinif}" href="${escapeHtml(adres || "#")}"${etiket ? "" : " hidden"}><span>${escapeHtml(etiket || "")}</span></a>`;
+  const metin = `
+              <h1>${escapeHtml(ilk.title || "")}</h1>
+              <span>${escapeHtml(ilk.subtitle || "")}</span>
+              <div class="hero-actions">
+                ${buton("btn--light", ilk.primary_label, ilk.primary_href)}
+                ${buton("btn--ghost", ilk.secondary_label, ilk.secondary_href)}
+              </div>`;
+
+  return sayfa
+    .replace("<!--hero-slaytlari-->", gorseller)
+    .replace("<!--hero-metni-->", metin);
+}
+
 /* /landing vitrini. Seçim script.js'teki renderProductLanding ile aynı: sabit
    id listesi, eksik kalırsa katalog sırasından tamamlanır. */
 async function renderLandingStage() {
@@ -1792,6 +1824,7 @@ async function sendPage(req, res, file, slug) {
   if (sayfa.includes("<!--filtre-kategoriler-->")) sayfa = await renderProductFilters(sayfa, req.query);
   if (sayfa.includes("<!--urun-izgarasi-->")) sayfa = sayfa.replace("<!--urun-izgarasi-->", await renderProductGrid(req.query));
   if (sayfa.includes("<!--landing-vitrin-->")) sayfa = sayfa.replace("<!--landing-vitrin-->", await renderLandingStage());
+  if (sayfa.includes("<!--hero-slaytlari-->")) sayfa = await renderHero(sayfa);
   res.type("html").send(await injectShell(sayfa, slug, await pageCustomer(req, res)));
 }
 
