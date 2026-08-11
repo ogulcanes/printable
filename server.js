@@ -1349,7 +1349,14 @@ async function renderHeader(active, customer) {
     <header class="site-header">
       <div class="container header-main">
         <a class="logo printable-logo" href="/" aria-label="Printable ana sayfa">
-          <img src="/assets/printable-logo-transparent.png" alt="Printable">
+          <!-- 400px'lik sürüm: kaynak dosya 1550x550 ve 623 KB idi, başlıkta 33px
+               yüksekliğinde gösteriliyordu. Her sayfada iki kez inen, sitedeki en
+               ağır dosyaydı. width/height, yazı tipi yüklenirken satırın
+               zıplamaması için duruyor. -->
+          <picture>
+            <source srcset="/assets/printable-logo-transparent-400.webp" type="image/webp">
+            <img src="/assets/printable-logo-transparent-400.png" alt="Printable" width="400" height="142">
+          </picture>
         </a>
         <!-- Yalnızca mobilde görünür; menüyü açar. -->
         <button class="nav-toggle" type="button" id="nav-toggle"
@@ -1554,7 +1561,10 @@ async function renderFooter() {
         <div><h3>Yasal</h3><a href="/mesafeli-satis">Mesafeli Satış Sözleşmesi</a><a href="/iade">İade ve Cayma Hakkı</a><a href="/gizlilik">Gizlilik ve KVKK</a></div>
         <div class="footer-logo printable-wordmark">
           <a class="footer-brand-logo" href="/" aria-label="Printable ana sayfa">
-            <img src="/assets/printable-logo-transparent.png" alt="Printable">
+            <picture>
+              <source srcset="/assets/printable-logo-transparent-400.webp" type="image/webp">
+              <img src="/assets/printable-logo-transparent-400.png" alt="Printable" width="400" height="142">
+            </picture>
           </a>
           <p>Hazır 3D modellerden özenle üretilen baskı ürünleri.</p>
           <p>Türkiye</p>
@@ -1638,14 +1648,74 @@ async function renderReturnAddress() {
 const guncellemeSatiri = () =>
   `Son güncelleme: ${new Date().toLocaleDateString("tr-TR", { year: "numeric", month: "long", day: "numeric" })}`;
 
+/* S.S.S. sayfasının FAQPage şeması. Soru-cevaplar sayfanın kendi HTML'inden
+   okunur; ikinci bir listeyi server.js'te tutmak, biri güncellenip diğeri
+   unutulduğunda arama sonucunda yanlış cevap göstermek demekti. Google
+   FAQPage için soru ve cevabın sayfada görünür olmasını şart koşuyor —
+   tek kaynak zaten bu yüzden doğru olan. */
+function faqPageSchema(html) {
+  const sorular = [...html.matchAll(
+    /<details class="faq-item">\s*<summary>([\s\S]*?)<\/summary>\s*<div class="faq-answer">([\s\S]*?)<\/div>\s*<\/details>/g
+  )].map(([, soru, cevap]) => ({
+    "@type": "Question",
+    name: metinAl(soru),
+    acceptedAnswer: { "@type": "Answer", text: metinAl(cevap) }
+  })).filter((q) => q.name && q.acceptedAnswer.text);
+
+  if (!sorular.length) return "";
+  const jsonLd = { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: sorular };
+  return `\n    <script type="application/ld+json">${JSON.stringify(jsonLd).replace(/</g, "\\u003c")}</script>`;
+}
+
+// Etiketleri atıp düz metne indirger; &amp; gibi girişleri de geri çevirir.
+const metinAl = (parca) => parca
+  .replace(/<[^>]+>/g, " ")
+  .replace(/&nbsp;/g, " ")
+  .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+  .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+  .replace(/\s+/g, " ")
+  .trim();
+
+/* /urunler filtre seçenekleri. İşaretleme urunler.js'teki renderCategoryFilters
+   / renderColorFilters ile BİREBİR aynı olmalı: JS aynı kutuyu yeniden
+   bastığında yükseklik değişmezse sayfa hiç kaymaz. Yan fayda, kategori ve renk
+   adlarının JS'siz HTML'de de bulunması. */
+async function renderProductFilters(sayfa) {
+  const categories = await db.prepare(
+    "SELECT id, name FROM categories WHERE is_active = 1 ORDER BY sort_order, id"
+  ).all();
+  const colors = await db.prepare(
+    "SELECT id, name, hex FROM colors WHERE is_active = 1 ORDER BY sort_order, id"
+  ).all();
+
+  const kategoriler = categories.map((category) => `
+      <label class="filter-check">
+        <input type="checkbox" data-filter="category" value="${category.id}">
+        ${escapeHtml(category.name)}
+      </label>
+    `).join("") || "<p class='filter-empty'>Kategori yok.</p>";
+
+  const renkler = colors.map((color) => `
+      <label class="filter-check filter-check--color">
+        <input type="checkbox" data-filter="color" value="${color.id}">
+        <span class="color-dot" style="background:${escapeHtml(color.hex)}"></span>${escapeHtml(color.name)}
+      </label>
+    `).join("") || "<p class='filter-empty'>Renk yok.</p>";
+
+  return sayfa
+    .replace("<!--filtre-kategoriler-->", kategoriler)
+    .replace("<!--filtre-renkler-->", renkler);
+}
+
 async function sendPage(req, res, file, slug) {
   const html = fs.readFileSync(path.join(ROOT, file), "utf8");
-  let sayfa = html.replace("<!--seo-->", await seoHead(req, slug));
+  let sayfa = html.replace("<!--seo-->", (await seoHead(req, slug)) + (slug === "sss" ? faqPageSchema(html) : ""));
   // Yasal sayfa yer tutucuları — diğer sayfalarda bunlar zaten yok, replace no-op.
   if (sayfa.includes("<!--satici-->")) sayfa = sayfa.replaceAll("<!--satici-->", await renderSellerBlock());
   if (sayfa.includes("<!--iade-adresi-->")) sayfa = sayfa.replace("<!--iade-adresi-->", await renderReturnAddress());
   if (sayfa.includes("<!--guncelleme-->")) sayfa = sayfa.replace("<!--guncelleme-->", guncellemeSatiri());
   if (sayfa.includes("<!--contact-details-->")) sayfa = sayfa.replace("<!--contact-details-->", await renderContactDetails());
+  if (sayfa.includes("<!--filtre-kategoriler-->")) sayfa = await renderProductFilters(sayfa);
   res.type("html").send(await injectShell(sayfa, slug, await pageCustomer(req, res)));
 }
 

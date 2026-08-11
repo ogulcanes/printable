@@ -3157,7 +3157,7 @@ body {
 .stl-panel { display: none; }
 .stl-panel.is-active { display: block; }
 
-.stl-panel h1 {
+.stl-panel h2 {
   margin: 0 0 8px;
   font-size: clamp(24px, 2.4vw, 36px);
   line-height: 1.1;
@@ -6347,7 +6347,7 @@ body.catalog-view-table .catalog-table-view { display: block; overflow-x: auto; 
     color: var(--text);
   }
   .print-meta { text-align: right; }
-  .print-meta h1 { margin: 0; font-size: 12pt; font-weight: 700; color: var(--text); }
+  .print-meta h2 { margin: 0; font-size: 12pt; font-weight: 700; color: var(--text); }
   .print-meta p { margin: 1mm 0 0; font-size: 8pt; color: var(--muted); }
 
   .print-campaigns {
@@ -6541,14 +6541,19 @@ body.catalog-view-table .catalog-table-view { display: block; overflow-x: auto; 
   display: inline-flex;
   width: fit-content;
 }
-.printable-logo > img {
+/* `> img` DEGIL: logo artik <picture> ile sarili (WebP + PNG). Dogrudan cocuk
+   seciciyi koruyunca kural hic eslesmiyor ve logo 195px yerine 33px yuksekligine
+   dusup yatay olarak eziliyordu. */
+.printable-logo > img,
+.printable-logo > picture > img {
   display: block;
   width: 195px;
   height: auto;
   max-width: 100%;
 }
 @media (max-width: 520px) {
-  .printable-logo > img { width: 158px; }
+  .printable-logo > img,
+  .printable-logo > picture > img { width: 158px; }
 }
 .stl-plates {
   display: grid;
@@ -7931,4 +7936,19 @@ body.catalog-view-table .catalog-table-view { display: block; overflow-x: auto; 
   .header-actions .header-cta:hover,
   .footer .footer-cta:hover,
   .main-links .nav-cta:hover { transform: none; }
+}
+
+/* Görsel düzeni değiştirmeden ekran okuyucuya ve tarayıcıya metin sunar.
+   `display: none` OLMAZ — o, metni erişilebilirlik ağacından da siler. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
