@@ -31,6 +31,10 @@
    * üçüncü tarafta, onları biz dönüştüremiyoruz. */
   const gorselAdresi = (url, genislik) => {
     const u = String(url || "");
+    /* GIF dönüştürülmez: Supabase'in render uç noktası tek kare döndürüyor,
+       yani animasyonlu ürün önizlemesi donuyor. Boyut kazancından çok
+       görünüm önemli. */
+    if (/\.gif(\?|$)/i.test(u)) return u;
     if (!u.includes("/storage/v1/object/public/")) return u;
     const [yol, sorgu] = u.split("?");
     return `${yol.replace("/storage/v1/object/public/", "/storage/v1/render/image/public/")}?width=${genislik}&quality=78${sorgu ? "&" + sorgu : ""}`;
