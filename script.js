@@ -421,7 +421,12 @@ function bulkTiersHTML(product, scale = null) {
         <p>Toplam <strong>${money(offer.total)}</strong></p>
         ${offer.saving > 0
           ? `<span class="bulk-tier__saving">${money(offer.saving)} avantaj</span>`
-          : '<span class="bulk-tier__automatic">Adet kampanyası sepette uygulanır</span>'}
+          /* Kademe yoksa rozet BOŞ kalır: eskiden "Adet kampanyası sepette
+             uygulanır" yazıyordu ve tanımlı kampanya olmadığında müşteriye
+             verilmemiş bir söz veriyordu. Etiket yine de basılıyor çünkü
+             margin-top:auto ile "sepete ekle" düğmelerini aynı hizada
+             tutan şey bu. */
+          : '<span class="bulk-tier__automatic" aria-hidden="true"></span>'}
         <button type="button" data-bulk-quantity="${quantity}">${quantity} adedi sepete ekle</button>
       </article>`;
   }).join("");
@@ -452,7 +457,10 @@ function bulkProductCardHTML(product, kind, products = []) {
             </select>
           </label>` : `
           <div class="bulk-product__chosen"><span>Seçili ürün</span><strong>${product.name}</strong></div>`}
-        ${scales.length ? `
+        ${/* Tek boy satıldığında seçici çıkmaz — tek seçenekli açılır liste
+              müşteriye seçim yaptığını sandırır. Vitrin ölçeği sunucuda
+              belirleniyor (satisOlcekleri). */
+          scales.length > 1 ? `
           <label>Boy / ölçek
             <select data-bulk-scale-select>
               ${scales.map((scale) => `<option value="${scale.id}">${scale.scale} · ${money(scale.price)}</option>`).join("")}

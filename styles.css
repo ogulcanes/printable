@@ -7577,6 +7577,9 @@ body.catalog-view-table .catalog-table-view { display: block; overflow-x: auto; 
 }
 .bulk-tier__saving { background: #dff7ed; color: #157355; }
 .bulk-tier__automatic { background: #eef1f6; color: #697183; }
+/* Kademe yokken rozet boş basılıyor: yüksekliği koruyup düğmeleri hizada
+   tutar, ama boş gri bir hap görünmesin. */
+.bulk-tier__automatic:empty { background: transparent; }
 .bulk-tier button {
   width: 100%;
   min-height: 35px;

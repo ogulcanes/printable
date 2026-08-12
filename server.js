@@ -2076,11 +2076,13 @@ async function productMetaTags(req, product) {
   const description = product.meta_description || product.description || site.description || "";
   const canonical = absoluteUrl(req, `/urun/${product.id}`, site.site_url);
   const image = absoluteUrl(req, product.image_path || site.default_og_image, site.site_url);
-  /* Ölçekli ürünün tek bir fiyatı yok. Böyle ürünlerde teklif AggregateOffer
-     olur: arama sonucunda "120–260 TL" aralığı görünür, tek fiyat yazıp
-     müşteriyi yanıltmamış oluruz. */
+  /* Vitrin şu an tek boy sattığı için (bkz. satisOlcekleri) burası tek fiyatlı
+     Offer basıyor. Aşağıdaki AggregateOffer dalı, boylar ayrı fiyatlarla
+     satılmaya başlanınca devreye girer: o zaman ürünün tek bir fiyatı olmaz ve
+     arama sonucunda "120–260 TL" aralığı göstermek tek fiyat yazıp müşteriyi
+     yanıltmaktan doğrudur. */
   const olcekler = satisOlcekleri(await db.prepare(
-    "SELECT id, scale, price FROM product_cost_scales WHERE product_id = ?"
+    "SELECT id, scale, price, unit_cost FROM product_cost_scales WHERE product_id = ? ORDER BY unit_cost ASC, id ASC"
   ).all(product.id), product.sale_price || product.price);
   const price = Number(
     (olcekler.length ? olcekler[0].price : product.sale_price || product.price) || 0
@@ -3241,20 +3243,37 @@ async function decorateProducts(products) {
   }));
 }
 
-/* Ölçeklerin MÜŞTERİYE açık hâli: ölçeğin özel fiyatı varsa onu, yoksa ürünün
-   ana satış fiyatını kullanır. Eski %75 / %100 kayıtları maliyet ölçeği olarak
-   oluşturulmuş ve fiyatları ürün üzerinde tutulmuştu; onları gizlemek yerine
-   aynı ürün fiyatıyla seçilebilir varyant olarak gösteriyoruz.
+/* Ölçeklerin MÜŞTERİYE açık hâli — VİTRİN TEK BOY SATAR.
+
+   %75 / %100 kayıtları maliyet ölçeği olarak girilmiş ve ikisi de ürünün aynı
+   satış fiyatını taşıyor. Bunları seçilebilir varyant diye sunmak müşteriye
+   "iki boy, tek fiyat" gibi anlamsız bir seçim yaptırıyordu; üstelik hangi
+   boyu aldığı fiyattan anlaşılmıyordu. Artık en küçük boy (en düşük maliyetli
+   ölçek) satılıyor, hangi boy olduğu ürün sayfasında yazıyla söyleniyor.
+
+   Kırpma ŞABLONDA değil BURADA: bu fonksiyondan hem katalog hem de ödeme
+   doğrulaması geçiyor. Şablonda gizleseydik elle scale_id gönderip satılmayan
+   boyu sipariş etmek hâlâ mümkün olurdu.
+
+   Sıralama maliyete göre: fiyatlar eşit olduğunda "en ucuz" ölçütü hangi boyun
+   satılacağını belirlemiyordu, sıraya kalıyordu. Maliyet küçük boyu başa alır.
+
+   Boyları ayrı fiyatlarla satmaya karar verilirse slice(0, 1) kaldırılır;
+   ürün sayfasındaki ölçek seçici (product-templates.js) kendiliğinden geri
+   gelir — orada koşul zaten "birden fazla ölçek varsa".
 
    unit_cost ve inputs ticari sır olduğu için bu listeye hiç girmiyor. */
 const satisOlcekleri = (rows, fallbackPrice = null) => (rows || [])
   .map((s) => ({
     id: s.id,
     scale: s.scale,
-    price: Number(s.price) > 0 ? round2(Number(s.price)) : round2(Number(fallbackPrice))
+    price: Number(s.price) > 0 ? round2(Number(s.price)) : round2(Number(fallbackPrice)),
+    maliyet: Number(s.unit_cost) || 0
   }))
   .filter((s) => s.price > 0)
-  .sort((a, b) => a.price - b.price);
+  .sort((a, b) => a.maliyet - b.maliyet || a.price - b.price || a.id - b.id)
+  .slice(0, 1)
+  .map(({ maliyet, ...s }) => s);
 
 // Tek ürün için: POST/PUT sonrası dönen kayıtta kullanılır.
 const imagesOfProduct = db.prepare(`
@@ -4377,6 +4396,13 @@ async function evaluateOne(campaign, items) {
   if (campaign.min_quantity && quantity < campaign.min_quantity) return null;
   if (campaign.min_order_total && subtotal < campaign.min_order_total) return null;
 
+  /* Hangi kalemleri kapsadığının imzası. evaluateCampaigns bununla aynı ürün
+     kümesini hedefleyen adet kademelerini tanıyıp yalnızca en iyisini
+     uyguluyor — "10+ %5", "50+ %12", "100+ %20" üst üste binerse müşteri
+     100 adette %37 indirim alırdı ve katalog %20 yazdığı için sözle
+     gerçek tutmazdı. */
+  const scopeKey = eligible.map((item) => item.product_id).sort((a, b) => a - b).join(",");
+
   if (campaign.kind === "gift") {
     const gift = campaign.gift_product_id
       ? await db.prepare("SELECT id, name FROM products WHERE id = ?").get(campaign.gift_product_id)
@@ -4388,7 +4414,8 @@ async function evaluateOne(campaign, items) {
       campaign,
       discount: 0,
       gift: { product_id: gift.id, product_name: gift.name, quantity: Math.max(1, campaign.gift_quantity) },
-      label: campaignLabel(campaign)
+      label: campaignLabel(campaign),
+      scopeKey
     };
   }
 
@@ -4398,7 +4425,7 @@ async function evaluateOne(campaign, items) {
     : Math.min(campaign.discount_value, subtotal);
   const discount = round2(raw);
   if (discount <= 0) return null;
-  return { campaign, discount, gift: null, label: campaignLabel(campaign) };
+  return { campaign, discount, gift: null, label: campaignLabel(campaign), scopeKey };
 }
 
 /* Sepete uygulanacak her şeyi döndürür.
@@ -4414,9 +4441,33 @@ async function evaluateCampaigns(items, code) {
 
   // 1) Otomatik kampanyalar (kodu olmayanlar). Sırayla: discount toplamı
   //    paylaşılan bir değişken, paralel çalıştırmak yarış koşulu yaratır.
+  const otomatik = [];
   for (const campaign of live.filter((c) => !c.code)) {
     const result = await evaluateOne(campaign, items);
-    if (!result) continue;
+    if (result) otomatik.push({ campaign, result });
+  }
+
+  /* Adet kademeleri ÜST ÜSTE BİNMEZ: aynı ürün kümesini hedefleyen adet
+     koşullu indirimlerden yalnızca en iyisi uygulanır. 100 adet alan müşteri
+     "10+", "50+" ve "100+" kademelerinin üçünü birden hak eder; toplasaydık
+     katalogda yazan orandan çok daha fazlasını verirdik. Katalog zaten tek
+     bir kademe (en ucuz birim) gösteriyor — burası onunla aynı hesabı yapar.
+
+     Farklı ürün kümelerini hedefleyenler ayrı gruplardır ve birlikte
+     uygulanır; sepetteki iki ayrı ürün grubunun kendi kademesi olabilir.
+     Hediye kampanyaları yarışmaya girmez: indirimleri 0 olduğu için
+     karşılaştırmayı hep kaybeder ve hak edilmiş hediye düşerdi. */
+  const kademeYarisi = new Map();
+  for (const aday of otomatik) {
+    if (!aday.campaign.min_quantity || aday.campaign.kind === "gift") continue;
+    const mevcut = kademeYarisi.get(aday.result.scopeKey);
+    if (!mevcut || aday.result.discount > mevcut.result.discount) kademeYarisi.set(aday.result.scopeKey, aday);
+  }
+  const kazananKademeler = new Set([...kademeYarisi.values()].map((x) => x.campaign.id));
+
+  for (const { campaign, result } of otomatik) {
+    const kademe = campaign.min_quantity && campaign.kind !== "gift";
+    if (kademe && !kazananKademeler.has(campaign.id)) continue;
     discount += result.discount;
     if (result.gift) gifts.push({ ...result.gift, campaign_id: campaign.id });
     applied.push({ id: campaign.id, name: campaign.name, label: result.label, amount: result.discount, kind: campaign.kind });
@@ -4471,7 +4522,7 @@ async function normalizeCartItems(items) {
        en ucuz ölçek seçilir: müşteriyi ödeme adımında boş çevirmek yerine
        kartta gördüğü başlangıç fiyatını uygulamak doğru olan. */
     const olcekler = satisOlcekleri(await db.prepare(
-      "SELECT id, scale, price FROM product_cost_scales WHERE product_id = ?"
+      "SELECT id, scale, price, unit_cost FROM product_cost_scales WHERE product_id = ? ORDER BY unit_cost ASC, id ASC"
     ).all(product.id), product.sale_price || product.price);
     const olcek = olcekler.length
       ? olcekler.find((s) => s.id === toInt(item.scale_id)) || olcekler[0]
