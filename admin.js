@@ -743,6 +743,9 @@ function renderCampaigns() {
           <div class="meta-line">
             <span class="badge">${limitText}</span>
             ${c.per_customer_limit ? `<span class="badge">Kişi başı ${c.per_customer_limit}</span>` : ""}
+            ${c.show_on_popup && c.popup_repeat_minutes != null
+              ? `<span class="badge">${Number(c.popup_repeat_minutes) === 0 ? "Pencere her yüklemede" : `Pencere ${Number(c.popup_repeat_minutes)} dk arayla`}</span>`
+              : ""}
             ${dates ? `<span class="badge">${dates}</span>` : ""}
           </div>
         </div>
@@ -1912,6 +1915,8 @@ qs("#campaign-list").addEventListener("click", async (event) => {
     form.elements.is_active.value = campaign.is_active ? "true" : "false";
     form.elements.show_on_banner.value = campaign.show_on_banner ? "true" : "false";
     form.elements.show_on_popup.value = campaign.show_on_popup ? "true" : "false";
+    // 0 geçerli bir değer ("her sayfa yüklemesinde"), || kullanılırsa boşa düşerdi.
+    form.elements.popup_repeat_minutes.value = campaign.popup_repeat_minutes ?? "";
     renderCampaignOptions(campaign);
     syncCampaignFields();
     form.scrollIntoView({ behavior: "smooth", block: "start" });

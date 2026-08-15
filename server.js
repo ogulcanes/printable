@@ -121,7 +121,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "25";
+const SCHEMA_VERSION = "26";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -434,6 +434,7 @@ async function initDb() {
     is_active INTEGER NOT NULL DEFAULT 1,
     show_on_banner INTEGER NOT NULL DEFAULT 0,
     show_on_popup INTEGER NOT NULL DEFAULT 0,
+    popup_repeat_minutes INTEGER,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     FOREIGN KEY(gift_product_id) REFERENCES products(id) ON DELETE SET NULL
   );
@@ -707,6 +708,9 @@ for (const [table, column, type] of [
   ["campaigns", "show_on_banner", "INTEGER NOT NULL DEFAULT 0"],
   // Aynı duyuru, ilk ziyarette bir kez açılan pencere olarak.
   ["campaigns", "show_on_popup", "INTEGER NOT NULL DEFAULT 0"],
+  /* Pencere kapatıldıktan kaç dakika sonra tekrar açılabilir?
+     NULL = bir daha açılmaz, 0 = her sayfa yüklemesinde. */
+  ["campaigns", "popup_repeat_minutes", "INTEGER"],
   /* Kişi başı kullanım hakkı. usage_limit ile KARIŞTIRILMAMALI: o site
      genelinde toplam kontenjan, bu ise aynı müşterinin kaç kez
      kullanabileceği. NULL = kişi başı sınır yok. */
@@ -1588,14 +1592,28 @@ async function promoProducts(campaign, limit = 4) {
         `).all(...kategoriler)).map((r) => r.product_id)
       : [];
   }
-  // Kapsam işaretli ama hiç ürün bağlanmamışsa şeridi boş bırakmak yerine vitrine düş.
+  /* Kapsam işaretli ama hiç ürün bağlanmamışsa şeridi boş bırakmak yerine vitrine
+     düşüyoruz — ama o ürünler kampanyaya dahil DEĞİL, indirimli fiyat yazılamaz. */
+  const kapsamDisi = Boolean(ids && !ids.length);
   const kapsam = ids && ids.length ? `AND id IN (${ids.map(() => "?").join(",")})` : "";
   const rows = await db.prepare(`
     SELECT * FROM products WHERE is_active = 1 ${kapsam}
     ORDER BY created_at DESC, id DESC
     LIMIT ${Number(limit)}
   `).all(...(ids && ids.length ? ids : []));
-  return (await decorateProducts(rows)).map(maliyetiGizle);
+  return { urunler: (await decorateProducts(rows)).map(maliyetiGizle), kapsamDisi };
+}
+
+/* Ürün başına yazılabilecek indirim yüzdesi — yalnızca kesin olduğunda.
+   Sabit tutarlı indirim sepetin TAMAMINDAN düşüyor (bkz. evaluateOne), yani iki
+   adet alanda birim başına düşen tutar yarıya iner; adet/tutar koşullu kampanyada
+   ise tek ürün alan müşteri o fiyatı hiç görmez. İkisinde de üstü çizili fiyat
+   yalan olurdu, o yüzden 0 dönüp yalnızca normal fiyatı yazıyoruz. */
+function promoUnitPercent(campaign) {
+  if (campaign.kind === "gift") return 0;
+  if (campaign.discount_type !== "percent") return 0;
+  if (Number(campaign.min_quantity) > 1 || Number(campaign.min_order_total) > 0) return 0;
+  return Number(campaign.discount_value) || 0;
 }
 
 /* Şeritteki mini ürün kartı. product-templates.js'teki productCardHTML'in
@@ -1603,9 +1621,18 @@ async function promoProducts(campaign, limit = 4) {
    tarayıcı onu yeniden basıyor. Bu yalnızca sunucuda üretilen bir küçük resim
    + fiyat bağlantısı; ortak olan fiyat/görsel yardımcıları şablon dosyasından
    çağrılıyor ki fiyat mantığı iki yerde ayrışmasın. */
-function promoProductHTML(product) {
+function promoProductHTML(product, yuzde = 0) {
   const olcekler = sablonlar.productScales(product);
-  const fiyat = `${sablonlar.money(sablonlar.displayPrice(product))}${olcekler.length > 1 ? "'den" : ""}`;
+  const den = olcekler.length > 1 ? "'den" : "";
+  const taban = sablonlar.displayPrice(product);
+  /* Ödeme sayfasının hesabıyla BİREBİR aynı sırayla: önce indirim yuvarlanır,
+     sonra düşülür (evaluateOne + /api/checkout böyle yapıyor). Doğrudan
+     taban*0.85 yazmak fiyatların bir kısmında bir kuruş sapıyor ve pencerede
+     yazan fiyat sepette tutmuyordu. */
+  const indirimli = yuzde ? round2(taban - round2(taban * (yuzde / 100))) : 0;
+  const fiyat = indirimli
+    ? `${sablonlar.money(indirimli)}${den}<s>${sablonlar.money(taban)}</s>`
+    : `${sablonlar.money(taban)}${den}`;
   return `
     <a class="promo-modal__product" href="/urun/${product.id}">
       <img src="${escapeHtml(sablonlar.gorselAdresi(product.image_path, 300) || "/assets/printable-logo.svg")}"
@@ -1615,19 +1642,24 @@ function promoProductHTML(product) {
     </a>`;
 }
 
-/* İlk ziyarette bir kez açılan kampanya penceresi. Şeritten bağımsız işaretlenir
-   (show_on_popup): şerit sürekli durur, pencere bir kez böler. Kapatıldığında
-   localStorage'a kampanya kimliğiyle yazılır — bir sonraki kampanya yeni kimlik
-   aldığı için yeniden görünür, aynı kampanya görünmez. */
+/* Kampanya penceresi. Şeritten bağımsız işaretlenir (show_on_popup): şerit
+   sürekli durur, pencere böler. Kapatma anı localStorage'a kampanya kimliğiyle
+   yazılır ve popup_repeat_minutes kadar süre geçmeden yeniden açılmaz — boşsa
+   hiç açılmaz, 0 ise her sayfa yüklemesinde açılır. Kimlik kampanyaya bağlı
+   olduğu için yeni kampanya her ziyaretçiye sıfırdan görünür. */
 async function renderPromoPopup() {
   const campaign = await livePromoCampaign("show_on_popup");
   if (!campaign) return "";
   const { name, code, deadline } = bannerPayload(campaign);
   const amount = promoAmount(campaign);
-  const urunler = await promoProducts(campaign);
-  const urunBasligi = campaign.scope === "all" ? "Öne çıkan ürünler" : "Kampanyaya dahil ürünler";
+  const { urunler, kapsamDisi } = await promoProducts(campaign);
+  const yuzde = kapsamDisi ? 0 : promoUnitPercent(campaign);
+  const urunBasligi = campaign.scope === "all" || kapsamDisi
+    ? "Öne çıkan ürünler"
+    : "Kampanyaya dahil ürünler";
   return `
-    <div class="promo-modal" id="promo-modal" data-campaign="${campaign.id}" data-deadline="${escapeHtml(deadline || "")}" hidden>
+    <div class="promo-modal" id="promo-modal" data-campaign="${campaign.id}" data-deadline="${escapeHtml(deadline || "")}"
+         data-repeat="${campaign.popup_repeat_minutes === null || campaign.popup_repeat_minutes === undefined ? "" : Number(campaign.popup_repeat_minutes)}" hidden>
       <div class="promo-modal__backdrop" data-promo-close></div>
       <div class="promo-modal__card" role="dialog" aria-modal="true" aria-labelledby="promo-modal-title">
         <button type="button" class="promo-modal__close" data-promo-close aria-label="Kampanya penceresini kapat">×</button>
@@ -1641,8 +1673,9 @@ async function renderPromoPopup() {
         ${deadline ? `<p class="promo-modal__timer">Kampanyanın bitmesine <strong id="promo-modal-timer"></strong></p>` : ""}
         ${urunler.length ? `
         <div class="promo-modal__picks">
-          <span class="promo-modal__picks-title">${urunBasligi}</span>
-          <div class="promo-modal__products">${urunler.map(promoProductHTML).join("")}</div>
+          <span class="promo-modal__picks-title">${urunBasligi}${yuzde ? " · kod uygulanmış fiyat" : ""}</span>
+          <!-- map'e doğrudan fonksiyon verilmez: ikinci argüman dizinin indeksi olur ve yüzde yerine geçer. -->
+          <div class="promo-modal__products">${urunler.map((u) => promoProductHTML(u, yuzde)).join("")}</div>
         </div>` : ""}
         <a class="promo-modal__cta" href="/urunler">Alışverişe başla</a>
       </div>
@@ -1651,13 +1684,23 @@ async function renderPromoPopup() {
       var modal=document.getElementById('promo-modal');
       if(!modal) return;
       var key='printable_promo_'+modal.getAttribute('data-campaign');
-      try { if(localStorage.getItem(key)) return; } catch(e) {}
+      /* Bekleme suresi dakika cinsinden: bos = bir daha acma, 0 = her yuklemede.
+         Saklanan deger son kapatmanin zamani; eski surumden kalan '1' degeri de
+         cok eski bir zaman damgasi gibi okunur ve pencere yeniden acilir. */
+      var bekleme=parseInt(modal.getAttribute('data-repeat'), 10);
+      try {
+        var son=localStorage.getItem(key);
+        if(son){
+          if(isNaN(bekleme)) return;
+          if(Date.now()-Number(son) < bekleme*60000) return;
+        }
+      } catch(e) {}
 
       function close(){
         modal.classList.remove('is-open');
         document.body.classList.remove('promo-modal-open');
         setTimeout(function(){ modal.hidden=true; }, 200);
-        try { localStorage.setItem(key,'1'); } catch(e) {}
+        try { localStorage.setItem(key, String(Date.now())); } catch(e) {}
         document.removeEventListener('keydown', onKey);
       }
       function onKey(e){ if(e.key==='Escape') close(); }
@@ -4892,7 +4935,13 @@ function campaignPayload(body) {
     // Aktif/pasif alma PUT'u tüm kaydı (0/1 sayısal) geri gönderiyor; boolean ve
     // sayısal doğru değerlerin ikisini de kabul etmezsek şeriti sessizce kapatırdı.
     show_on_banner: [true, "true", 1, "1"].includes(body.show_on_banner) ? 1 : 0,
-    show_on_popup: [true, "true", 1, "1"].includes(body.show_on_popup) ? 1 : 0
+    show_on_popup: [true, "true", 1, "1"].includes(body.show_on_popup) ? 1 : 0,
+    /* Boş = pencere bir kez açılır, 0 = her sayfa yüklemesinde. Boşluk kontrolü
+       toInt'ten ÖNCE: toInt("") de 0 döndürüyor, ikisini ayırmazsak boş bırakan
+       admin farkında olmadan "her yüklemede aç" demiş olurdu. */
+    popup_repeat_minutes: String(body.popup_repeat_minutes ?? "").trim() === ""
+      ? null
+      : Math.max(0, toInt(body.popup_repeat_minutes))
   };
 }
 
@@ -5049,10 +5098,10 @@ app.post("/api/campaigns", requireAdmin, async (req, res) => {
   const result = await db.prepare(`
     INSERT INTO campaigns (name, code, kind, discount_type, discount_value, scope, min_quantity,
       min_order_total, gift_product_id, gift_quantity, starts_at, ends_at, usage_limit, per_customer_limit,
-      is_active, show_on_banner, show_on_popup)
+      is_active, show_on_banner, show_on_popup, popup_repeat_minutes)
     VALUES (@name, @code, @kind, @discount_type, @discount_value, @scope, @min_quantity,
       @min_order_total, @gift_product_id, @gift_quantity, @starts_at, @ends_at, @usage_limit, @per_customer_limit,
-      @is_active, @show_on_banner, @show_on_popup)
+      @is_active, @show_on_banner, @show_on_popup, @popup_repeat_minutes)
   `).run(payload);
   await setCampaignTargets(result.lastInsertRowid, req.body);
 
@@ -5075,7 +5124,8 @@ app.put("/api/campaigns/:id", requireAdmin, async (req, res) => {
       min_order_total=@min_order_total, gift_product_id=@gift_product_id, gift_quantity=@gift_quantity,
       starts_at=@starts_at, ends_at=@ends_at, usage_limit=@usage_limit,
       per_customer_limit=@per_customer_limit, is_active=@is_active,
-      show_on_banner=@show_on_banner, show_on_popup=@show_on_popup
+      show_on_banner=@show_on_banner, show_on_popup=@show_on_popup,
+      popup_repeat_minutes=@popup_repeat_minutes
     WHERE id=@id
   `).run({ ...payload, id: current.id });
   await setCampaignTargets(current.id, req.body);
