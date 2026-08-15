@@ -7897,7 +7897,7 @@ body.promo-modal-open .discovery-popup { display: none; }
 
 .promo-modal__card {
   position: relative;
-  width: min(100%, 620px);
+  width: min(100%, 820px);
   max-height: calc(100vh - 40px);
   overflow-y: auto;                 /* ürün şeridiyle birlikte küçük ekranda taşabilir */
   padding: clamp(28px, 5vw, 40px) clamp(22px, 4vw, 40px) clamp(24px, 4vw, 34px);
@@ -8024,7 +8024,7 @@ body.promo-modal-open .discovery-popup { display: none; }
 .promo-modal__products {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  gap: 14px;
 }
 
 .promo-modal__product {
@@ -8035,19 +8035,23 @@ body.promo-modal-open .discovery-popup { display: none; }
   text-decoration: none;
 }
 
+/* Kutu 4:3 çünkü katalog fotoğraflarının 24'te 20'si tam 4:3 yatay: bu oranda
+   fotoğraf kutuyu kenardan kenara dolduruyor, ne kırpılıyor ne de boşluk kalıyor.
+   Dikey kalan birkaç görsel (GIF'ler) contain sayesinde kırpılmadan ortalanıyor,
+   yanlarında sıcak zemin görünüyor — vitrindeki .product-card img ile aynı mantık. */
 .promo-modal__product img {
   width: 100%;
-  aspect-ratio: 1 / 1;
-  object-fit: cover;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
   border-radius: 12px;
-  background: var(--soft);
+  background: #fff8f3;
   transition: transform .18s ease;
 }
 
 .promo-modal__product:hover img { transform: translateY(-3px); }
 
 .promo-modal__product-name {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.3;
   /* İki satırda kes ve yeri hep iki satır kadar ayır: tek satırlık isimde fiyat
@@ -8100,7 +8104,7 @@ body.promo-modal-open .discovery-popup { display: none; }
   }
 
   .promo-modal__product {
-    flex: 0 0 118px;
+    flex: 0 0 150px;
     scroll-snap-align: start;
   }
 }

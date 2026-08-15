@@ -37,7 +37,12 @@
     if (/\.gif(\?|$)/i.test(u)) return u;
     if (!u.includes("/storage/v1/object/public/")) return u;
     const [yol, sorgu] = u.split("?");
-    return `${yol.replace("/storage/v1/object/public/", "/storage/v1/render/image/public/")}?width=${genislik}&quality=78${sorgu ? "&" + sorgu : ""}`;
+    /* resize=contain ŞART. Uç noktanın varsayılanı "cover" ve yalnızca width
+       verdiğimizde yüksekliği orijinalinden alıyor: 1080x810'luk ürün fotoğrafı
+       width=500 ile 500x810 dönüyor — yani fotoğrafın ortasından dar bir dilim.
+       Kartlarda yarısı kesilmiş ürünlerin sebebi buydu. contain ile oran
+       korunuyor (500x375) ve kırpma kararını CSS veriyor. */
+    return `${yol.replace("/storage/v1/object/public/", "/storage/v1/render/image/public/")}?width=${genislik}&resize=contain&quality=78${sorgu ? "&" + sorgu : ""}`;
   };
 
   const productScales = (product) => (product && product.scales) || [];
