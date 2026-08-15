@@ -1570,6 +1570,51 @@ function promoAmount(campaign) {
     : `${money(campaign.discount_value)} TL`;
 }
 
+/* Penceredeki ürün şeridi. Kampanya belirli ürünleri/kategorileri kapsıyorsa
+   onları gösterir, kapsam tüm katalogsa vitrinin en yenilerini: müşteri kodu
+   görüp "peki neye harcayacağım" diye düşünmeden ürüne geçebilsin.
+   LIMIT sorguda: pencere her public sayfaya basıldığı için tüm katalog
+   süslenmemeli, yalnızca gösterilecek birkaç satır. */
+async function promoProducts(campaign, limit = 4) {
+  let ids = null;
+  if (campaign.scope === "products") {
+    ids = (await campaignProductIds.all(campaign.id)).map((r) => r.product_id);
+  } else if (campaign.scope === "categories") {
+    const kategoriler = (await campaignCategoryIds.all(campaign.id)).map((r) => r.category_id);
+    ids = kategoriler.length
+      ? (await db.prepare(`
+          SELECT DISTINCT product_id FROM product_categories
+          WHERE category_id IN (${kategoriler.map(() => "?").join(",")})
+        `).all(...kategoriler)).map((r) => r.product_id)
+      : [];
+  }
+  // Kapsam işaretli ama hiç ürün bağlanmamışsa şeridi boş bırakmak yerine vitrine düş.
+  const kapsam = ids && ids.length ? `AND id IN (${ids.map(() => "?").join(",")})` : "";
+  const rows = await db.prepare(`
+    SELECT * FROM products WHERE is_active = 1 ${kapsam}
+    ORDER BY created_at DESC, id DESC
+    LIMIT ${Number(limit)}
+  `).all(...(ids && ids.length ? ids : []));
+  return (await decorateProducts(rows)).map(maliyetiGizle);
+}
+
+/* Şeritteki mini ürün kartı. product-templates.js'teki productCardHTML'in
+   KOPYASI DEĞİL: o kartın sepet düğmesi, rozetleri ve renk noktaları var ve
+   tarayıcı onu yeniden basıyor. Bu yalnızca sunucuda üretilen bir küçük resim
+   + fiyat bağlantısı; ortak olan fiyat/görsel yardımcıları şablon dosyasından
+   çağrılıyor ki fiyat mantığı iki yerde ayrışmasın. */
+function promoProductHTML(product) {
+  const olcekler = sablonlar.productScales(product);
+  const fiyat = `${sablonlar.money(sablonlar.displayPrice(product))}${olcekler.length > 1 ? "'den" : ""}`;
+  return `
+    <a class="promo-modal__product" href="/urun/${product.id}">
+      <img src="${escapeHtml(sablonlar.gorselAdresi(product.image_path, 300) || "/assets/printable-logo.svg")}"
+           alt="${escapeHtml(product.image_alt || product.name)}" loading="lazy">
+      <span class="promo-modal__product-name">${escapeHtml(product.name)}</span>
+      <span class="promo-modal__product-price">${fiyat}</span>
+    </a>`;
+}
+
 /* İlk ziyarette bir kez açılan kampanya penceresi. Şeritten bağımsız işaretlenir
    (show_on_popup): şerit sürekli durur, pencere bir kez böler. Kapatıldığında
    localStorage'a kampanya kimliğiyle yazılır — bir sonraki kampanya yeni kimlik
@@ -1579,6 +1624,8 @@ async function renderPromoPopup() {
   if (!campaign) return "";
   const { name, code, deadline } = bannerPayload(campaign);
   const amount = promoAmount(campaign);
+  const urunler = await promoProducts(campaign);
+  const urunBasligi = campaign.scope === "all" ? "Öne çıkan ürünler" : "Kampanyaya dahil ürünler";
   return `
     <div class="promo-modal" id="promo-modal" data-campaign="${campaign.id}" data-deadline="${escapeHtml(deadline || "")}" hidden>
       <div class="promo-modal__backdrop" data-promo-close></div>
@@ -1592,6 +1639,11 @@ async function renderPromoPopup() {
           Kod: <strong>${escapeHtml(code)}</strong>
         </button>
         ${deadline ? `<p class="promo-modal__timer">Kampanyanın bitmesine <strong id="promo-modal-timer"></strong></p>` : ""}
+        ${urunler.length ? `
+        <div class="promo-modal__picks">
+          <span class="promo-modal__picks-title">${urunBasligi}</span>
+          <div class="promo-modal__products">${urunler.map(promoProductHTML).join("")}</div>
+        </div>` : ""}
         <a class="promo-modal__cta" href="/urunler">Alışverişe başla</a>
       </div>
     </div>
