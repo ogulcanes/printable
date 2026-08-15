@@ -7868,6 +7868,164 @@ body.catalog-view-table .catalog-table-view { display: block; overflow-x: auto; 
   .campaign-bar__msg { width: 100%; }
 }
 
+/* Kampanya penceresi — ilk ziyarette bir kez açılır (bkz. renderPromoPopup) */
+.promo-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 120;                 /* keşif kartı 80, WhatsApp düğmesi altında kalmasın */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  opacity: 0;
+  transition: opacity .2s ease;
+}
+
+.promo-modal[hidden] { display: none; }
+.promo-modal.is-open { opacity: 1; }
+
+/* Pencere açıkken arka plan kaymasın ve keşif kartı üstüne binmesin. */
+body.promo-modal-open { overflow: hidden; }
+body.promo-modal-open .discovery-popup { display: none; }
+
+.promo-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(23, 23, 34, .62);
+  backdrop-filter: blur(2px);
+}
+
+.promo-modal__card {
+  position: relative;
+  width: min(100%, 420px);
+  padding: clamp(28px, 5vw, 38px) clamp(22px, 4vw, 34px) clamp(24px, 4vw, 32px);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 30px 90px rgba(23, 23, 34, .32);
+  text-align: center;
+  transform: translateY(14px) scale(.97);
+  transition: transform .24s ease;
+}
+
+.promo-modal.is-open .promo-modal__card { transform: translateY(0) scale(1); }
+
+.promo-modal__close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.promo-modal__close:hover { background: var(--soft); }
+
+.promo-modal__eyebrow {
+  display: block;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.promo-modal__amount {
+  margin: 6px 0 2px;
+  background: linear-gradient(90deg, var(--accent), var(--pink));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-size: clamp(46px, 9vw, 62px);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.promo-modal__amount span {
+  display: block;
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.promo-modal__card h2 {
+  margin: 12px 0 6px;
+  color: var(--text);
+  font-size: 21px;
+  line-height: 1.25;
+}
+
+.promo-modal__lead {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.promo-modal__code {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 190px;
+  justify-content: center;
+  padding: 11px 18px;
+  border: 1.5px dashed var(--accent);
+  border-radius: 100px;
+  background: rgba(255, 101, 66, .08);
+  color: var(--accent);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .15s ease;
+}
+
+.promo-modal__code:hover { background: rgba(255, 101, 66, .16); }
+.promo-modal__code strong { letter-spacing: .04em; }
+.promo-modal__code.is-copied::after { content: "Kopyalandı ✓"; }
+.promo-modal__code.is-copied > * { display: none; }
+
+.promo-modal__timer {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.promo-modal__timer strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.promo-modal__cta {
+  display: block;
+  margin-top: 18px;
+  padding: 14px 20px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.promo-modal__cta:hover { background: #f0522d; }
+
+@media (max-width: 460px) {
+  .promo-modal { padding: 14px; }
+  .promo-modal__card { border-radius: 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .promo-modal,
+  .promo-modal__card { transition: none; }
+}
+
 /* ---- Custom part design showcase (/tasarim + home teaser) ---- */
 .design-section { padding: 10px 0 44px; }
 .design-gallery {

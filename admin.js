@@ -737,10 +737,12 @@ function renderCampaigns() {
             ${c.is_active ? '<span class="badge green">Aktif</span>' : '<span class="badge orange">Pasif</span>'}
             ${c.code ? '<span class="badge blue">Kodlu</span>' : '<span class="badge">Otomatik</span>'}
             ${c.show_on_banner ? '<span class="badge orange">Şeritte</span>' : ""}
+            ${c.show_on_popup ? '<span class="badge orange">Pencerede</span>' : ""}
           </h3>
           <p>${campaignRule(c)}</p>
           <div class="meta-line">
             <span class="badge">${limitText}</span>
+            ${c.per_customer_limit ? `<span class="badge">Kişi başı ${c.per_customer_limit}</span>` : ""}
             ${dates ? `<span class="badge">${dates}</span>` : ""}
           </div>
         </div>
@@ -1860,6 +1862,7 @@ qs("#campaign-form").addEventListener("submit", async (event) => {
   data.category_ids = qsa('#campaign-categories input:checked').map((i) => i.value);
   data.is_active = data.is_active === "true";
   data.show_on_banner = data.show_on_banner === "true";
+  data.show_on_popup = data.show_on_popup === "true";
 
   const id = data.id;
   delete data.id;
@@ -1905,8 +1908,10 @@ qs("#campaign-list").addEventListener("click", async (event) => {
     form.elements.starts_at.value = campaign.starts_at || "";
     form.elements.ends_at.value = campaign.ends_at || "";
     form.elements.usage_limit.value = campaign.usage_limit || "";
+    form.elements.per_customer_limit.value = campaign.per_customer_limit || "";
     form.elements.is_active.value = campaign.is_active ? "true" : "false";
     form.elements.show_on_banner.value = campaign.show_on_banner ? "true" : "false";
+    form.elements.show_on_popup.value = campaign.show_on_popup ? "true" : "false";
     renderCampaignOptions(campaign);
     syncCampaignFields();
     form.scrollIntoView({ behavior: "smooth", block: "start" });

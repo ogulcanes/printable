@@ -219,6 +219,12 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           code: qs("#coupon-code")?.value || "",
+          /* Kişi başı kullanım hakkı olan kodlar için: sunucu "bu kodu daha önce
+             kullandınız" diyebilsin diye teslimat formundaki iletişim bilgisi
+             gönderilir. Boşsa sunucu kimliği bilmez ve engellemez — asıl kontrol
+             siparişte. */
+          email: qs("#delivery-form")?.elements.email?.value || "",
+          phone: qs("#delivery-form")?.elements.phone?.value || "",
           items: cart.map((i) => ({ product_id: i.id, scale_id: i.scale_id || null, quantity: i.quantity }))
         })
       });
@@ -256,6 +262,11 @@
   }
 
   qs("#coupon-apply")?.addEventListener("click", refreshCampaigns);
+  /* İletişim bilgisi değişince kampanyaları yeniden sor: kişi başı hakkı dolmuş
+     bir kod ancak müşteri kim olduğunu yazdıktan sonra anlaşılır. */
+  ["email", "phone"].forEach((alan) => {
+    qs("#delivery-form")?.elements[alan]?.addEventListener("change", refreshCampaigns);
+  });
   qs("#coupon-code")?.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return;
     event.preventDefault();   // inside a form this would submit the checkout

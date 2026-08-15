@@ -121,7 +121,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "24";
+const SCHEMA_VERSION = "25";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -429,8 +429,11 @@ async function initDb() {
     starts_at TEXT,
     ends_at TEXT,
     usage_limit INTEGER,
+    per_customer_limit INTEGER,
     used_count INTEGER NOT NULL DEFAULT 0,
     is_active INTEGER NOT NULL DEFAULT 1,
+    show_on_banner INTEGER NOT NULL DEFAULT 0,
+    show_on_popup INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     FOREIGN KEY(gift_product_id) REFERENCES products(id) ON DELETE SET NULL
   );
@@ -701,7 +704,13 @@ for (const [table, column, type] of [
   ["quotes", "painted", "INTEGER NOT NULL DEFAULT 0"],
   // Sitede üstteki geri sayım şeridinde duyurulsun mu? Kodu herkese açık
   // yayınlamayı admin bilerek seçtiğinde işaretlenir (bkz. /api/campaigns/banner).
-  ["campaigns", "show_on_banner", "INTEGER NOT NULL DEFAULT 0"]
+  ["campaigns", "show_on_banner", "INTEGER NOT NULL DEFAULT 0"],
+  // Aynı duyuru, ilk ziyarette bir kez açılan pencere olarak.
+  ["campaigns", "show_on_popup", "INTEGER NOT NULL DEFAULT 0"],
+  /* Kişi başı kullanım hakkı. usage_limit ile KARIŞTIRILMAMALI: o site
+     genelinde toplam kontenjan, bu ise aynı müşterinin kaç kez
+     kullanabileceği. NULL = kişi başı sınır yok. */
+  ["campaigns", "per_customer_limit", "INTEGER"]
 ]) {
   if (!(await hasColumn(table, column))) await db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
 }
@@ -1516,8 +1525,8 @@ async function seoHead(req, slug) {
 async function renderPromoBar() {
   const campaign = await liveBannerCampaign();
   if (!campaign) return "";
-  const { name, code, discount_type, discount_value, deadline } = bannerPayload(campaign);
-  const amount = discount_type === "percent" ? `%${discount_value}` : `${money(discount_value)} TL`;
+  const { name, code, deadline } = bannerPayload(campaign);
+  const amount = promoAmount(campaign);
   return `
     <div class="campaign-bar" id="campaign-bar" data-deadline="${escapeHtml(deadline || "")}">
       <div class="container campaign-bar__inner">
@@ -1551,6 +1560,90 @@ async function renderPromoBar() {
       }
       tick();
       setInterval(tick, 1000);
+    })();</script>`;
+}
+
+// "%15" / "50.00 TL" — şerit ve pencere aynı kampanyayı aynı biçimde yazsın.
+function promoAmount(campaign) {
+  return campaign.discount_type === "percent"
+    ? `%${Number(campaign.discount_value)}`
+    : `${money(campaign.discount_value)} TL`;
+}
+
+/* İlk ziyarette bir kez açılan kampanya penceresi. Şeritten bağımsız işaretlenir
+   (show_on_popup): şerit sürekli durur, pencere bir kez böler. Kapatıldığında
+   localStorage'a kampanya kimliğiyle yazılır — bir sonraki kampanya yeni kimlik
+   aldığı için yeniden görünür, aynı kampanya görünmez. */
+async function renderPromoPopup() {
+  const campaign = await livePromoCampaign("show_on_popup");
+  if (!campaign) return "";
+  const { name, code, deadline } = bannerPayload(campaign);
+  const amount = promoAmount(campaign);
+  return `
+    <div class="promo-modal" id="promo-modal" data-campaign="${campaign.id}" data-deadline="${escapeHtml(deadline || "")}" hidden>
+      <div class="promo-modal__backdrop" data-promo-close></div>
+      <div class="promo-modal__card" role="dialog" aria-modal="true" aria-labelledby="promo-modal-title">
+        <button type="button" class="promo-modal__close" data-promo-close aria-label="Kampanya penceresini kapat">×</button>
+        <span class="promo-modal__eyebrow">Kampanya</span>
+        <p class="promo-modal__amount">${amount}<span>indirim</span></p>
+        <h2 id="promo-modal-title">${escapeHtml(name)}</h2>
+        <p class="promo-modal__lead">Kodu ödeme adımında girin, indirim sepetinize uygulansın.</p>
+        <button type="button" class="promo-modal__code" id="promo-modal-code" data-code="${escapeHtml(code)}">
+          Kod: <strong>${escapeHtml(code)}</strong>
+        </button>
+        ${deadline ? `<p class="promo-modal__timer">Kampanyanın bitmesine <strong id="promo-modal-timer"></strong></p>` : ""}
+        <a class="promo-modal__cta" href="/urunler">Alışverişe başla</a>
+      </div>
+    </div>
+    <script>(function(){
+      var modal=document.getElementById('promo-modal');
+      if(!modal) return;
+      var key='printable_promo_'+modal.getAttribute('data-campaign');
+      try { if(localStorage.getItem(key)) return; } catch(e) {}
+
+      function close(){
+        modal.classList.remove('is-open');
+        document.body.classList.remove('promo-modal-open');
+        setTimeout(function(){ modal.hidden=true; }, 200);
+        try { localStorage.setItem(key,'1'); } catch(e) {}
+        document.removeEventListener('keydown', onKey);
+      }
+      function onKey(e){ if(e.key==='Escape') close(); }
+
+      modal.querySelectorAll('[data-promo-close]').forEach(function(el){ el.addEventListener('click', close); });
+
+      var codeBtn=document.getElementById('promo-modal-code');
+      if(codeBtn) codeBtn.addEventListener('click', function(){
+        if(navigator.clipboard) navigator.clipboard.writeText(codeBtn.getAttribute('data-code')).catch(function(){});
+        codeBtn.classList.add('is-copied');
+        setTimeout(function(){ codeBtn.classList.remove('is-copied'); }, 1500);
+      });
+
+      var deadline=modal.getAttribute('data-deadline');
+      var timerEl=document.getElementById('promo-modal-timer');
+      if(deadline && timerEl){
+        var end=new Date(deadline).getTime();
+        function pad(n){ return String(n).padStart(2,'0'); }
+        function tick(){
+          var diff=end-Date.now();
+          if(diff<=0){ close(); return; }
+          var d=Math.floor(diff/86400000), h=Math.floor((diff%86400000)/3600000), m=Math.floor((diff%3600000)/60000), s=Math.floor((diff%60000)/1000);
+          timerEl.textContent=(d>0 ? d+' gün ' : '')+pad(h)+':'+pad(m)+':'+pad(s);
+        }
+        tick();
+        setInterval(tick, 1000);
+      }
+
+      /* Sayfa daha açılırken değil, okumaya başladıktan sonra: hemen basılan
+         pencere kapatılıp geçiliyor. */
+      setTimeout(function(){
+        modal.hidden=false;
+        document.body.classList.add('promo-modal-open');
+        requestAnimationFrame(function(){ modal.classList.add('is-open'); });
+        document.addEventListener('keydown', onKey);
+        var closeBtn=modal.querySelector('.promo-modal__close');
+        if(closeBtn) closeBtn.focus();
+      }, 1800);
     })();</script>`;
 }
 
@@ -1827,7 +1920,7 @@ async function injectShell(html, headActive, customer) {
     .replace(/<script src="\/?script\.js"><\/script>/,
       '<script src="/product-templates.js"></script>\n    <script src="/script.js"></script>')
     .replace("</head>", `${googleAnalyticsTag}\n  </head>`)
-    .replace("<!--header-->", `${await renderPromoBar()}${await renderHeader(headActive, customer)}`)
+    .replace("<!--header-->", `${await renderPromoBar()}${await renderHeader(headActive, customer)}${await renderPromoPopup()}`)
     .replace("<!--cart-->", renderCartPanel())
     .replace("<!--footer-->", await renderFooter())
     .replace("<!--chat-->", await renderChatButton());
@@ -4405,12 +4498,15 @@ async function liveCampaigns() {
   `).all();
 }
 
-// Şeritte gösterilecek tek kampanya: canlı, kodlu ve show_on_banner=1 olanlardan
-// bitişi en yakın olan (aciliyet en yüksek olan öne çıksın).
-async function liveBannerCampaign() {
+/* Duyurulacak tek kampanya: canlı, kodlu ve istenen vitrin sütunu işaretli
+   olanlardan bitişi en yakın olan (aciliyet en yüksek olan öne çıksın).
+   Sütun adı SQL'e gömüldüğü için beyaz listeden geçer — dışarıdan gelen bir
+   değerin buraya ulaşması mümkün değil, öyle de kalsın. */
+async function livePromoCampaign(column) {
+  if (!["show_on_banner", "show_on_popup"].includes(column)) return null;
   return await db.prepare(`
     SELECT * FROM campaigns
-    WHERE is_active = 1 AND show_on_banner = 1 AND code IS NOT NULL
+    WHERE is_active = 1 AND ${column} = 1 AND code IS NOT NULL
       AND (starts_at IS NULL OR starts_at::date <= CURRENT_DATE)
       AND (ends_at   IS NULL OR ends_at::date   >= CURRENT_DATE)
       AND (usage_limit IS NULL OR used_count < usage_limit)
@@ -4418,6 +4514,8 @@ async function liveBannerCampaign() {
     LIMIT 1
   `).get();
 }
+
+const liveBannerCampaign = () => livePromoCampaign("show_on_banner");
 
 // ends_at yalnızca tarih tutuyor (bkz. liveCampaigns); şeritteki geri sayım o günün
 // sonuna kadar çalışsın diye 23:59:59'a tamamlanır.
@@ -4429,6 +4527,40 @@ function bannerPayload(campaign) {
     discount_value: Number(campaign.discount_value),
     deadline: campaign.ends_at ? `${campaign.ends_at}T23:59:59` : null
   };
+}
+
+/* Kişi başı kullanım için müşteri kimliği. Sitede misafir alışverişi var ve her
+   sipariş yeni bir customers satırı açıyor; "aynı müşteri mi" sorusunu
+   yanıtlayan tek iz campaign_uses'a kopyalanan iletişim bilgisi. E-posta VEYA
+   telefon eşleşmesi yeter — birini değiştiren müşteri diğerinden yakalanır.
+   Telefon rakamlara indirgenip son 10 haneye bakılır: "0532 111 22 33",
+   "+90 532 111 22 33" ve "532 111 22 33" aynı kişidir. */
+function customerIdentity(source) {
+  const phone = String(source?.phone || "").replace(/\D/g, "").slice(-10);
+  return {
+    email: String(source?.email || "").trim().toLowerCase(),
+    phone: phone.length === 10 ? phone : ""
+  };
+}
+
+// Bu kampanyayı bu müşteri daha önce kaç kez kullandı?
+async function customerUseCount(campaignId, identity, target = db) {
+  const row = await target.prepare(`
+    SELECT COUNT(*) AS n FROM campaign_uses
+    WHERE campaign_id = ?
+      AND ( (? <> '' AND LOWER(TRIM(COALESCE(customer_email, ''))) = ?)
+         OR (? <> '' AND RIGHT(regexp_replace(COALESCE(customer_phone, ''), '[^0-9]', '', 'g'), 10) = ?) )
+  `).get(campaignId, identity.email, identity.email, identity.phone, identity.phone);
+  return Number(row?.n) || 0;
+}
+
+/* Kişi başı hak doldu mu? Kimliği henüz bilmiyorsak engellemiyoruz — sepet
+   önizlemesinde müşteri e-postasını daha yazmamış olabilir. Asıl kontrol
+   siparişin yazıldığı transaction'da; orada kimlik her zaman dolu. */
+async function perCustomerLimitReached(campaign, identity, target = db) {
+  if (!campaign.per_customer_limit) return false;
+  if (!identity?.email && !identity?.phone) return false;
+  return (await customerUseCount(campaign.id, identity, target)) >= campaign.per_customer_limit;
 }
 
 // Kampanyanın kapsadığı sepet satırları.
@@ -4505,7 +4637,7 @@ async function evaluateOne(campaign, items) {
 /* Sepete uygulanacak her şeyi döndürür.
    code verilmişse ve geçersizse `error` dolar — otomatik kampanyalar yine uygulanır,
    çünkü yanlış yazılmış bir kupon hak edilmiş bir indirimi iptal etmemeli. */
-async function evaluateCampaigns(items, code) {
+async function evaluateCampaigns(items, code, identity = null) {
   const typed = String(code || "").trim().toUpperCase();
   const live = await liveCampaigns();
   const applied = [];
@@ -4517,6 +4649,7 @@ async function evaluateCampaigns(items, code) {
   //    paylaşılan bir değişken, paralel çalıştırmak yarış koşulu yaratır.
   const otomatik = [];
   for (const campaign of live.filter((c) => !c.code)) {
+    if (await perCustomerLimitReached(campaign, identity)) continue;
     const result = await evaluateOne(campaign, items);
     if (result) otomatik.push({ campaign, result });
   }
@@ -4554,6 +4687,12 @@ async function evaluateCampaigns(items, code) {
       // Kodun neden çalışmadığını ayırt et: hiç yok mu, süresi/limiti mi dolmuş.
       const known = await db.prepare("SELECT * FROM campaigns WHERE UPPER(code) = ?").get(typed);
       error = known ? "Bu kampanya kodunun süresi dolmuş veya kullanım hakkı bitmiş." : "Kampanya kodu geçersiz.";
+    } else if (await perCustomerLimitReached(coupon, identity)) {
+      /* Kod hâlâ canlı ama bu müşteri hakkını doldurmuş. Ayrı bir mesaj: yukarıdaki
+         "süresi dolmuş" cevabı müşteriyi kodun bittiğine inandırır, oysa sorun kodda
+         değil. Kimlik ödeme formundan geliyor, bu yüzden e-posta/telefon yazılır
+         yazılmaz uyarı görünür — sipariş verdikten sonra değil. */
+      error = "Bu kampanya kodunu daha önce kullandınız.";
     } else {
       const result = await evaluateOne(coupon, items);
       if (!result) {
@@ -4626,7 +4765,9 @@ async function normalizeCartItems(items) {
 app.post("/api/campaigns/preview", async (req, res) => {
   const items = await normalizeCartItems(req.body.items);
   if (!items.length) return res.json({ discount: 0, gifts: [], applied: [], error: null, incentives: [] });
-  const result = await evaluateCampaigns(items, req.body.code);
+  // Kimlik (e-posta/telefon) formda doluysa gelir; kişi başı hakkı bitmiş kodu
+  // müşteri siparişi göndermeden önce öğrensin.
+  const result = await evaluateCampaigns(items, req.body.code, customerIdentity(req.body));
   res.json({ ...result, incentives: await incentiveHints(items) });
 });
 
@@ -4693,10 +4834,13 @@ function campaignPayload(body) {
     starts_at: body.starts_at?.trim() || null,
     ends_at: body.ends_at?.trim() || null,
     usage_limit: toInt(body.usage_limit) || null,
+    // Kişi başı hak; boş = sınırsız (toplam kontenjandan ayrı, bkz. migration notu).
+    per_customer_limit: toInt(body.per_customer_limit) || null,
     is_active: body.is_active === false || body.is_active === "false" ? 0 : 1,
     // Aktif/pasif alma PUT'u tüm kaydı (0/1 sayısal) geri gönderiyor; boolean ve
     // sayısal doğru değerlerin ikisini de kabul etmezsek şeriti sessizce kapatırdı.
-    show_on_banner: [true, "true", 1, "1"].includes(body.show_on_banner) ? 1 : 0
+    show_on_banner: [true, "true", 1, "1"].includes(body.show_on_banner) ? 1 : 0,
+    show_on_popup: [true, "true", 1, "1"].includes(body.show_on_popup) ? 1 : 0
   };
 }
 
@@ -4710,8 +4854,9 @@ function validateCampaign(payload) {
   if (payload.starts_at && payload.ends_at && payload.ends_at < payload.starts_at) {
     return "Bitiş tarihi başlangıç tarihinden önce olamaz.";
   }
-  // Şerit kodu herkese açık yayınlar; kodsuz bir kampanya şeritte sessizce hiç görünmezdi.
+  // Şerit ve pencere kodu herkese açık yayınlar; kodsuz kampanya ikisinde de sessizce hiç görünmezdi.
   if (payload.show_on_banner && !payload.code) return "Şeritte göstermek için bir kampanya kodu girin.";
+  if (payload.show_on_popup && !payload.code) return "Açılır pencerede göstermek için bir kampanya kodu girin.";
   return null;
 }
 
@@ -4851,9 +4996,11 @@ app.post("/api/campaigns", requireAdmin, async (req, res) => {
 
   const result = await db.prepare(`
     INSERT INTO campaigns (name, code, kind, discount_type, discount_value, scope, min_quantity,
-      min_order_total, gift_product_id, gift_quantity, starts_at, ends_at, usage_limit, is_active, show_on_banner)
+      min_order_total, gift_product_id, gift_quantity, starts_at, ends_at, usage_limit, per_customer_limit,
+      is_active, show_on_banner, show_on_popup)
     VALUES (@name, @code, @kind, @discount_type, @discount_value, @scope, @min_quantity,
-      @min_order_total, @gift_product_id, @gift_quantity, @starts_at, @ends_at, @usage_limit, @is_active, @show_on_banner)
+      @min_order_total, @gift_product_id, @gift_quantity, @starts_at, @ends_at, @usage_limit, @per_customer_limit,
+      @is_active, @show_on_banner, @show_on_popup)
   `).run(payload);
   await setCampaignTargets(result.lastInsertRowid, req.body);
 
@@ -4874,8 +5021,9 @@ app.put("/api/campaigns/:id", requireAdmin, async (req, res) => {
     UPDATE campaigns SET name=@name, code=@code, kind=@kind, discount_type=@discount_type,
       discount_value=@discount_value, scope=@scope, min_quantity=@min_quantity,
       min_order_total=@min_order_total, gift_product_id=@gift_product_id, gift_quantity=@gift_quantity,
-      starts_at=@starts_at, ends_at=@ends_at, usage_limit=@usage_limit, is_active=@is_active,
-      show_on_banner=@show_on_banner
+      starts_at=@starts_at, ends_at=@ends_at, usage_limit=@usage_limit,
+      per_customer_limit=@per_customer_limit, is_active=@is_active,
+      show_on_banner=@show_on_banner, show_on_popup=@show_on_popup
     WHERE id=@id
   `).run({ ...payload, id: current.id });
   await setCampaignTargets(current.id, req.body);
@@ -5126,7 +5274,8 @@ app.post("/api/checkout", async (req, res) => {
   }
 
   // Kampanyalar burada yeniden hesaplanır; tarayıcının gönderdiği indirim yok sayılır.
-  const campaigns = await evaluateCampaigns(normalized, body.coupon_code);
+  const kimlik = customerIdentity({ email: customerEmail, phone: customer.phone });
+  const campaigns = await evaluateCampaigns(normalized, body.coupon_code, kimlik);
   const discount = Math.min(campaigns.discount, subtotal);
   const netTotal = round2(subtotal - discount);
 
@@ -5147,6 +5296,14 @@ app.post("/api/checkout", async (req, res) => {
     `);
     const gecerliKampanyalar = [];
     for (const c of campaigns.applied) {
+      /* Kişi başı hak son kez BURADA doğrulanır. Yukarıdaki hesap da bakıyor ama
+         arada geçen sürede müşterinin başka bir sekmede sipariş vermiş olması
+         mümkün; kontenjan rezervasyonuyla aynı transaction'da tekrar sorulur.
+         Kontenjanın aksine tek ifadeye sığmıyor (sayım campaign_uses'ta, artış
+         campaigns'te), yani aynı anda gelen iki istek teorik olarak ikisi de
+         geçebilir — hakkı bir fazla kullanmak, siparişi kaybetmekten iyidir. */
+      const kampanya = await tx.prepare("SELECT id, per_customer_limit FROM campaigns WHERE id = ?").get(c.id);
+      if (kampanya && await perCustomerLimitReached(kampanya, kimlik, tx)) continue;
       const sonuc = await rezerve.run(c.id);
       if (sonuc.changes) gecerliKampanyalar.push(c);
     }
