@@ -736,6 +736,7 @@ function renderCampaigns() {
           <h3>${escapeHtml(c.name)}
             ${c.is_active ? '<span class="badge green">Aktif</span>' : '<span class="badge orange">Pasif</span>'}
             ${c.code ? '<span class="badge blue">Kodlu</span>' : '<span class="badge">Otomatik</span>'}
+            ${c.show_on_banner ? '<span class="badge orange">Şeritte</span>' : ""}
           </h3>
           <p>${campaignRule(c)}</p>
           <div class="meta-line">
@@ -1858,6 +1859,7 @@ qs("#campaign-form").addEventListener("submit", async (event) => {
   data.product_ids = qsa('#campaign-products input:checked').map((i) => i.value);
   data.category_ids = qsa('#campaign-categories input:checked').map((i) => i.value);
   data.is_active = data.is_active === "true";
+  data.show_on_banner = data.show_on_banner === "true";
 
   const id = data.id;
   delete data.id;
@@ -1904,6 +1906,7 @@ qs("#campaign-list").addEventListener("click", async (event) => {
     form.elements.ends_at.value = campaign.ends_at || "";
     form.elements.usage_limit.value = campaign.usage_limit || "";
     form.elements.is_active.value = campaign.is_active ? "true" : "false";
+    form.elements.show_on_banner.value = campaign.show_on_banner ? "true" : "false";
     renderCampaignOptions(campaign);
     syncCampaignFields();
     form.scrollIntoView({ behavior: "smooth", block: "start" });

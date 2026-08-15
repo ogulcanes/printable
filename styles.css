@@ -7805,3 +7805,57 @@ body.catalog-view-table .catalog-table-view { display: block; overflow-x: auto; 
 @media (prefers-reduced-motion: reduce) {
   .keychain-card, .keychain-export-hint { transition: none; }
 }
+
+/* Kampanya şeridi — sayfanın en üstünde, top-strip'in üzerinde */
+.campaign-bar {
+  background: linear-gradient(90deg, var(--accent), var(--pink));
+  color: #fff;
+}
+
+.campaign-bar__inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  min-height: 40px;
+  padding: 8px 0;
+  font-size: 13px;
+  text-align: center;
+}
+
+.campaign-bar__msg strong { font-weight: 800; }
+
+.campaign-bar__code {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1.5px dashed rgba(255,255,255,.7);
+  border-radius: 100px;
+  background: rgba(255,255,255,.12);
+  color: #fff;
+  font: inherit;
+  padding: 3px 12px;
+  cursor: pointer;
+  transition: background .15s ease;
+}
+
+.campaign-bar__code:hover { background: rgba(255,255,255,.22); }
+.campaign-bar__code strong { letter-spacing: .04em; }
+
+.campaign-bar__code.is-copied::after { content: "Kopyalandı ✓"; }
+.campaign-bar__code.is-copied > * { display: none; }
+
+.campaign-bar__timer {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  background: rgba(0,0,0,.18);
+  border-radius: 6px;
+  padding: 3px 8px;
+  min-width: 64px;
+}
+
+@media (max-width: 460px) {
+  .campaign-bar__inner { font-size: 12px; padding: 7px 0; }
+  .campaign-bar__msg { width: 100%; }
+}

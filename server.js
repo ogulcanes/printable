@@ -689,7 +689,10 @@ for (const [table, column, type] of [
   ["quote_parts", "file_path", "TEXT"],
   ["quote_parts", "name", "TEXT"],
   // Surface-painted 3MF: the paint only survives in the original file.
-  ["quotes", "painted", "INTEGER NOT NULL DEFAULT 0"]
+  ["quotes", "painted", "INTEGER NOT NULL DEFAULT 0"],
+  // Sitede üstteki geri sayım şeridinde duyurulsun mu? Kodu herkese açık
+  // yayınlamayı admin bilerek seçtiğinde işaretlenir (bkz. /api/campaigns/banner).
+  ["campaigns", "show_on_banner", "INTEGER NOT NULL DEFAULT 0"]
 ]) {
   if (!(await hasColumn(table, column))) await db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
 }
@@ -1293,6 +1296,50 @@ async function seoHead(req, slug) {
 
 // One header for every public page, injected server-side so the navbar can never
 // drift between pages again. `active` marks the current main-await link (home | urunler | stl-teklif).
+// Üst kısımdaki geri sayımlı kampanya şeridi. Kampanya yoksa boş döner ve hiçbir
+// şey basılmaz. Sayaç istemcide çalışır (sunucu her istekte hesaplamaz); kod bir
+// tıkla panoya kopyalanır.
+async function renderPromoBar() {
+  const campaign = await liveBannerCampaign();
+  if (!campaign) return "";
+  const { name, code, discount_type, discount_value, deadline } = bannerPayload(campaign);
+  const amount = discount_type === "percent" ? `%${discount_value}` : `${money(discount_value)} TL`;
+  return `
+    <div class="campaign-bar" id="campaign-bar" data-deadline="${escapeHtml(deadline || "")}">
+      <div class="container campaign-bar__inner">
+        <span class="campaign-bar__msg"><strong>${escapeHtml(name)}</strong> — ${amount} indirim</span>
+        <button type="button" class="campaign-bar__code" id="campaign-bar-code" data-code="${escapeHtml(code)}">
+          Kod: <strong>${escapeHtml(code)}</strong>
+        </button>
+        ${deadline ? `<span class="campaign-bar__timer" id="campaign-bar-timer" aria-live="off"></span>` : ""}
+      </div>
+    </div>
+    <script>(function(){
+      var bar=document.getElementById('campaign-bar');
+      if(!bar) return;
+      var codeBtn=document.getElementById('campaign-bar-code');
+      if(codeBtn) codeBtn.addEventListener('click', function(){
+        var code=codeBtn.getAttribute('data-code');
+        if(navigator.clipboard) navigator.clipboard.writeText(code).catch(function(){});
+        codeBtn.classList.add('is-copied');
+        setTimeout(function(){ codeBtn.classList.remove('is-copied'); }, 1500);
+      });
+      var deadline=bar.getAttribute('data-deadline');
+      var timerEl=document.getElementById('campaign-bar-timer');
+      if(!deadline || !timerEl) return;
+      var end=new Date(deadline).getTime();
+      function pad(n){ return String(n).padStart(2,'0'); }
+      function tick(){
+        var diff=end-Date.now();
+        if(diff<=0){ bar.remove(); return; }
+        var d=Math.floor(diff/86400000), h=Math.floor((diff%86400000)/3600000), m=Math.floor((diff%3600000)/60000), s=Math.floor((diff%60000)/1000);
+        timerEl.textContent=(d>0 ? d+'g ' : '')+pad(h)+':'+pad(m)+':'+pad(s);
+      }
+      tick();
+      setInterval(tick, 1000);
+    })();</script>`;
+}
+
 async function renderHeader(active) {
   const link = (href, label, key) => `<a${active === key ? ' class="active"' : ""} href="${href}">${label}</a>`;
   return `
@@ -1533,7 +1580,7 @@ async function renderChatButton() {
 async function injectShell(html, headActive) {
   return html
     .replace("</head>", `${googleAnalyticsTag}\n  </head>`)
-    .replace("<!--header-->", await renderHeader(headActive))
+    .replace("<!--header-->", `${await renderPromoBar()}${await renderHeader(headActive)}`)
     .replace("<!--cart-->", renderCartPanel())
     .replace("<!--footer-->", await renderFooter())
     .replace("<!--chat-->", await renderChatButton());
@@ -3870,6 +3917,32 @@ async function liveCampaigns() {
   `).all();
 }
 
+// Şeritte gösterilecek tek kampanya: canlı, kodlu ve show_on_banner=1 olanlardan
+// bitişi en yakın olan (aciliyet en yüksek olan öne çıksın).
+async function liveBannerCampaign() {
+  return await db.prepare(`
+    SELECT * FROM campaigns
+    WHERE is_active = 1 AND show_on_banner = 1 AND code IS NOT NULL
+      AND (starts_at IS NULL OR starts_at::date <= CURRENT_DATE)
+      AND (ends_at   IS NULL OR ends_at::date   >= CURRENT_DATE)
+      AND (usage_limit IS NULL OR used_count < usage_limit)
+    ORDER BY (ends_at IS NULL), ends_at ASC, id DESC
+    LIMIT 1
+  `).get();
+}
+
+// ends_at yalnızca tarih tutuyor (bkz. liveCampaigns); şeritteki geri sayım o günün
+// sonuna kadar çalışsın diye 23:59:59'a tamamlanır.
+function bannerPayload(campaign) {
+  return {
+    name: campaign.name,
+    code: campaign.code,
+    discount_type: campaign.discount_type,
+    discount_value: Number(campaign.discount_value),
+    deadline: campaign.ends_at ? `${campaign.ends_at}T23:59:59` : null
+  };
+}
+
 // Kampanyanın kapsadığı sepet satırları.
 async function eligibleItems(campaign, items) {
   if (campaign.scope === "products") {
@@ -4074,6 +4147,14 @@ app.get("/api/campaigns", requireAdmin, async (req, res) => {
   res.json(await Promise.all(rows.map(campaignWithTargets)));
 });
 
+/* Sitedeki geri sayım şeridinde gösterilecek kampanya. Herkese açık: /api/catalog'un
+   aksine kodu BİLEREK yayınlıyoruz, çünkü admin show_on_banner ile "bu kodu herkese
+   duyur" demiş oluyor. Birden fazla işaretliyse bitişi en yakın olan kazanır. */
+app.get("/api/campaigns/banner", async (req, res) => {
+  const campaign = await liveBannerCampaign();
+  res.json(campaign ? bannerPayload(campaign) : null);
+});
+
 function campaignPayload(body) {
   const kind = body.kind === "gift" ? "gift" : "discount";
   const scope = ["all", "products", "categories"].includes(body.scope) ? body.scope : "all";
@@ -4092,7 +4173,10 @@ function campaignPayload(body) {
     starts_at: body.starts_at?.trim() || null,
     ends_at: body.ends_at?.trim() || null,
     usage_limit: toInt(body.usage_limit) || null,
-    is_active: body.is_active === false || body.is_active === "false" ? 0 : 1
+    is_active: body.is_active === false || body.is_active === "false" ? 0 : 1,
+    // Aktif/pasif alma PUT'u tüm kaydı (0/1 sayısal) geri gönderiyor; boolean ve
+    // sayısal doğru değerlerin ikisini de kabul etmezsek şeriti sessizce kapatırdı.
+    show_on_banner: [true, "true", 1, "1"].includes(body.show_on_banner) ? 1 : 0
   };
 }
 
@@ -4106,6 +4190,8 @@ function validateCampaign(payload) {
   if (payload.starts_at && payload.ends_at && payload.ends_at < payload.starts_at) {
     return "Bitiş tarihi başlangıç tarihinden önce olamaz.";
   }
+  // Şerit kodu herkese açık yayınlar; kodsuz bir kampanya şeritte sessizce hiç görünmezdi.
+  if (payload.show_on_banner && !payload.code) return "Şeritte göstermek için bir kampanya kodu girin.";
   return null;
 }
 
@@ -4245,9 +4331,9 @@ app.post("/api/campaigns", requireAdmin, async (req, res) => {
 
   const result = await db.prepare(`
     INSERT INTO campaigns (name, code, kind, discount_type, discount_value, scope, min_quantity,
-      min_order_total, gift_product_id, gift_quantity, starts_at, ends_at, usage_limit, is_active)
+      min_order_total, gift_product_id, gift_quantity, starts_at, ends_at, usage_limit, is_active, show_on_banner)
     VALUES (@name, @code, @kind, @discount_type, @discount_value, @scope, @min_quantity,
-      @min_order_total, @gift_product_id, @gift_quantity, @starts_at, @ends_at, @usage_limit, @is_active)
+      @min_order_total, @gift_product_id, @gift_quantity, @starts_at, @ends_at, @usage_limit, @is_active, @show_on_banner)
   `).run(payload);
   await setCampaignTargets(result.lastInsertRowid, req.body);
 
@@ -4268,7 +4354,8 @@ app.put("/api/campaigns/:id", requireAdmin, async (req, res) => {
     UPDATE campaigns SET name=@name, code=@code, kind=@kind, discount_type=@discount_type,
       discount_value=@discount_value, scope=@scope, min_quantity=@min_quantity,
       min_order_total=@min_order_total, gift_product_id=@gift_product_id, gift_quantity=@gift_quantity,
-      starts_at=@starts_at, ends_at=@ends_at, usage_limit=@usage_limit, is_active=@is_active
+      starts_at=@starts_at, ends_at=@ends_at, usage_limit=@usage_limit, is_active=@is_active,
+      show_on_banner=@show_on_banner
     WHERE id=@id
   `).run({ ...payload, id: current.id });
   await setCampaignTargets(current.id, req.body);
