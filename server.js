@@ -6,6 +6,8 @@ const express = require("express");
 const multer = require("multer");
 const crypto = require("crypto");
 const db = require("./db.js");
+// Ürün kartı/detayı işaretlemesi. Tarayıcı da AYNI dosyayı yüklüyor.
+const sablonlar = require("./product-templates.js");
 const storage = require("./storage.js");
 const shopier = require("./shopier.js");
 
@@ -119,7 +121,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "19";
+const SCHEMA_VERSION = "24";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -636,6 +638,13 @@ for (const [table, column, type] of [
   ["orders", "payment_failure_code", "TEXT"],
   ["orders", "payment_failure_message", "TEXT"],
   ["orders", "payment_collected_amount", "INTEGER"],
+  /* Ölçüm kimlikleri. Satın alma olayı ödeme onaylandığında SUNUCUDAN
+     gönderiliyor; o an istek PayTR'den geliyor, müşterinin tarayıcısından
+     değil, dolayısıyla çerezler yok. Bu yüzden client_id sipariş
+     oluşturulurken yakalanıp burada saklanıyor — onsuz satış GA4'te
+     kimsesiz bir olay olur ve reklam tıklamasıyla ilişkilendirilemez. */
+  ["orders", "ga_client_id", "TEXT"],
+  ["orders", "ga_session_id", "TEXT"],
   ["orders", "payment_test_mode", "INTEGER"],
   ["orders", "inventory_deducted", "INTEGER NOT NULL DEFAULT 0"],
   ["orders", "paid_at", "TIMESTAMPTZ"],
@@ -800,11 +809,11 @@ if (!existingSeoPages) {
     {
       slug: "home",
       label: "Ana sayfa",
-      title: "Printable | 3D Baskı Figür, Oyuncak ve Anahtarlık",
-      description: "Hazır 3D baskı figür, oyuncak, anahtarlık ve fidget ürünleri. STL dosyanızı yükleyin, 3D baskı için anında fiyat alın.",
+      title: "3D Baskı Ürünleri ve Özel Parça Tasarımı | Printable",
+      description: "Hazır 3D baskı figür, oyuncak ve anahtarlık ürünleri. Modeliniz yoksa parçanızı biz çizeriz; STL dosyanızı yükleyip anında fiyat alın.",
       canonical: "",
-      og_title: "Printable | 3D Baskı Ürünleri ve STL Baskı Hizmeti",
-      og_description: "Eklemli figürler, sevimli anahtarlıklar, fidget ve düdükler. Kendi STL dosyanızı da bastırın.",
+      og_title: "3D Baskı Ürünleri ve Özel Parça Tasarımı | Printable",
+      og_description: "Hazır ürünler, ölçüye göre özel parça çizimi ve STL baskı — hepsi tek atölyede.",
       og_image: "",
       robots: "index,follow"
     },
@@ -899,6 +908,20 @@ const extraSeoPages = [
     og_description: "Verilerinizi nasıl işlediğimizi sade bir dille açıkladık."
   },
   {
+    slug: "landing", label: "Ürün seçkisi (landing) sayfası",
+    title: "Printable Ürün Seçkisi | 3D Baskı Ürünleri",
+    description: "Öne çıkan 3D baskı figür, oyuncak, anahtarlık ve fidget ürünlerini fiyatlarıyla inceleyin; Katlaç ve Spinball koleksiyonlarını keşfedin.",
+    og_title: "Printable Ürün Seçkisi | 3D Baskı Ürünleri",
+    og_description: "Öne çıkan 3D baskı ürünlerini fiyatlarıyla görün, seçin ve doğrudan sepetinize ekleyin."
+  },
+  {
+    slug: "tasarim", label: "Özel tasarım sayfası",
+    title: "Özel Parça Tasarımı ve Teknik Çizim | Printable",
+    description: "Dosyanız yoksa parçanızı biz çizeriz: yedek parça, adaptör, kasnak ve özel aparatların 3D tasarımını yapıp basıyoruz.",
+    og_title: "Özel Parça Tasarımı ve Teknik Çizim | Printable",
+    og_description: "Ölçüyü siz verin, çizimi ve baskısını biz yapalım."
+  },
+  {
     slug: "anahtarlik-katalogu", label: "Anahtarlık toptan kataloğu",
     title: "Toptan Anahtarlık Kataloğu | Printable",
     description: "3D baskılı anahtarlık koleksiyonunu inceleyin, istediğiniz modelleri seçip Excel listesi olarak indirin.",
@@ -907,6 +930,24 @@ const extraSeoPages = [
   }
 ];
 for (const page of extraSeoPages) await addSeoPage.run(page);
+
+/* Paylaşım görseli. ON CONFLICT DO NOTHING satırı zaten varsa hiçbir alanı
+   güncellemez, bu yüzden og_image ayrı geliyor. SADECE boşsa doldurur —
+   adminden girilen bir görselin üstüne asla yazmaz. Varsayılan site görseli
+   bu sayfada yanlış: reklam ve WhatsApp paylaşımında ejderha tepsi fotoğrafı
+   yerine çizim işlerini gösteren kart çıkmalı. */
+const varsayilanOgGorselleri = [
+  { slug: "tasarim", og_image: "/assets/tasarim/tasarim-og-1200x630.jpg" },
+  // Landing'in meta'sı eskiden HTML'e gömülüydü ve kendi paylaşım görseli vardı;
+  // sunucuya devredilirken kaybolmasın.
+  { slug: "landing", og_image: "/assets/shopier/21.jpg" }
+];
+for (const g of varsayilanOgGorselleri) {
+  await db.prepare(`
+    UPDATE seo_pages SET og_image = @og_image
+     WHERE slug = @slug AND COALESCE(NULLIF(TRIM(og_image), ''), '') = ''
+  `).run(g);
+}
 
 const SITE_CONTACT = {
   phone: "0543 687 4208",
@@ -1207,6 +1248,88 @@ const googleAnalyticsTag = /^G-[A-Z0-9]+$/.test(GA_MEASUREMENT_ID)
     <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag("js",new Date());gtag("config","${GA_MEASUREMENT_ID}");</script>`
   : "";
 
+/* ---------- Sunucu taraflı satın alma ölçümü (GA4 Measurement Protocol) ----------
+ *
+ * Satın alma olayı eskiden yalnızca tarayıcıdan gidiyordu: müşteri ödeme sonrası
+ * "ödemeniz onaylandı" ekranına döndüğünde. Tarayıcıyı erken kapatan müşterinin
+ * satışı GA4'e hiç düşmüyordu — para hesaba geçiyor, ölçüm kaçıyordu.
+ *
+ * Artık olayı PayTR ödemeyi onayladığı anda sunucu gönderiyor; müşteri ne
+ * yaparsa yapsın kayıt oluşuyor.
+ *
+ * api_secret GİZLİDİR, istemciye asla gönderilmez (GA4 → Veri akışları →
+ * Measurement Protocol API gizli anahtarları'ndan üretilir). Tanımlı değilse
+ * fonksiyon sessizce çıkar; ölçüm eksikliği sipariş akışını bozmamalı. */
+const GA_API_SECRET = process.env.GA_API_SECRET || "";
+
+/* Açılışta durumu bir kez yaz. Anahtar tanımlı değilken fonksiyon sessizce
+   çıkıyor; hata da log'a düşmediği için "çalışıyor" ile "hiç denenmedi"
+   dışarıdan ayırt edilemiyordu. Bu satır o belirsizliği kaldırır. */
+console.log(GA_API_SECRET
+  ? "GA4 sunucu taraflı satın alma ölçümü: ETKİN"
+  : "GA4 sunucu taraflı satın alma ölçümü: KAPALI (GA_API_SECRET tanımsız) — ölçüm yalnızca tarayıcıdan yapılacak");
+
+/* GA4'ün `_ga` çerezi "GA1.1.<client_id>" biçimindedir; client_id iki parçadır
+   (rastgele sayı + ilk ziyaret zaman damgası). Oturum kimliği ise mülke özel
+   `_ga_<ölçüm kimliği>` çerezinde, "GS2.1.s<session_id>$..." içinde durur. */
+function gaKimlikleri(req) {
+  const cookies = parseCookies(req);
+  const ga = cookies._ga || "";
+  const parcalar = ga.split(".");
+  const clientId = parcalar.length >= 4 ? `${parcalar[2]}.${parcalar[3]}` : null;
+
+  const oturumCerezi = Object.entries(cookies).find(([ad]) => ad.startsWith("_ga_"));
+  const eslesme = oturumCerezi ? String(oturumCerezi[1]).match(/(?:^|\.)s?(\d{9,})/) : null;
+  return { clientId, sessionId: eslesme ? eslesme[1] : null };
+}
+
+async function gaSatinAlmaBildir(orderId) {
+  if (!GA_API_SECRET || !/^G-[A-Z0-9]+$/.test(GA_MEASUREMENT_ID)) return;
+
+  const order = await db.prepare(`
+    SELECT order_number, total, ga_client_id, ga_session_id FROM orders WHERE id = ?
+  `).get(orderId);
+  /* client_id yoksa göndermiyoruz. Rastgele bir kimlikle göndermek satışı
+     GA4'te kimsesiz bir kullanıcıya yazar: ciro görünür ama hangi reklamın
+     getirdiği kaybolur — ölçümün asıl amacı da buydu. */
+  if (!order?.ga_client_id) return;
+
+  const items = (await db.prepare(`
+    SELECT product_id, product_name, quantity, unit_price FROM order_items WHERE order_id = ?
+  `).all(orderId)).map((i) => ({
+    item_id: String(i.product_id ?? ""),
+    item_name: i.product_name,
+    price: Number(i.unit_price) || 0,
+    quantity: Number(i.quantity) || 1
+  }));
+
+  const govde = {
+    client_id: order.ga_client_id,
+    events: [{
+      name: "purchase",
+      params: {
+        /* Aynı transaction_id ile gelen satın almaları GA4 tekilleştiriyor;
+           tarayıcı da aynı olayı göndermiş olsa iki kez sayılmaz. */
+        transaction_id: order.order_number,
+        currency: "TRY",
+        value: Number(order.total) || 0,
+        items,
+        ...(order.ga_session_id ? { session_id: order.ga_session_id } : {}),
+        engagement_time_msec: 1
+      }
+    }]
+  };
+
+  const yanit = await fetch(
+    `https://www.google-analytics.com/mp/collect?measurement_id=${encodeURIComponent(GA_MEASUREMENT_ID)}&api_secret=${encodeURIComponent(GA_API_SECRET)}`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(govde) }
+  );
+  // MP başarıda 204 döner ve gövde vermez; hata ayrıntısı yalnızca debug ucunda.
+  if (!yanit.ok) throw new Error(`GA4 Measurement Protocol ${yanit.status}`);
+  // Başarıyı da yaz: siparişin ölçüme gidip gitmediği log'dan doğrulanabilsin.
+  console.log(`GA4 satın alma bildirildi: ${order.order_number} (${Number(order.total).toFixed(2)} TL)`);
+}
+
 // Absolute URLs — Open Graph and canonical are ignored by crawlers when relative.
 function absoluteUrl(req, value, siteUrl) {
   if (!value) return "";
@@ -1288,6 +1411,96 @@ async function seoHead(req, slug) {
       }
     ]
   };
+  /* /tasarim reklamda öne çıkarılacak bir HİZMET sayfası, ürün listesi değil.
+     Organization + WebSite bunu anlatmıyor; arama motoruna ne sattığımızı
+     söyleyen düğüm bu. Yalnızca o slug'a eklenir. */
+  if (slug === "tasarim") {
+    jsonLd["@graph"].push({
+      "@type": "Service",
+      name: "Özel parça tasarımı ve 3D baskı",
+      serviceType: "3D modelleme ve 3D baskı hizmeti",
+      description: "Ölçü, fotoğraf veya krokiden yola çıkarak yedek parça, adaptör, kasnak ve özel aparatların 3D tasarımını yapıp üretiyoruz.",
+      ...(canonical ? { url: canonical } : {}),
+      provider: { "@type": "Organization", name: site.site_name || "Printable", url: siteUrl },
+      areaServed: { "@type": "Country", name: "Türkiye" },
+      availableChannel: {
+        "@type": "ServiceChannel",
+        serviceUrl: absoluteUrl(req, "/iletisim", site.site_url)
+      }
+    });
+  }
+
+  /* Breadcrumb. Arama sonucunda ham adres yerine "Ana Sayfa › Ürünler" yolu
+     görünür — ürün sayfalarında zaten vardı (productMetaTags), alt sayfalarda
+     yoktu. Google en az iki basamak istiyor, o yüzden ana sayfaya eklenmiyor.
+     Ad olarak menüdeki/başlıktaki karşılığı kullanılıyor; Google "adres
+     yapısını değil, kullanıcının izlediği yolu yansıtın" diyor. */
+  const yolAdlari = {
+    urunler: "Ürünler",
+    tasarim: "Özel Tasarım",
+    "stl-teklif": "STL Teklif",
+    hakkinda: "Hakkımızda",
+    iletisim: "İletişim",
+    sss: "Sıkça Sorulan Sorular",
+    katalog: "Katalog",
+    "anahtarlik-katalogu": "Toptan Anahtarlık Kataloğu",
+    landing: "Ürün Seçkisi",
+    iade: "İade ve Cayma Hakkı",
+    gizlilik: "Gizlilik ve KVKK",
+    "mesafeli-satis": "Mesafeli Satış Sözleşmesi"
+  };
+  if (yolAdlari[slug]) {
+    jsonLd["@graph"].push({
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: "Ana Sayfa", item: siteUrl },
+        { "@type": "ListItem", position: 2, name: yolAdlari[slug], item: absoluteUrl(req, `/${slug}`, site.site_url) }
+      ]
+    });
+  }
+
+  /* /landing bir ürün seçkisi sayfası; ona uygun düğüm ItemList. Yalnızca
+     SUNUCUNUN BASTIĞI beş vitrin ürünü listeleniyor — aşağıdaki raf hâlâ JS ile
+     doluyor ve yapısal verinin sayfada görünmeyen içeriği anlatmaması gerekiyor.
+     Fiyatlar da aynı sorgudan geldiği için şema ile ekrandaki rakam ayrışamaz. */
+  if (slug === "landing") {
+    const urunler = await db.prepare(
+      "SELECT * FROM products WHERE is_active = 1 ORDER BY created_at DESC, id DESC"
+    ).all();
+    const secim = sablonlar.preferredProductList(
+      (await decorateProducts(urunler)).map(maliyetiGizle), [21, 53, 22, 39, 35], 5
+    );
+    if (secim.length) {
+      jsonLd["@graph"].push({
+        "@type": "ItemList",
+        name: "Öne çıkan 3D baskı ürünleri",
+        numberOfItems: secim.length,
+        itemListElement: secim.map((p, i) => {
+          const adres = absoluteUrl(req, `/urun/${p.id}`, site.site_url);
+          const gorsel = absoluteUrl(req, p.image_path, site.site_url);
+          return {
+            "@type": "ListItem",
+            position: i + 1,
+            item: {
+              "@type": "Product",
+              name: p.name,
+              ...(gorsel ? { image: gorsel } : {}),
+              url: adres,
+              brand: { "@type": "Brand", name: site.site_name || "Printable" },
+              offers: {
+                "@type": "Offer",
+                price: Number(sablonlar.displayPrice(p) || 0).toFixed(2),
+                priceCurrency: "TRY",
+                availability: p.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+                url: adres
+              }
+            }
+          };
+        })
+      });
+    }
+  }
+
   // "<" is escaped so a value can never break out of the script element.
   tags.push(`<script type="application/ld+json">${JSON.stringify(jsonLd).replace(/</g, "\\u003c")}</script>`);
 
@@ -1296,6 +1509,7 @@ async function seoHead(req, slug) {
 
 // One header for every public page, injected server-side so the navbar can never
 // drift between pages again. `active` marks the current main-await link (home | urunler | stl-teklif).
+
 // Üst kısımdaki geri sayımlı kampanya şeridi. Kampanya yoksa boş döner ve hiçbir
 // şey basılmaz. Sayaç istemcide çalışır (sunucu her istekte hesaplamaz); kod bir
 // tıkla panoya kopyalanır.
@@ -1340,8 +1554,19 @@ async function renderPromoBar() {
     })();</script>`;
 }
 
-async function renderHeader(active) {
+async function renderHeader(active, customer) {
   const link = (href, label, key) => `<a${active === key ? ' class="active"' : ""} href="${href}">${label}</a>`;
+  /* Müşterinin adı çerezden zaten biliniyor; HTML'e burada basılır. Eskiden
+     yalnızca script.js /api/customer/session dönüşünde yazıyordu, yani giriş
+     yapmış kullanıcı HER sayfa açılışında önce "Hesabım" görüp sonra adının
+     belirmesini izliyordu. Sunucu bilgiyi ilk baytta gönderebiliyorken bunu
+     bir isteğin dönüşüne bırakmak gereksizdi. */
+  /* Başlıkta yalnızca ilk ad. Üç kelimelik bir isim aksiyon sütununu 386'dan
+     470px'e çıkarıyor ve `1fr auto 1fr` ızgarasında sol sütunu ezerek menüyü
+     merkezden 99px sola kaydırıyordu. Tam ad zaten /hesap sayfasında. */
+  const accountLabel = customer?.name?.trim().split(/\s+/)[0] || "Hesabım";
+  const accountClass = `admin-link icon-button${customer ? " is-authenticated" : ""}`;
+  const accountAria = customer ? `${customer.name} hesabı` : "Müşteri hesabım";
   return `
     <div class="top-strip">
       <div class="container top-strip__inner">
@@ -1352,7 +1577,14 @@ async function renderHeader(active) {
     <header class="site-header">
       <div class="container header-main">
         <a class="logo printable-logo" href="/" aria-label="Printable ana sayfa">
-          <img src="/assets/printable-logo-transparent.png" alt="Printable">
+          <!-- 400px'lik sürüm: kaynak dosya 1550x550 ve 623 KB idi, başlıkta 33px
+               yüksekliğinde gösteriliyordu. Her sayfada iki kez inen, sitedeki en
+               ağır dosyaydı. width/height, yazı tipi yüklenirken satırın
+               zıplamaması için duruyor. -->
+          <picture>
+            <source srcset="/assets/printable-logo-transparent-400.webp" type="image/webp">
+            <img src="/assets/printable-logo-transparent-400.png" alt="Printable" width="400" height="142">
+          </picture>
         </a>
         <!-- Yalnızca mobilde görünür; menüyü açar. -->
         <button class="nav-toggle" type="button" id="nav-toggle"
@@ -1362,8 +1594,12 @@ async function renderHeader(active) {
         <nav class="main-links" id="main-links" aria-label="Ana menü">
           ${await link("/", "Ana Sayfa", "home")}
           ${await link("/urunler", "Ürünler", "urunler")}
+          ${await link("/tasarim", "Özel Tasarım", "tasarim")}
           ${await link("/hakkinda", "Hakkımızda", "hakkinda")}
           ${await link("/iletisim", "İletişim", "iletisim")}
+          <!-- Aynı CTA'nın mobil kopyası: 1050px altında header-actions'ta
+               hamburgere yer kalmıyor, buton açılır menünün içine geçiyor. -->
+          <a class="nav-cta" href="/stl-teklif">Ücretsiz Teklif Al</a>
         </nav>
         <nav class="header-actions" aria-label="Mağaza işlemleri">
           <button class="search-toggle icon-button" type="button" aria-label="Arama aç" aria-expanded="false">
@@ -1373,10 +1609,11 @@ async function renderHeader(active) {
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 8h14l-1.4 7.2a2 2 0 0 1-2 1.6H9a2 2 0 0 1-2-1.7L5.8 4H3"/><path d="M9.5 20.5h.01M17.5 20.5h.01"/></svg>
             <strong id="cart-count">0</strong>
           </a>
-          <a class="admin-link icon-button" href="/hesap" aria-label="Müşteri hesabım">
+          <a class="${accountClass}" href="/hesap" aria-label="${escapeHtml(accountAria)}">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
-            <span class="account-link__label">Hesabım</span>
+            <span class="account-link__label">${escapeHtml(accountLabel)}</span>
           </a>
+          <a class="header-cta" href="/stl-teklif">Ücretsiz Teklif Al</a>
         </nav>
       </div>
       <form class="search search-popover" role="search">
@@ -1547,15 +1784,19 @@ async function renderFooter() {
       </div>
       <div class="container footer__grid">
         <div><h3>Kategoriler</h3><a href="/urunler">Figürler</a><a href="/urunler">Anahtarlıklar</a><a href="/urunler">Fidget & Stres</a><a href="/urunler">Düdükler</a></div>
-        <div><h3>Kurumsal</h3><a href="/katalog">Katalog</a><a href="/hakkinda">Hakkımızda</a><a href="/iletisim">İletişim</a><a href="/stl-teklif">Özel 3D baskı</a><a href="/urunler">Tüm ürünler</a></div>
+        <div><h3>Kurumsal</h3><a href="/katalog">Katalog</a><a href="/hakkinda">Hakkımızda</a><a href="/iletisim">İletişim</a><a href="/stl-teklif">Özel 3D baskı</a><a href="/tasarim">Özel tasarım</a><a href="/urunler">Tüm ürünler</a></div>
         <div><h3>Müşteri Desteği</h3><a href="/iletisim">Bize ulaşın</a><a href="/iade">İade & Değişim</a><a href="/sss">Kargo</a><a href="/sss">S.S.S.</a></div>
         <div><h3>Yasal</h3><a href="/mesafeli-satis">Mesafeli Satış Sözleşmesi</a><a href="/iade">İade ve Cayma Hakkı</a><a href="/gizlilik">Gizlilik ve KVKK</a></div>
         <div class="footer-logo printable-wordmark">
           <a class="footer-brand-logo" href="/" aria-label="Printable ana sayfa">
-            <img src="/assets/printable-logo-transparent.png" alt="Printable">
+            <picture>
+              <source srcset="/assets/printable-logo-transparent-400.webp" type="image/webp">
+              <img src="/assets/printable-logo-transparent-400.png" alt="Printable" width="400" height="142">
+            </picture>
           </a>
           <p>Hazır 3D modellerden özenle üretilen baskı ürünleri.</p>
           <p>Türkiye</p>
+          <a class="footer-cta" href="/stl-teklif">Ücretsiz Teklif Al</a>
           <div class="footer-contact">${contactRow}</div>
           ${socialRow}
         </div>
@@ -1577,10 +1818,16 @@ async function renderChatButton() {
     </div>`;
 }
 
-async function injectShell(html, headActive) {
+async function injectShell(html, headActive, customer) {
   return html
+    /* Ürün şablonları script.js'ten ÖNCE yüklenmeli — script.js oradaki
+       isimleri (money, productCardHTML…) kullanıyor. Her sayfanın HTML'ine tek
+       tek yazmak yerine buradan enjekte ediliyor: yeni bir sayfa eklendiğinde
+       unutulacak bir adım kalmasın. */
+    .replace(/<script src="\/?script\.js"><\/script>/,
+      '<script src="/product-templates.js"></script>\n    <script src="/script.js"></script>')
     .replace("</head>", `${googleAnalyticsTag}\n  </head>`)
-    .replace("<!--header-->", `${await renderPromoBar()}${await renderHeader(headActive)}`)
+    .replace("<!--header-->", `${await renderPromoBar()}${await renderHeader(headActive, customer)}`)
     .replace("<!--cart-->", renderCartPanel())
     .replace("<!--footer-->", await renderFooter())
     .replace("<!--chat-->", await renderChatButton());
@@ -1635,15 +1882,222 @@ async function renderReturnAddress() {
 const guncellemeSatiri = () =>
   `Son güncelleme: ${new Date().toLocaleDateString("tr-TR", { year: "numeric", month: "long", day: "numeric" })}`;
 
+/* S.S.S. sayfasının FAQPage şeması. Soru-cevaplar sayfanın kendi HTML'inden
+   okunur; ikinci bir listeyi server.js'te tutmak, biri güncellenip diğeri
+   unutulduğunda arama sonucunda yanlış cevap göstermek demekti. Google
+   FAQPage için soru ve cevabın sayfada görünür olmasını şart koşuyor —
+   tek kaynak zaten bu yüzden doğru olan. */
+function faqPageSchema(html) {
+  const sorular = [...html.matchAll(
+    /<details class="faq-item">\s*<summary>([\s\S]*?)<\/summary>\s*<div class="faq-answer">([\s\S]*?)<\/div>\s*<\/details>/g
+  )].map(([, soru, cevap]) => ({
+    "@type": "Question",
+    name: metinAl(soru),
+    acceptedAnswer: { "@type": "Answer", text: metinAl(cevap) }
+  })).filter((q) => q.name && q.acceptedAnswer.text);
+
+  if (!sorular.length) return "";
+  const jsonLd = { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: sorular };
+  return `\n    <script type="application/ld+json">${JSON.stringify(jsonLd).replace(/</g, "\\u003c")}</script>`;
+}
+
+// Etiketleri atıp düz metne indirger; &amp; gibi girişleri de geri çevirir.
+const metinAl = (parca) => parca
+  .replace(/<[^>]+>/g, " ")
+  .replace(/&nbsp;/g, " ")
+  .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+  .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+  .replace(/\s+/g, " ")
+  .trim();
+
+/* /urunler kataloğunun ilk HTML'i. Sıralama urunler.js'in filtresiz
+   varsayılanıyla (en yeni önce) aynı olmalı, yoksa JS yüklenince kartlar yer
+   değiştirir. Kart işaretlemesi product-templates.js'ten geliyor — tarayıcı da
+   aynı fonksiyonu çağırıyor. */
+async function renderProductGrid(query) {
+  const products = await db.prepare(
+    "SELECT * FROM products WHERE is_active = 1 ORDER BY created_at DESC, id DESC"
+  ).all();
+  let suslu = (await decorateProducts(products)).map(maliyetiGizle);
+
+  /* Ana sayfadaki kategori kartları ve ürün sayfasındaki etiketler buraya
+     ?kategori=<id> ile geliyor; ?indirim=1 ve ?q= de var. Sunucu bunları
+     uygulamazsa ziyaretçi önce 47 ürünü görüp sonra listenin 17'ye düşmesini
+     izliyor — filtreyi JS'e bırakmak tam da kaldırmak istediğimiz sıçramayı
+     geri getirir. Süzme mantığı urunler.js'teki `matches` ile aynı. */
+  const kategori = Number(query.kategori);
+  if (kategori) {
+    suslu = suslu.filter((p) => (p.categories || []).some((c) => c.id === kategori));
+  }
+  if (query.indirim === "1") {
+    // Ölçekli üründe sale_price uygulanmıyor, o yüzden indirimli sayılmıyor.
+    suslu = suslu.filter((p) => !(p.scales || []).length && p.sale_price && p.price > p.sale_price);
+  }
+  const arama = String(query.q || "").trim().toLocaleLowerCase("tr-TR").slice(0, 80);
+  if (arama) {
+    suslu = suslu.filter((p) =>
+      `${p.name || ""} ${p.description || ""} ${(p.categories || []).map((c) => c.name).join(" ")}`
+        .toLocaleLowerCase("tr-TR").includes(arama));
+  }
+
+  return suslu.map(sablonlar.productCardHTML).join("")
+    || `<p class="products-empty">Ürün bulunamadı.</p>`;
+}
+
+/* Banner. İşaretleme script.js'teki applyHeroSlides / renderHeroCopy ile birebir
+   aynı olmalı: JS aynı görselleri yeniden basınca hiçbir şey değişmesin.
+   Boş bırakılırsa .hero__copy'nin h1/span/buton iskeleti hiç oluşmaz ve
+   renderHeroCopy null'a yazmaya çalışır — bu yüzden slayt yoksa bile iskelet
+   basılıyor. */
+async function renderHero(sayfa) {
+  const slaytlar = await db.prepare(
+    "SELECT image_path, image_alt, title, subtitle, primary_label, primary_href, secondary_label, secondary_href FROM hero_slides WHERE is_active = 1 ORDER BY sort_order, id"
+  ).all();
+
+  const gorseller = slaytlar.map((s, i) => {
+    const alt = s.image_alt || s.title || "Printable banner görseli";
+    const oncelik = i === 0 ? ' fetchpriority="high"' : ' loading="lazy"';
+    // Banner tam genişlikte; 1600px 2172px'lik orijinali gereksiz kılıyor.
+    return `<img class="hero__slide${i === 0 ? " is-active" : ""}" src="${escapeHtml(sablonlar.gorselAdresi(s.image_path, 1600))}" alt="${escapeHtml(alt)}"${oncelik}>`;
+  }).join("\n              ");
+
+  const ilk = slaytlar[0] || {};
+  const buton = (sinif, etiket, adres) =>
+    `<a class="btn ${sinif}" href="${escapeHtml(adres || "#")}"${etiket ? "" : " hidden"}><span>${escapeHtml(etiket || "")}</span></a>`;
+  const metin = `
+              <h1>${escapeHtml(ilk.title || "")}</h1>
+              <span>${escapeHtml(ilk.subtitle || "")}</span>
+              <div class="hero-actions">
+                ${buton("btn--light", ilk.primary_label, ilk.primary_href)}
+                ${buton("btn--ghost", ilk.secondary_label, ilk.secondary_href)}
+              </div>`;
+
+  return sayfa
+    .replace("<!--hero-slaytlari-->", gorseller)
+    .replace("<!--hero-metni-->", metin);
+}
+
+/* Ana sayfa vitrinleri. Seçim mantığı script.js'teki ile BİREBİR aynı olmalı —
+   JS aynı kutuları yeniden bastığında kartlar yer değiştirmesin. Eskiden ana
+   sayfanın 1602 kelimesinin 1000'i yalnızca JS ile geliyordu; tarayıcı için
+   sayfa üçte bir boyutundaydı. */
+async function renderHomeGrids(sayfa) {
+  const products = await db.prepare(
+    "SELECT * FROM products WHERE is_active = 1 ORDER BY created_at DESC, id DESC"
+  ).all();
+  const aktif = (await decorateProducts(products)).map(maliyetiGizle);
+  const izgara = (liste) => liste.map(sablonlar.productCardHTML).join("")
+    || `<p class="products-empty">Ürün bulunamadı.</p>`;
+
+  // En pahalı ürün panelde; sonraki dördü 2x2 ızgarada (script.js: featured).
+  const secki = [...aktif].sort((a, b) => (b.sale_price || b.price) - (a.sale_price || a.price));
+  const indirimli = aktif.filter((p) => p.sale_price && p.price > p.sale_price)
+    .sort((a, b) => sablonlar.discountPercent(b) - sablonlar.discountPercent(a));
+
+  /* İndirim bölümü boşken gizli kalmalı; ürün varsa hidden'ı sunucu kaldırır ki
+     bölüm ilk HTML'de açık gelsin ve JS onu açarken sayfa kaymasın. */
+  const enIyi = indirimli.length ? sablonlar.discountPercent(indirimli[0]) : 0;
+  const ozet = indirimli.length
+    ? `${indirimli.length} ürün indirimde · en yüksek indirim %${enIyi} · stoklarla sınırlı`
+    : "";
+
+  return sayfa
+    .replace("<!--vitrin-yeni-->", izgara(aktif))
+    .replace("<!--vitrin-secki-->", izgara(secki.slice(1, 5)))
+    .replace("<!--vitrin-cok-satan-->", izgara(aktif.slice(0, 5)))
+    .replace("<!--vitrin-onerilen-->", izgara([...aktif].reverse().slice(0, 4)))
+    .replace("<!--vitrin-indirim-->", indirimli.length ? izgara(indirimli.slice(0, 5)) : "")
+    .replace("<!--indirim-gizli-->", indirimli.length ? "" : " hidden")
+    .replace("<!--indirim-ozet-->", escapeHtml(ozet));
+}
+
+/* /landing vitrini. Seçim script.js'teki renderProductLanding ile aynı: sabit
+   id listesi, eksik kalırsa katalog sırasından tamamlanır. */
+async function renderLandingStage() {
+  const products = await db.prepare(
+    "SELECT * FROM products WHERE is_active = 1 ORDER BY created_at DESC, id DESC"
+  ).all();
+  const suslu = (await decorateProducts(products)).map(maliyetiGizle);
+  return sablonlar.preferredProductList(suslu, [21, 53, 22, 39, 35], 5)
+    .map(sablonlar.commerceStageCardHTML).join("");
+}
+
+/* /urunler filtre seçenekleri. İşaretleme urunler.js'teki renderCategoryFilters
+   / renderColorFilters ile BİREBİR aynı olmalı: JS aynı kutuyu yeniden
+   bastığında yükseklik değişmezse sayfa hiç kaymaz. Yan fayda, kategori ve renk
+   adlarının JS'siz HTML'de de bulunması. */
+async function renderProductFilters(sayfa, query) {
+  const categories = await db.prepare(
+    "SELECT id, name FROM categories WHERE is_active = 1 ORDER BY sort_order, id"
+  ).all();
+  const colors = await db.prepare(
+    "SELECT id, name, hex FROM colors WHERE is_active = 1 ORDER BY sort_order, id"
+  ).all();
+
+  const seciliKategori = Number(query.kategori) || null;
+  const indirimli = query.indirim === "1";
+  const arama = String(query.q || "").trim().toLocaleLowerCase("tr-TR").slice(0, 80);
+
+  /* Aktif filtre etiketleri de sunucudan. Kutu boş+hidden başlayıp JS onu
+     doldurunca 32px büyüyor ve ürün ızgarasını aşağı itiyordu — kategori
+     bağlantısıyla gelen her ziyaretçide görülen bir kayma. İşaretleme
+     urunler.js'teki renderActiveChips ile aynı. */
+  const etiketler = [];
+  const kategoriAdi = categories.find((c) => c.id === seciliKategori);
+  if (kategoriAdi) etiketler.push(`<button type="button" class="chip" data-remove-category="${kategoriAdi.id}">${escapeHtml(kategoriAdi.name)} ✕</button>`);
+  if (indirimli) etiketler.push(`<button type="button" class="chip" data-remove-sale>İndirimli ✕</button>`);
+  if (arama) etiketler.push(`<button type="button" class="chip" data-remove-query>Arama: ${escapeHtml(arama)} ✕</button>`);
+  sayfa = sayfa.replace(
+    '<!--aktif-filtreler--><div id="active-filters" class="active-filters" hidden></div>',
+    `<div id="active-filters" class="active-filters"${etiketler.length ? "" : " hidden"}>${etiketler.join("")}</div>`
+  );
+
+  const kategoriler = categories.map((category) => `
+      <label class="filter-check">
+        <input type="checkbox" data-filter="category" value="${category.id}"${category.id === seciliKategori ? " checked" : ""}>
+        ${escapeHtml(category.name)}
+      </label>
+    `).join("") || "<p class='filter-empty'>Kategori yok.</p>";
+
+  const renkler = colors.map((color) => `
+      <label class="filter-check filter-check--color">
+        <input type="checkbox" data-filter="color" value="${color.id}">
+        <span class="color-dot" style="background:${escapeHtml(color.hex)}"></span>${escapeHtml(color.name)}
+      </label>
+    `).join("") || "<p class='filter-empty'>Renk yok.</p>";
+
+  return sayfa
+    .replace("<!--filtre-kategoriler-->", kategoriler)
+    .replace("<!--filtre-renkler-->", renkler);
+}
+
 async function sendPage(req, res, file, slug) {
   const html = fs.readFileSync(path.join(ROOT, file), "utf8");
-  let sayfa = html.replace("<!--seo-->", await seoHead(req, slug));
+  /* FAQPage şeması, sayfada .faq-item varsa basılır — slug listesi tutmak,
+     yeni bir S.S.S. bölümü eklendiğinde unutulacak bir adım demekti. */
+  let sayfa = html.replace("<!--seo-->", (await seoHead(req, slug)) + faqPageSchema(html));
   // Yasal sayfa yer tutucuları — diğer sayfalarda bunlar zaten yok, replace no-op.
   if (sayfa.includes("<!--satici-->")) sayfa = sayfa.replaceAll("<!--satici-->", await renderSellerBlock());
   if (sayfa.includes("<!--iade-adresi-->")) sayfa = sayfa.replace("<!--iade-adresi-->", await renderReturnAddress());
   if (sayfa.includes("<!--guncelleme-->")) sayfa = sayfa.replace("<!--guncelleme-->", guncellemeSatiri());
   if (sayfa.includes("<!--contact-details-->")) sayfa = sayfa.replace("<!--contact-details-->", await renderContactDetails());
-  res.type("html").send(await injectShell(sayfa, slug));
+  if (sayfa.includes("<!--filtre-kategoriler-->")) sayfa = await renderProductFilters(sayfa, req.query);
+  if (sayfa.includes("<!--urun-izgarasi-->")) sayfa = sayfa.replace("<!--urun-izgarasi-->", await renderProductGrid(req.query));
+  if (sayfa.includes("<!--landing-vitrin-->")) sayfa = sayfa.replace("<!--landing-vitrin-->", await renderLandingStage());
+  if (sayfa.includes("<!--hero-slaytlari-->")) sayfa = await renderHero(sayfa);
+  if (sayfa.includes("<!--vitrin-yeni-->")) sayfa = await renderHomeGrids(sayfa);
+  res.type("html").send(await injectShell(sayfa, slug, await pageCustomer(req, res)));
+}
+
+/* Sayfa HTML'i artık müşterinin adını taşıyor, yani kişisel. Paylaşımlı bir
+   önbelleğe düşerse bir ziyaretçiye başkasının adı gösterilir. Bugün sayfalara
+   hiç Cache-Control verilmiyor (Vercel de fonksiyon çıktısını kendiliğinden
+   önbelleğe almıyor), ama bu güvenlik araya bir CDN girdiği gün sessizce
+   kaybolurdu. Yalnızca oturum varken işaretlenir; anonim sayfa eskisi gibi. */
+async function pageCustomer(req, res) {
+  const customer = await currentCustomer(req);
+  if (customer) res.setHeader("Cache-Control", "private, no-store");
+  return customer;
 }
 
 app.get("/", async (req, res) => await sendPage(req, res, "index.html", "home"));
@@ -1651,6 +2105,7 @@ app.get("/landing", async (req, res) => await sendPage(req, res, "landing.html",
 app.get("/katlac-spinball", async (req, res) => res.redirect(301, "/landing"));
 app.get("/urunler", async (req, res) => await sendPage(req, res, "urunler.html", "urunler"));
 app.get("/stl-teklif", async (req, res) => await sendPage(req, res, "stl-teklif.html", "stl-teklif"));
+app.get("/tasarim", async (req, res) => await sendPage(req, res, "tasarim.html", "tasarim"));
 app.get("/hakkinda", async (req, res) => await sendPage(req, res, "hakkinda.html", "hakkinda"));
 app.get("/iletisim", async (req, res) => await sendPage(req, res, "iletisim.html", "iletisim"));
 app.get("/hesap", async (req, res) => await sendPage(req, res, "hesap.html", "hesap"));
@@ -1669,11 +2124,13 @@ async function productMetaTags(req, product) {
   const description = product.meta_description || product.description || site.description || "";
   const canonical = absoluteUrl(req, `/urun/${product.id}`, site.site_url);
   const image = absoluteUrl(req, product.image_path || site.default_og_image, site.site_url);
-  /* Ölçekli ürünün tek bir fiyatı yok. Böyle ürünlerde teklif AggregateOffer
-     olur: arama sonucunda "120–260 TL" aralığı görünür, tek fiyat yazıp
-     müşteriyi yanıltmamış oluruz. */
+  /* Vitrin şu an tek boy sattığı için (bkz. satisOlcekleri) burası tek fiyatlı
+     Offer basıyor. Aşağıdaki AggregateOffer dalı, boylar ayrı fiyatlarla
+     satılmaya başlanınca devreye girer: o zaman ürünün tek bir fiyatı olmaz ve
+     arama sonucunda "120–260 TL" aralığı göstermek tek fiyat yazıp müşteriyi
+     yanıltmaktan doğrudur. */
   const olcekler = satisOlcekleri(await db.prepare(
-    "SELECT id, scale, price FROM product_cost_scales WHERE product_id = ?"
+    "SELECT id, scale, price, unit_cost FROM product_cost_scales WHERE product_id = ? ORDER BY unit_cost ASC, id ASC"
   ).all(product.id), product.sale_price || product.price);
   const price = Number(
     (olcekler.length ? olcekler[0].price : product.sale_price || product.price) || 0
@@ -1747,8 +2204,21 @@ app.get("/urun/:id", async (req, res) => {
   const html = fs.readFileSync(path.join(ROOT, "urun.html"), "utf8");
   // withColors await edilmezse productMetaTags'e ürün yerine Promise gider ve
   // başlık "undefined | Printable" olur.
-  const decorated = await withColors(product);
-  res.type("html").send(await injectShell(html.replace("<!--seo-->", await productMetaTags(req, decorated)), "urunler"));
+  const decorated = maliyetiGizle(await withColors(product));
+  /* Detay da ilk HTML'de. Ölçek/renk seçimi varsayılanla basılıyor — urun.js de
+     aynı varsayılanlarla açılıyor, dolayısıyla JS devraldığında işaretleme
+     değişmiyor. stokGoster istemcide /api/site-info'dan geliyor; burada aynı
+     değeri vermezsek stok satırı sonradan belirip sayfayı kaydırırdı. */
+  const ayar = await db.prepare("SELECT show_stock FROM site_settings WHERE id = 1").get() || {};
+  const detay = sablonlar.productDetailHTML(decorated, {
+    stokGoster: Number(ayar.show_stock ?? 1) === 1
+  });
+  res.type("html").send(await injectShell(
+    html
+      .replace("<!--seo-->", await productMetaTags(req, decorated))
+      .replace("<!--urun-detayi-->", detay),
+    "urunler", await pageCustomer(req, res)
+  ));
 });
 
 // Checkout flow — noindex (a transactional page crawlers should not list).
@@ -1759,7 +2229,7 @@ app.get("/odeme", async (req, res) => {
     `<meta name="robots" content="noindex,nofollow">`
   ].join("\n    ");
   const html = fs.readFileSync(path.join(ROOT, "odeme.html"), "utf8");
-  res.type("html").send(await injectShell(html.replace("<!--seo-->", head), ""));
+  res.type("html").send(await injectShell(html.replace("<!--seo-->", head), "", await pageCustomer(req, res)));
 });
 
 // Tell crawlers what to index and where the sitemap is. Admin and API paths are off-limits.
@@ -1779,6 +2249,7 @@ app.get("/sitemap.xml", async (req, res) => {
     { loc: "/landing", priority: "0.9" },
     { loc: "/urunler", priority: "0.9" },
     { loc: "/stl-teklif", priority: "0.8" },
+    { loc: "/tasarim", priority: "0.7" },
     { loc: "/hakkinda", priority: "0.5" },
     { loc: "/iletisim", priority: "0.5" },
     { loc: "/katalog", priority: "0.8" },
@@ -1808,7 +2279,7 @@ app.get("/sitemap.xml", async (req, res) => {
   );
 });
 
-["styles.css", "script.js", "stl-viewer.js", "admin.css", "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js", "katalog.js", "hesap.js", "anahtarlik-katalog.js"].forEach((file) => {
+["styles.css", "script.js", "product-templates.js", "stl-viewer.js", "admin.css", "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js", "katalog.js", "hesap.js", "anahtarlik-katalog.js"].forEach((file) => {
   app.get(`/${file}`, async (req, res) => res.sendFile(path.join(ROOT, file)));
 });
 
@@ -2820,20 +3291,37 @@ async function decorateProducts(products) {
   }));
 }
 
-/* Ölçeklerin MÜŞTERİYE açık hâli: ölçeğin özel fiyatı varsa onu, yoksa ürünün
-   ana satış fiyatını kullanır. Eski %75 / %100 kayıtları maliyet ölçeği olarak
-   oluşturulmuş ve fiyatları ürün üzerinde tutulmuştu; onları gizlemek yerine
-   aynı ürün fiyatıyla seçilebilir varyant olarak gösteriyoruz.
+/* Ölçeklerin MÜŞTERİYE açık hâli — VİTRİN TEK BOY SATAR.
+
+   %75 / %100 kayıtları maliyet ölçeği olarak girilmiş ve ikisi de ürünün aynı
+   satış fiyatını taşıyor. Bunları seçilebilir varyant diye sunmak müşteriye
+   "iki boy, tek fiyat" gibi anlamsız bir seçim yaptırıyordu; üstelik hangi
+   boyu aldığı fiyattan anlaşılmıyordu. Artık en küçük boy (en düşük maliyetli
+   ölçek) satılıyor, hangi boy olduğu ürün sayfasında yazıyla söyleniyor.
+
+   Kırpma ŞABLONDA değil BURADA: bu fonksiyondan hem katalog hem de ödeme
+   doğrulaması geçiyor. Şablonda gizleseydik elle scale_id gönderip satılmayan
+   boyu sipariş etmek hâlâ mümkün olurdu.
+
+   Sıralama maliyete göre: fiyatlar eşit olduğunda "en ucuz" ölçütü hangi boyun
+   satılacağını belirlemiyordu, sıraya kalıyordu. Maliyet küçük boyu başa alır.
+
+   Boyları ayrı fiyatlarla satmaya karar verilirse slice(0, 1) kaldırılır;
+   ürün sayfasındaki ölçek seçici (product-templates.js) kendiliğinden geri
+   gelir — orada koşul zaten "birden fazla ölçek varsa".
 
    unit_cost ve inputs ticari sır olduğu için bu listeye hiç girmiyor. */
 const satisOlcekleri = (rows, fallbackPrice = null) => (rows || [])
   .map((s) => ({
     id: s.id,
     scale: s.scale,
-    price: Number(s.price) > 0 ? round2(Number(s.price)) : round2(Number(fallbackPrice))
+    price: Number(s.price) > 0 ? round2(Number(s.price)) : round2(Number(fallbackPrice)),
+    maliyet: Number(s.unit_cost) || 0
   }))
   .filter((s) => s.price > 0)
-  .sort((a, b) => a.price - b.price);
+  .sort((a, b) => a.maliyet - b.maliyet || a.price - b.price || a.id - b.id)
+  .slice(0, 1)
+  .map(({ maliyet, ...s }) => s);
 
 // Tek ürün için: POST/PUT sonrası dönen kayıtta kullanılır.
 const imagesOfProduct = db.prepare(`
@@ -3982,6 +4470,13 @@ async function evaluateOne(campaign, items) {
   if (campaign.min_quantity && quantity < campaign.min_quantity) return null;
   if (campaign.min_order_total && subtotal < campaign.min_order_total) return null;
 
+  /* Hangi kalemleri kapsadığının imzası. evaluateCampaigns bununla aynı ürün
+     kümesini hedefleyen adet kademelerini tanıyıp yalnızca en iyisini
+     uyguluyor — "10+ %5", "50+ %12", "100+ %20" üst üste binerse müşteri
+     100 adette %37 indirim alırdı ve katalog %20 yazdığı için sözle
+     gerçek tutmazdı. */
+  const scopeKey = eligible.map((item) => item.product_id).sort((a, b) => a - b).join(",");
+
   if (campaign.kind === "gift") {
     const gift = campaign.gift_product_id
       ? await db.prepare("SELECT id, name FROM products WHERE id = ?").get(campaign.gift_product_id)
@@ -3993,7 +4488,8 @@ async function evaluateOne(campaign, items) {
       campaign,
       discount: 0,
       gift: { product_id: gift.id, product_name: gift.name, quantity: Math.max(1, campaign.gift_quantity) },
-      label: campaignLabel(campaign)
+      label: campaignLabel(campaign),
+      scopeKey
     };
   }
 
@@ -4003,7 +4499,7 @@ async function evaluateOne(campaign, items) {
     : Math.min(campaign.discount_value, subtotal);
   const discount = round2(raw);
   if (discount <= 0) return null;
-  return { campaign, discount, gift: null, label: campaignLabel(campaign) };
+  return { campaign, discount, gift: null, label: campaignLabel(campaign), scopeKey };
 }
 
 /* Sepete uygulanacak her şeyi döndürür.
@@ -4019,9 +4515,33 @@ async function evaluateCampaigns(items, code) {
 
   // 1) Otomatik kampanyalar (kodu olmayanlar). Sırayla: discount toplamı
   //    paylaşılan bir değişken, paralel çalıştırmak yarış koşulu yaratır.
+  const otomatik = [];
   for (const campaign of live.filter((c) => !c.code)) {
     const result = await evaluateOne(campaign, items);
-    if (!result) continue;
+    if (result) otomatik.push({ campaign, result });
+  }
+
+  /* Adet kademeleri ÜST ÜSTE BİNMEZ: aynı ürün kümesini hedefleyen adet
+     koşullu indirimlerden yalnızca en iyisi uygulanır. 100 adet alan müşteri
+     "10+", "50+" ve "100+" kademelerinin üçünü birden hak eder; toplasaydık
+     katalogda yazan orandan çok daha fazlasını verirdik. Katalog zaten tek
+     bir kademe (en ucuz birim) gösteriyor — burası onunla aynı hesabı yapar.
+
+     Farklı ürün kümelerini hedefleyenler ayrı gruplardır ve birlikte
+     uygulanır; sepetteki iki ayrı ürün grubunun kendi kademesi olabilir.
+     Hediye kampanyaları yarışmaya girmez: indirimleri 0 olduğu için
+     karşılaştırmayı hep kaybeder ve hak edilmiş hediye düşerdi. */
+  const kademeYarisi = new Map();
+  for (const aday of otomatik) {
+    if (!aday.campaign.min_quantity || aday.campaign.kind === "gift") continue;
+    const mevcut = kademeYarisi.get(aday.result.scopeKey);
+    if (!mevcut || aday.result.discount > mevcut.result.discount) kademeYarisi.set(aday.result.scopeKey, aday);
+  }
+  const kazananKademeler = new Set([...kademeYarisi.values()].map((x) => x.campaign.id));
+
+  for (const { campaign, result } of otomatik) {
+    const kademe = campaign.min_quantity && campaign.kind !== "gift";
+    if (kademe && !kazananKademeler.has(campaign.id)) continue;
     discount += result.discount;
     if (result.gift) gifts.push({ ...result.gift, campaign_id: campaign.id });
     applied.push({ id: campaign.id, name: campaign.name, label: result.label, amount: result.discount, kind: campaign.kind });
@@ -4076,7 +4596,7 @@ async function normalizeCartItems(items) {
        en ucuz ölçek seçilir: müşteriyi ödeme adımında boş çevirmek yerine
        kartta gördüğü başlangıç fiyatını uygulamak doğru olan. */
     const olcekler = satisOlcekleri(await db.prepare(
-      "SELECT id, scale, price FROM product_cost_scales WHERE product_id = ?"
+      "SELECT id, scale, price, unit_cost FROM product_cost_scales WHERE product_id = ? ORDER BY unit_cost ASC, id ASC"
     ).all(product.id), product.sale_price || product.price);
     const olcek = olcekler.length
       ? olcekler.find((s) => s.id === toInt(item.scale_id)) || olcekler[0]
@@ -4663,14 +5183,21 @@ app.post("/api/checkout", async (req, res) => {
       INSERT INTO orders (order_number, customer_id, status, payment_status, shipping_address, subtotal, discount, total, notes,
         invoice_type, tc_no, tax_office, tax_number, company_name, billing_address, payment_method,
         payment_provider, payment_reference, inventory_deducted,
-        tax_rate, tax_amount, shipping_method, campaign_summary)
+        tax_rate, tax_amount, shipping_method, campaign_summary,
+        ga_client_id, ga_session_id)
       VALUES (@order_number, @customer_id, 'new', 'pending', @shipping_address, @subtotal, @discount, @total, @notes,
         @invoice_type, @tc_no, @tax_office, @tax_number, @company_name, @billing_address, @payment_method,
         'paytr', @payment_reference, @inventory_deducted,
-        @tax_rate, @tax_amount, @shipping_method, @campaign_summary)
+        @tax_rate, @tax_amount, @shipping_method, @campaign_summary,
+        @ga_client_id, @ga_session_id)
     `).run({
       order_number: generatedNumber,
       payment_reference: paymentReference,
+      /* Ölçüm kimlikleri BURADA yakalanmalı: bu istek müşterinin tarayıcısından
+         geliyor, çerezler burada. Ödeme onayı PayTR'den sunucuya geliyor ve
+         orada çerez yok. */
+      ga_client_id: gaKimlikleri(req).clientId,
+      ga_session_id: gaKimlikleri(req).sessionId,
       inventory_deducted: stokTakibi ? 1 : 0,
       customer_id: cust.lastInsertRowid,
       shipping_address: shippingAddress,
@@ -4869,6 +5396,11 @@ app.post("/api/paytr/callback", async (req, res) => {
   if (paidOrderId) await notifyPaidOrder(paidOrderId).catch((error) => {
     console.error(`Ödenen sipariş bildirimi gönderilemedi (${reference}):`, error.message);
   });
+  /* Ölçüm de aynı mantıkla: PayTR'ye "OK" dönmeyi hiçbir koşulda engellemez.
+     Burada hata fırlatırsak PayTR bildirimi başarısız sayıp tekrar dener. */
+  if (paidOrderId) await gaSatinAlmaBildir(paidOrderId).catch((error) => {
+    console.error(`GA4 satın alma olayı gönderilemedi (${reference}):`, error.message);
+  });
   return res.type("text/plain").send("OK");
 });
 
@@ -4881,7 +5413,7 @@ app.get("/api/paytr/status", async (req, res) => {
     return res.status(404).json({ error: "Ödeme kaydı bulunamadı." });
   }
   const order = await db.prepare(`
-    SELECT order_number, payment_status, payment_failure_message, shipping_method
+    SELECT order_number, payment_status, payment_failure_message, shipping_method, total
     FROM orders WHERE payment_reference = ?
   `).get(reference);
   if (!order) return res.status(404).json({ error: "Ödeme kaydı bulunamadı." });
@@ -4889,7 +5421,11 @@ app.get("/api/paytr/status", async (req, res) => {
     order_number: order.order_number,
     payment_status: order.payment_status,
     failure_message: order.payment_status === "failed" ? order.payment_failure_message || "Ödeme tamamlanamadı." : "",
-    shipping_method: order.shipping_method
+    shipping_method: order.shipping_method,
+    /* Dönüşüm ölçümü için: reklam raporunda "kaç sipariş" değil "kaç liralık
+       sipariş" görünsün. Müşterinin az önce ödediği tutar, referans+token
+       doğrulandıktan sonra dönüyor. */
+    total: order.total
   });
 });
 
@@ -5013,6 +5549,27 @@ app.delete("/api/messages/:id", requireAdmin, async (req, res) => {
 });
 
 app.get("/admin", requireAdmin, async (req, res) => res.sendFile(path.join(ROOT, "admin.html")));
+
+/* Eşleşmeyen adresler. Express'in varsayılanı İngilizce bir "Cannot GET /..."
+   satırıydı: ziyaretçi sitenin tamamen çöktüğünü sanıp çıkıyordu. Kendi
+   sayfamız gerçek 404 döner, başlık/footer'ı taşır ve nereye gidileceğini
+   söyler. noindex — kırık adresler dizine girmemeli.
+   /api/ altı JSON döner; oradan HTML beklenmez. */
+app.use(async (req, res, next) => {
+  if (req.method !== "GET" || req.originalUrl.startsWith("/api/")) return next();
+  try {
+    const site = await db.prepare("SELECT site_name FROM site_settings WHERE id = 1").get() || {};
+    const head = [
+      `<title>Sayfa bulunamadı | ${escapeHtml(site.site_name || "Printable")}</title>`,
+      FAVICON_TAGS,
+      `<meta name="robots" content="noindex,follow">`
+    ].join("\n    ");
+    const html = fs.readFileSync(path.join(ROOT, "404.html"), "utf8");
+    res.status(404).type("html").send(
+      await injectShell(html.replace("<!--seo-->", head), "", await pageCustomer(req, res))
+    );
+  } catch (error) { next(error); }
+});
 
 /* Son durak: yukarıdaki sarmalayıcının yakaladığı her hata buraya düşer.
    Sessiz bir askıda kalma yerine log'a yazılıp 500 dönülür. */

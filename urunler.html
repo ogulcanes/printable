@@ -32,11 +32,14 @@
           <form id="filter-form">
             <fieldset class="filter-group">
               <legend>Kategori</legend>
-              <div id="filter-categories" class="filter-options"></div>
+              <!-- Sunucu doldurur; urunler.js sonra aynı işaretlemeyi yeniden
+                   basar. Boş başlayınca panel JS gelince büyüyor ve sayfayı
+                   aşağı itiyordu (CLS 0,104 — Google'ın 0,1 eşiğinin üstü). -->
+              <div id="filter-categories" class="filter-options"><!--filtre-kategoriler--></div>
             </fieldset>
             <fieldset class="filter-group">
               <legend>Renk</legend>
-              <div id="filter-colors" class="filter-options filter-options--colors"></div>
+              <div id="filter-colors" class="filter-options filter-options--colors"><!--filtre-renkler--></div>
             </fieldset>
             <fieldset class="filter-group">
               <legend>Fiyat (TL)</legend>
@@ -70,8 +73,12 @@
               </select>
             </label>
           </div>
-          <div id="active-filters" class="active-filters" hidden></div>
-          <div class="products products--grid" id="catalog-grid"></div>
+          <!--aktif-filtreler--><div id="active-filters" class="active-filters" hidden></div>
+          <!-- Sunucu doldurur; urunler.js filtre değiştikçe aynı kutuyu yeniden
+               basar (product-templates.js, iki tarafta da aynı fonksiyon).
+               Boş başlayınca kataloğun tamamı JS'e bağlıydı: tarayıcıya giden
+               HTML'de tek bir ürün adı bile yoktu. -->
+          <div class="products products--grid" id="catalog-grid"><!--urun-izgarasi--></div>
         </div>
       </section>
     </main>

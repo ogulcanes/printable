@@ -6,7 +6,6 @@
     <!--seo-->
     <link rel="preload" href="/assets/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/assets/fonts/manrope-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="preconnect" href="https://images.unsplash.com">
     <link rel="preconnect" href="https://makerworld.bblmw.com">
     <link rel="stylesheet" href="styles.css">
   </head>
@@ -18,26 +17,17 @@
         <div class="container hero__grid">
           <div class="hero__slider">
             <div class="hero__slides" role="group" aria-label="Banner görselleri">
-              <img class="hero__slide is-active" src="https://images.unsplash.com/photo-1572044162444-ad60f128bdea?auto=format&fit=crop&w=1800&q=75" alt="Renk kartelası ve tasarım masası" fetchpriority="high">
-              <img class="hero__slide" src="https://images.unsplash.com/photo-1503694978374-8a2fa686963a?auto=format&fit=crop&w=1800&q=75" alt="Ofset baskı makinesinden çıkan baskılar" loading="lazy">
-              <img class="hero__slide" src="https://images.unsplash.com/photo-1622547748225-3fc4abd2cca0?auto=format&fit=crop&w=1800&q=75" alt="3D baskı için hazırlanmış model görseli" loading="lazy">
+              <!-- Sunucu doldurur (hero_slides). Burada elle yazilmis Unsplash
+                   stok gorselleri duruyordu: tarayici once onlari boyayip
+                   indiriyor, sonra JS gercek banneri getirip siliyordu — her
+                   acilista yanlis bir gorsel ve 430 KB bosa trafik. -->
+              <!--hero-slaytlari-->
 
               <button class="hero__arrow hero__arrow--prev" type="button" aria-label="Önceki görsel">&#8249;</button>
               <button class="hero__arrow hero__arrow--next" type="button" aria-label="Sonraki görsel">&#8250;</button>
               <div class="hero__dots"></div>
             </div>
-            <div class="hero__copy">
-              <h1>3D Baskı Figür, Oyuncak ve Anahtarlıklar</h1>
-              <span>Hazır 3D baskı ürünleri satın alın veya kendi STL dosyanızı yükleyip fiyat alın</span>
-              <div class="hero-actions">
-                <a class="btn btn--light" href="/stl-teklif">
-                  <span>STL yükle, fiyat al</span>
-                </a>
-                <a class="btn btn--ghost" href="/urunler">
-                  <span>Ürünleri incele</span>
-                </a>
-              </div>
-            </div>
+            <div class="hero__copy"><!--hero-metni--></div>
           </div>
         </div>
       </section>
@@ -45,7 +35,9 @@
       <section class="promise-bar">
         <div class="container promise-bar__grid">
           <div>Hızlı üretim ve teslimat</div>
-          <div>Kendi modelinize özel üretim</div>
+          <!-- İlk ekranda çizim hizmetini duyuran tek satır: eskiden "kendi
+               modelinize özel üretim" diyordu, yani modeli müşteri getirecek. -->
+          <div><a href="/tasarim">Modeliniz yoksa çizimi bize ait</a></div>
           <div>Sipariş takip desteği</div>
         </div>
       </section>
@@ -88,6 +80,53 @@
         </div>
       </section>
 
+      <!-- Our own CAD work for customers. Static markup on purpose: these are
+           reference jobs, not catalogue products, so nothing rewrites them. -->
+      <section class="container design-section">
+        <div class="section-title">
+          <div>
+            <p class="section-kicker">Özel tasarım</p>
+            <h2>Dosyanız Yoksa Çizimini Biz Yaparız</h2>
+          </div>
+          <a href="/tasarim">Tümünü gör</a>
+        </div>
+        <div class="design-gallery">
+          <article class="design-card">
+            <div class="design-card__media">
+              <img src="/assets/tasarim/ev-aleti-yedek-parcasi.jpg" width="723" height="622" loading="lazy"
+                   alt="Müşteri için çizilen ev aleti yedek parçasının 3D tasarım görseli">
+            </div>
+            <div class="design-card__body">
+              <span class="design-card__tag">Yedek parça</span>
+              <h3>Ev Aleti Yedek Parçası</h3>
+              <p>Müşterimizin istediği ev aleti yedek parçasının tasarımını yapıp bastık.</p>
+            </div>
+          </article>
+          <article class="design-card">
+            <div class="design-card__media">
+              <img src="/assets/tasarim/olcuye-gore-adaptor.jpg" width="557" height="495" loading="lazy"
+                   alt="Müşterinin verdiği ölçülere göre çizilen bağlantı adaptörünün 3D tasarım görseli">
+            </div>
+            <div class="design-card__body">
+              <span class="design-card__tag">Bağlantı parçası</span>
+              <h3>Ölçüye Göre Adaptör</h3>
+              <p>Müşterimizin verdiği ölçülere göre çizip ürettiğimiz bir adet adaptör.</p>
+            </div>
+          </article>
+          <article class="design-card">
+            <div class="design-card__media">
+              <img src="/assets/tasarim/triger-disli-kasnak.jpg" width="628" height="520" loading="lazy"
+                   alt="Müşteri isteğiyle çizilen triger dişli kasnağın 3D tasarım görseli">
+            </div>
+            <div class="design-card__body">
+              <span class="design-card__tag">Makine parçası</span>
+              <h3>Triger Dişli Kasnak</h3>
+              <p>Müşterimizin isteği üzerine çizip bastığımız bir adet triger dişli kasnak.</p>
+            </div>
+          </article>
+        </div>
+      </section>
+
       <section class="container product-section">
         <div class="section-title">
           <div>
@@ -98,7 +137,7 @@
         </div>
         <div class="carousel-shell">
           <button class="carousel-button" type="button" data-carousel="prev" aria-label="Önceki ürün">‹</button>
-          <div class="products products--carousel" id="store-products"></div>
+          <div class="products products--carousel" id="store-products"><!--vitrin-yeni--></div>
           <button class="carousel-button" type="button" data-carousel="next" aria-label="Sonraki ürün">›</button>
         </div>
       </section>
@@ -135,17 +174,18 @@
         </div>
       </section>
 
-      <section class="sale-band" id="sale-section" hidden>
+      <!-- hidden niteligini sunucu kaldirir: indirimde urun varsa bolum ilk HTML de acik gelir. -->
+      <section class="sale-band" id="sale-section"<!--indirim-gizli-->>
         <div class="container">
           <div class="sale-band__head">
             <div>
               <p class="section-kicker">Sınırlı fırsat</p>
               <h2>İndirimdeki Ürünler</h2>
-              <p class="sale-band__lead" id="sale-lead"></p>
+              <p class="sale-band__lead" id="sale-lead"><!--indirim-ozet--></p>
             </div>
             <a class="sale-band__all" href="/urunler?indirim=1">Tüm indirimliler</a>
           </div>
-          <div class="products products--sale js-sale"></div>
+          <div class="products products--sale js-sale"><!--vitrin-indirim--></div>
         </div>
       </section>
 
@@ -171,7 +211,7 @@
             </div>
             <a href="/urunler">Tümünü gör</a>
           </div>
-          <div class="products products--quad js-featured"></div>
+          <div class="products products--quad js-featured"><!--vitrin-secki--></div>
         </div>
       </section>
 
@@ -194,7 +234,7 @@
           </div>
           <a href="/urunler">Tümünü gör</a>
         </div>
-        <div class="products products--ranked js-popular"></div>
+        <div class="products products--ranked js-popular"><!--vitrin-cok-satan--></div>
       </section>
 
       <!-- Compact rows, not cards — a third grid of the same tiles would read as
@@ -208,7 +248,7 @@
             </div>
             <a href="/urunler">Tümünü gör</a>
           </div>
-          <div class="products products--list js-recommended"></div>
+          <div class="products products--list js-recommended"><!--vitrin-onerilen--></div>
         </div>
       </section>
 
@@ -243,7 +283,11 @@
           </details>
           <details class="faq-item">
             <summary>STL veya 3MF dosyamın ölçüsünü görebilir miyim?</summary>
-            <div class="faq-answer"><p>Evet. <a href="/stl-teklif">Dosya analiz ekranında</a> ölçü, hacim, tahmini gramaj ve fiyatı görebilirsiniz. Çizim veya sıfırdan modelleme hizmeti sunulmuyor.</p></div>
+            <div class="faq-answer"><p>Evet. <a href="/stl-teklif">Dosya analiz ekranında</a> ölçü, hacim, tahmini gramaj ve fiyatı görebilirsiniz. Elinizde dosya yoksa <a href="/tasarim">parçanın çizimini de biz yapabiliriz</a>.</p></div>
+          </details>
+          <details class="faq-item">
+            <summary>Modelim yok, parçamı siz çizebilir misiniz?</summary>
+            <div class="faq-answer"><p>Evet. Yedek parça, adaptör, kasnak gibi parçaların <a href="/tasarim">tasarımını biz yapıyoruz</a>. Ölçüleri, fotoğrafı ya da krokiyi gönderin; 3D modeli hazırlayıp onayınıza sunalım.</p></div>
           </details>
           <details class="faq-item">
             <summary>Kargo ne zaman ücretsiz?</summary>

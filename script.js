@@ -1,4 +1,40 @@
-const money = (value) => `${Number(value || 0).toFixed(2)} TL`;
+/* money, productScales, displayPrice, discountPercent, ratingHTML,
+   productCardHTML: product-templates.js. Sunucu da AYNI fonksiyonlari
+   cagirdigi icin ilk HTML ile JS yeniden bastiginda cikan HTML birebir ayni
+   oluyor; sayfa zipplamiyor ve tarayici ile ziyaretci ayni seyi goruyor.
+   Bu dosya product-templates.js YUKLENDIKTEN SONRA calismali. */
+
+/* Dönüşüm ölçümü.
+ *
+ * GA4 kendiliğinden yalnızca "sayfa görüntülendi" diyor. Reklamın işe yarayıp
+ * yaramadığını anlamak için siteye para kazandıran ANI bildirmek gerekiyor:
+ * sepete ekleme, ödemeye başlama, tamamlanan sipariş (tutarıyla), iletişim
+ * formu ve WhatsApp tıklaması.
+ *
+ * gtag yoksa (ölçüm kimliği tanımlı değilse, reklam engelleyici varsa) sessizce
+ * hiçbir şey yapmaz — ölçüm eksikliği sitenin çalışmasını hiçbir koşulda
+ * bozmamalı. */
+function olay(ad, veri) {
+  try {
+    if (typeof gtag === "function") gtag("event", ad, veri || {});
+  } catch { /* ölçüm hatası akışı kesmez */ }
+}
+
+// GA4'ün beklediği ürün biçimi.
+const olayUrunu = (satir) => ({
+  item_id: String(satir.id),
+  item_name: satir.name,
+  price: Number(satir.price) || 0,
+  quantity: Number(satir.quantity) || 1,
+  ...(satir.scale ? { item_variant: satir.scale } : {})
+});
+
+/* WhatsApp, çizim hizmetinin ana dönüşüm yolu — tıklama sayfadan ayrılmakla
+   sonuçlandığı için delegasyonla yakalanıyor. */
+document.addEventListener("click", (event) => {
+  const wa = event.target.closest?.('a[href*="wa.me"]');
+  if (wa) olay("whatsapp_click", { link_url: wa.href, sayfa: location.pathname });
+}, true);
 
 // Cart persists in localStorage so it survives page navigation (to /odeme and back).
 const CART_KEY = "printable_cart";
@@ -21,17 +57,6 @@ let freeShippingThreshold = 599;
    sepetlerde) anahtar "12:" olur — eski satırlar bozulmadan çalışır. */
 const lineKey = (item) => `${item.id}:${item.scale_id || ""}`;
 
-// Ürünün müşteriye açık ölçekleri: fiyatı girilmiş, ucuzdan pahalıya sıralı.
-const productScales = (product) => (product && product.scales) || [];
-
-/* Karttaki fiyat: ölçekli üründe EN UCUZ ölçeğin fiyatı ("… TL'den başlayan"),
-   ölçeksizde varsa indirimli fiyat. Ölçekli üründe sale_price uygulanmaz —
-   sunucu da öyle hesaplıyor (normalizeCartItems). */
-const displayPrice = (product) => {
-  const scales = productScales(product);
-  return scales.length ? scales[0].price : (product.sale_price || product.price);
-};
-
 const storeProducts = document.querySelector("#store-products");
 const cartPanel = document.querySelector("#cart-panel");
 const cartCount = document.querySelector("#cart-count");
@@ -41,61 +66,29 @@ const searchPopover = document.querySelector(".search-popover");
 const customerAccountLink = document.querySelector('a[href="/hesap"].icon-button');
 const customerAccountLabel = customerAccountLink?.querySelector(".account-link__label");
 
+/* Adı artık sunucu ilk baytta basıyor (renderHeader), bu istek yalnızca
+   mutabakat için: başka bir sekmede çıkış yapıldıysa ya da sayfa geri/ileri
+   önbelleğinden geldiyse başlıktaki ad bayatlamış olabilir. Bu yüzden yalnız
+   giriş durumunu değil, çıkış durumunu da uygulaması gerekiyor — eskiden
+   `if (!authed) return;` diyordu ve bayat ad ekranda kalırdı. */
 if (customerAccountLink) {
   fetch("/api/customer/session")
     .then((response) => response.json())
     .then(({ authed, customer }) => {
-      if (!authed) return;
-      customerAccountLink.classList.add("is-authenticated");
-      if (customerAccountLabel) customerAccountLabel.textContent = customer.name;
-      customerAccountLink.setAttribute("aria-label", `${customer.name} hesabı`);
+      // Sunucu da ilk adı basıyor (renderHeader); farklı yazsak başlık JS
+      // yüklenince değişir ve menüyü yeniden kaydırırdı.
+      const label = authed ? (customer.name.trim().split(/\s+/)[0] || "Hesabım") : "Hesabım";
+      const aria = authed ? `${customer.name} hesabı` : "Müşteri hesabım";
+      customerAccountLink.classList.toggle("is-authenticated", Boolean(authed));
+      // Değer aynıysa DOM'a dokunma: sunucu zaten doğru bastıysa gereksiz boyama olmasın.
+      if (customerAccountLabel && customerAccountLabel.textContent !== label) {
+        customerAccountLabel.textContent = label;
+      }
+      if (customerAccountLink.getAttribute("aria-label") !== aria) {
+        customerAccountLink.setAttribute("aria-label", aria);
+      }
     })
     .catch(() => {});
-}
-
-// Shared card markup — reused by every product row on the homepage and by /urunler.
-const discountPercent = (product) =>
-  product.sale_price && product.price > product.sale_price
-    ? Math.round((1 - product.sale_price / product.price) * 100)
-    : 0;
-
-// Approved-review average, filled in by the API. No reviews yet → no stars at
-// all, rather than an empty 5-star row that reads as a zero score.
-const ratingHTML = (product) => product.rating?.count
-  ? `<span class="card-rating" aria-label="5 üzerinden ${product.rating.average}">
-       <span class="stars">${"★".repeat(Math.round(product.rating.average))}${"☆".repeat(5 - Math.round(product.rating.average))}</span>
-       <small>(${product.rating.count})</small>
-     </span>`
-  : "";
-
-function productCardHTML(product) {
-  const off = discountPercent(product);
-  const scales = productScales(product);
-  /* Ölçekli üründe indirim rozeti ve üstü çizili fiyat gösterilmiyor: fiyat
-     ölçekten geliyor, sale_price o üründe uygulanmıyor (bkz. displayPrice). */
-  const priceHTML = scales.length
-    ? `${money(scales[0].price)}${scales.length > 1 ? `<span class="price-from">'den itibaren</span>` : ""}`
-    : `${money(product.sale_price || product.price)}${product.sale_price ? ` <s>${money(product.price)}</s>` : ""}`;
-  /* Birden fazla ölçek varsa karttan doğrudan sepete atmıyoruz — hangi boyu
-     istediğini müşteri seçmeli; buton ürün sayfasına götürür (bkz. aşağıdaki
-     data-add-product işleyicisi). Kartın görünümü değişmesin diye yine
-     <button>: .product-card button'un stili dört ayrı katmanda tanımlı,
-     yeni bir sınıf onların hepsini yeniden yazmayı gerektirirdi. */
-  const action = `<button data-add-product="${product.id}">${
-    scales.length > 1 ? "Ölçek seçin" : "Sepete ekle"}</button>`;
-  return `
-    <article class="product-card">
-      ${off && !scales.length ? `<span class="discount-badge">-%${off}</span>` : ""}
-      <a class="product-card__link" href="/urun/${product.id}">
-        <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" loading="lazy">
-        <h3>${product.name}</h3>
-      </a>
-      ${ratingHTML(product)}
-      <p>${priceHTML}</p>
-      <div class="swatches">${(product.colors || []).map((color) => `<span style="background:${color.hex}" title="${color.name}"></span>`).join("")}</div>
-      ${action}
-    </article>
-  `;
 }
 
 function fillProductGrid(target, products) {
@@ -156,7 +149,7 @@ async function loadCategories() {
     categoryGrid.innerHTML = categories.map((category) => `
       <a class="category-card" href="/urunler?kategori=${category.id}">
         <span class="category-card__media">
-          <img src="${category.image_path || "/assets/printable-logo.svg"}" alt="${category.image_alt || ""}" loading="lazy">
+          <img src="${gorselAdresi(category.image_path, 500) || "/assets/printable-logo.svg"}" alt="${category.image_alt || ""}" loading="lazy">
         </span>
         <span class="category-card__body">
           <strong>${category.name}</strong>
@@ -234,37 +227,8 @@ function renderFeaturePanel(product) {
   panel.hidden = false;
 }
 
-function preferredProductList(active, ids, limit, excluded = new Set()) {
-  const selected = [];
-  ids.forEach((id) => {
-    const product = active.find((item) => item.id === id);
-    if (product && !excluded.has(product.id) && !selected.some((item) => item.id === product.id)) selected.push(product);
-  });
-  active.forEach((product) => {
-    if (selected.length >= limit || excluded.has(product.id) || selected.some((item) => item.id === product.id)) return;
-    selected.push(product);
-  });
-  return selected.slice(0, limit);
-}
-
-function commerceStageCardHTML(product, index) {
-  const off = discountPercent(product);
-  const scales = productScales(product);
-  const inStock = Number(product.stock) > 0;
-  return `
-    <article class="commerce-product${index === 0 ? " commerce-product--lead" : ""}">
-      ${off ? `<span class="commerce-product__discount">%${off} indirim</span>` : ""}
-      <a href="/urun/${product.id}">
-        <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" ${index === 0 ? 'fetchpriority="high"' : 'loading="eager"'}>
-      </a>
-      <div>
-        ${index === 0 ? "<span>Vitrin ürünü</span>" : ""}
-        <h2>${product.name}</h2>
-        <strong>${money(displayPrice(product))}${scales.length > 1 ? "'den başlayan" : ""}</strong>
-        <button type="button" data-add-product="${product.id}" ${inStock ? "" : "disabled"}>${inStock ? (scales.length > 1 ? "Boyunu seç" : "Sepete ekle") : "Tükendi"}</button>
-      </div>
-    </article>`;
-}
+/* preferredProductList ve commerceStageCardHTML product-templates.js'e
+   tasindi: /landing vitrinini sunucu da basiyor. */
 
 function landingShelfCardHTML(product) {
   const off = discountPercent(product);
@@ -457,7 +421,12 @@ function bulkTiersHTML(product, scale = null) {
         <p>Toplam <strong>${money(offer.total)}</strong></p>
         ${offer.saving > 0
           ? `<span class="bulk-tier__saving">${money(offer.saving)} avantaj</span>`
-          : '<span class="bulk-tier__automatic">Adet kampanyası sepette uygulanır</span>'}
+          /* Kademe yoksa rozet BOŞ kalır: eskiden "Adet kampanyası sepette
+             uygulanır" yazıyordu ve tanımlı kampanya olmadığında müşteriye
+             verilmemiş bir söz veriyordu. Etiket yine de basılıyor çünkü
+             margin-top:auto ile "sepete ekle" düğmelerini aynı hizada
+             tutan şey bu. */
+          : '<span class="bulk-tier__automatic" aria-hidden="true"></span>'}
         <button type="button" data-bulk-quantity="${quantity}">${quantity} adedi sepete ekle</button>
       </article>`;
   }).join("");
@@ -488,7 +457,10 @@ function bulkProductCardHTML(product, kind, products = []) {
             </select>
           </label>` : `
           <div class="bulk-product__chosen"><span>Seçili ürün</span><strong>${product.name}</strong></div>`}
-        ${scales.length ? `
+        ${/* Tek boy satıldığında seçici çıkmaz — tek seçenekli açılır liste
+              müşteriye seçim yaptığını sandırır. Vitrin ölçeği sunucuda
+              belirleniyor (satisOlcekleri). */
+          scales.length > 1 ? `
           <label>Boy / ölçek
             <select data-bulk-scale-select>
               ${scales.map((scale) => `<option value="${scale.id}">${scale.scale} · ${money(scale.price)}</option>`).join("")}
@@ -603,6 +575,11 @@ function addToCart(product, quantity = 1, scale = null) {
   else cart.push(satir);
   saveCart();
   renderCart();
+  olay("add_to_cart", {
+    currency: "TRY",
+    value: satir.price * quantity,
+    items: [olayUrunu(satir)]
+  });
 }
 
 document.addEventListener("click", (event) => {
@@ -818,7 +795,9 @@ function applyHeroSlides(slides) {
   const images = slides.map((slide, i) => {
     const img = document.createElement("img");
     img.className = i === 0 ? "hero__slide is-active" : "hero__slide";
-    img.src = slide.image_path;
+    // Sunucu da aynı boyutu istiyor (renderHero); farklı istesek tarayıcı
+    // aynı görseli ikinci kez indirirdi.
+    img.src = gorselAdresi(slide.image_path, 1600);
     img.alt = slide.image_alt || slide.title || "Printable banner görseli";
     if (i === 0) img.fetchPriority = "high";
     else img.loading = "lazy";

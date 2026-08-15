@@ -1,11 +1,19 @@
 ---
 name: sqlite-schema
-description: Change the Printable database — add a column or table, change a default, adjust the seed data, or query data/printable.sqlite. Read before touching the db.exec schema block in server.js, because CREATE TABLE IF NOT EXISTS will silently NOT add your new column to an existing database.
+description: Change the Printable database — add a column or table, change a default, adjust the seed data, or query it. Read before touching the schema block in server.js, because CREATE TABLE IF NOT EXISTS will silently NOT add your new column to an existing database, and initDb() skips the whole setup unless SCHEMA_VERSION is bumped.
 ---
 
-# SQLite schema — Printable
+# Database schema — Printable
 
-One `better-sqlite3` database, `data/printable.sqlite`, created and migrated by the `db.exec(\`…\`)` block at the top of `server.js`. It is gitignored, so every developer (and every Vercel cold start) has a different one.
+**This is PostgreSQL, not SQLite** — the name is historical. `db.js` keeps the `better-sqlite3` call shape (`prepare().get/all/run`) but every call is `await`ed and the dialect is Postgres. Production is Supabase via `DATABASE_URL`; with that variable empty you get PGlite, an embedded Postgres in `data/pgdata`.
+
+**`.env` points at the LIVE Supabase database.** Running the app locally reads and writes production. To test anything that writes, start an isolated server instead:
+
+```bash
+DATABASE_URL= PGLITE_DATA_DIR=/tmp/testdb PORT=3100 node server.js
+```
+
+The schema, migrations and seeds all live in `initDb()` at the top of `server.js`.
 
 ## Current schema
 
@@ -29,38 +37,55 @@ One `better-sqlite3` database, `data/printable.sqlite`, created and migrated by 
 
 (`*` = NOT NULL. `foreign_keys = ON` is set via pragma.) `status` values: `new, preparing, printed, shipped, delivered, cancelled` — the labels live in `admin.js` (`statusLabels`). `payment_status`: `pending, paid, failed, refunded`.
 
-## The trap: adding a column does not apply to an existing DB
-
-The schema block is `CREATE TABLE IF NOT EXISTS`. On any machine that has already run the app, the tables exist, so **editing the CREATE TABLE body is a no-op** — the new column never appears, and queries fail at runtime with `no such column`. Fresh clones work, your machine doesn't, and it looks like a caching bug.
-
-Add the column to the `CREATE TABLE` (so fresh installs get it) **and** add an idempotent migration right after the `db.exec` block:
+## Trap 1: `initDb()` exits early unless you bump `SCHEMA_VERSION`
 
 ```js
-const hasColumn = (table, column) =>
-  db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
-
-if (!hasColumn("products", "material")) {
-  db.exec("ALTER TABLE products ADD COLUMN material TEXT");
-}
+const current = await db.prepare("SELECT value FROM app_meta WHERE key = 'schema_version'").get();
+if (current?.value === SCHEMA_VERSION) return;      // <- everything below is skipped
 ```
 
-Both, always. SQLite's `ALTER TABLE ADD COLUMN` cannot add a `NOT NULL` column without a default — give it a default or make it nullable.
+Serverless pays for this block on every cold start, so it is skipped once the stored version matches. **Any change to the schema, the migration list or the seed data is invisible to an existing database until you increment `SCHEMA_VERSION`** (a bare string near the top of `server.js`). The last line of `initDb()` writes the new value back.
+
+This bites hardest on seeds that look idempotent. A new `seo_pages` row added to `extraSeoPages` with `ON CONFLICT DO NOTHING` still never lands: the loop does not run at all. The page then serves the fallback title and it looks like a caching bug.
+
+## Trap 2: adding a column does not apply to an existing DB
+
+`CREATE TABLE IF NOT EXISTS` means editing the CREATE TABLE body is a no-op wherever the table already exists. Add the column there (so fresh installs get it) **and** ship an idempotent migration — the file already keeps a list of them:
+
+```js
+const eklenecekSutunlar = [
+  ["site_settings", "show_stock", "INTEGER NOT NULL DEFAULT 1"],
+  // …
+];
+```
+
+Then bump `SCHEMA_VERSION`. Both, always.
 
 ## Seeding
 
-The seed only runs when `products` is empty (`SELECT COUNT(*) … if (!existingProducts)`). It inserts three demo products with remote Shopify image URLs. Changing the seed will **not** change an existing DB — delete `data/printable.sqlite` and restart to re-seed, and tell the user that's what you did if you do it (it destroys their local orders and customers, so ask first).
+Table seeds only run when the table is empty (`SELECT COUNT(*) … if (!existing…)`), so editing them never changes a populated database. For rows that must reach live databases, use the idempotent pattern next to `extraSeoPages`: `INSERT … ON CONFLICT DO NOTHING`, plus a `SCHEMA_VERSION` bump.
+
+`ON CONFLICT DO NOTHING` inserts but never updates. To change a value on an existing row, either do a one-off `UPDATE` (not a migration — a migration re-runs on every version bump and would overwrite whatever the admin typed) or guard it: `SET x = @x WHERE COALESCE(NULLIF(TRIM(x), ''), '') = ''` fills only blanks.
 
 ## Inspecting
 
+Everything is async, and this hits **production** unless you clear `DATABASE_URL`:
+
 ```bash
-node -e "const d=require('better-sqlite3')('data/printable.sqlite');console.table(d.prepare('SELECT id,name,price,stock FROM products').all())"
-node -e "const d=require('better-sqlite3')('data/printable.sqlite');console.log(d.prepare('PRAGMA table_info(orders)').all())"
+node -e "require('dotenv').config({quiet:true});const d=require('./db.js');
+(async()=>{console.table(await d.prepare('SELECT id,name,price,stock FROM products').all());process.exit(0)})()"
+```
+
+Column list (Postgres, not `PRAGMA`):
+
+```sql
+SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'orders';
 ```
 
 ## Writing queries
 
-Prepared statements only, named params for writes, positional for lookups, `db.transaction()` for anything multi-statement (`POST /api/orders` is the reference). No ORM, no query builder. Money is `REAL` and rendered by a shared `money()` helper as `24.90 TL`.
+Prepared statements only, named params for writes, positional for lookups, `db.transaction()` for anything multi-statement (`POST /api/orders` is the reference). No ORM, no query builder. Money is a float column and rendered by a shared `money()` helper as `24.90 TL`.
 
 ## Persistence reality check
 
-On Vercel the filesystem is ephemeral: writes to the SQLite file do not survive between invocations. Any feature that assumes durable storage (real orders, real uploads) needs an external database — raise that before building it, don't ship something that only works on localhost. See the `api-endpoint` skill.
+Storage is Supabase, so data does survive between invocations — the old warning about an ephemeral SQLite file no longer applies. What still bites: `initDb()` runs on every cold start, so keep it cheap, and remember that a local run without `PGLITE_DATA_DIR` is talking to the live database.

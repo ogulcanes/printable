@@ -22,6 +22,11 @@
     <!--header-->
 
     <main>
+      <!-- Sihirbazın görünür bir sayfa başlığı yok; adım başlıkları h2. Sayfanın
+           neyle ilgili olduğunu ekran okuyucuya ve tarayıcıya söyleyen tek h1
+           bu. Görünür bir başlık eklemek çalışan bir dönüşüm akışının düzenini
+           bozardı. -->
+      <h1 class="visually-hidden">STL veya 3MF dosyanızı yükleyin, 3D baskı fiyatınızı anında görün</h1>
       <section class="stl-quote stl-quote--page" id="stl-quote">
         <div class="container stl-quote__grid">
           <div class="stl-quote__copy stl-wizard">
@@ -34,7 +39,7 @@
             </ol>
 
             <div class="stl-panel" data-step="1">
-              <h1>Modelinizi yükleyin</h1>
+              <h2>Modelinizi yükleyin</h2>
               <p>3MF dosyalarındaki ayrı parçalar ve renkler otomatik okunur — MakerWorld'den indirdiğiniz dosyayı olduğu gibi yükleyebilirsiniz.</p>
 
               <label class="stl-drop" id="stl-drop">
@@ -55,16 +60,18 @@
                 <li>Fiyatı anında, teklif beklemeden görürsünüz</li>
                 <li>Dosyanız yalnızca sizin siparişiniz için kullanılır</li>
               </ul>
+
+              <p class="stl-design-note">Elinizde dosya yok mu? <a href="/tasarim">Parçanızı biz çizelim</a> — ölçüyü siz verin, tasarımı ve baskısını biz yapalım.</p>
             </div>
 
             <div class="stl-panel" data-step="2">
-              <h1>Malzeme seçin</h1>
+              <h2>Malzeme seçin</h2>
               <p>Fiyatı en çok belirleyen adım budur.</p>
               <div class="stl-options" id="stl-materials"></div>
             </div>
 
             <div class="stl-panel" data-step="3">
-              <h1>Parçaları renklendirin</h1>
+              <h2>Parçaları renklendirin</h2>
               <p>STL dosyaları renk taşımaz; rengi basılacak filament belirler. Dosyanızdaki her bağımsız parçayı ayrı renkte basabilirsiniz — parçayı listeden ya da doğrudan modelden seçin.</p>
               <p class="stl-warning" id="stl-painted-warning" hidden>
                 Bu dosyada bazı renkler modelin <strong>yüzeyine boyanmış</strong> (Bambu Studio boyama verisi) — örneğin gözler
@@ -78,7 +85,7 @@
             </div>
 
             <div class="stl-panel" data-step="4">
-              <h1>Dolgu ve adet</h1>
+              <h2>Dolgu ve adet</h2>
               <p>Dolgu oranı düştükçe harcanan malzeme, dolayısıyla fiyat da düşer.</p>
               <div class="stl-options stl-options--compact" id="stl-infill"></div>
               <label class="stl-qty">Adet
@@ -87,7 +94,7 @@
             </div>
 
             <div class="stl-panel" data-step="5">
-              <h1>Teklifinizi gönderin</h1>
+              <h2>Teklifinizi gönderin</h2>
               <p>Bilgilerinizi bırakın; dosyanız ve seçimlerinizle birlikte size dönelim.</p>
               <form id="stl-quote-form" class="stl-form">
                 <label>Ad soyad<input name="customer_name" required></label>

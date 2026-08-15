@@ -3,17 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Printable Ürün Seçkisi | 3D Baskı Ürünleri</title>
-    <meta name="description" content="Printable'ın öne çıkan 3D baskı figür, oyuncak, anahtarlık ve fidget ürünlerini fiyatlarıyla inceleyin. Katlaç ve Spinball koleksiyonlarını keşfedin.">
-    <meta name="robots" content="index,follow">
-    <link rel="canonical" href="https://www.printable.com.tr/landing">
-    <meta property="og:type" content="website">
-    <meta property="og:locale" content="tr_TR">
-    <meta property="og:title" content="Printable Ürün Seçkisi | 3D Baskı Ürünleri">
-    <meta property="og:description" content="Öne çıkan 3D baskı ürünlerini fiyatlarıyla görün, seçin ve doğrudan sepetinize ekleyin.">
-    <meta property="og:url" content="https://www.printable.com.tr/landing">
-    <meta property="og:image" content="https://www.printable.com.tr/assets/shopier/21.jpg">
-    <meta name="twitter:card" content="summary_large_image">
+    <!--seo-->
     <link rel="preload" href="/assets/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/assets/fonts/manrope-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/assets/shopier/21.jpg" as="image">
@@ -40,30 +30,11 @@
             </div>
           </div>
 
-          <!-- API yanıtı gelene kadar gerçek ürün görselleri gösterilir; ardından
-               ad, fiyat, stok ve indirim bilgileri canlı katalogla yenilenir. -->
-          <div class="commerce-product-stage" id="landing-product-stage" aria-label="Öne çıkan ürünler">
-            <article class="commerce-product commerce-product--lead">
-              <a href="/urun/21"><img src="/assets/shopier/21.jpg" alt="Demir Taht Figürü" fetchpriority="high"></a>
-              <div><span>Figür</span><h2>Demir Taht Figürü</h2><strong>Güncel fiyatı gör</strong><button type="button" data-add-product="21">Sepete ekle</button></div>
-            </article>
-            <article class="commerce-product">
-              <a href="/urun/53"><img src="/assets/shopier/53.jpg" alt="Spinball fidget topu" fetchpriority="high"></a>
-              <div><h2>Spinball</h2><strong>Güncel fiyatı gör</strong><button type="button" data-add-product="53">Sepete ekle</button></div>
-            </article>
-            <article class="commerce-product">
-              <a href="/urun/22"><img src="/assets/shopier/22.jpg" alt="Flexi Axolotl Anahtarlık" loading="eager"></a>
-              <div><h2>Flexi Axolotl</h2><strong>Güncel fiyatı gör</strong><button type="button" data-add-product="22">Sepete ekle</button></div>
-            </article>
-            <article class="commerce-product">
-              <a href="/urun/39"><img src="/assets/shopier/39.jpg" alt="Siyah Beyaz Katlaç" loading="eager"></a>
-              <div><h2>Katlaç</h2><strong>Güncel fiyatı gör</strong><button type="button" data-add-product="39">Sepete ekle</button></div>
-            </article>
-            <article class="commerce-product">
-              <a href="/urun/35"><img src="/assets/shopier/35.jpg" alt="Pentaspin Stres Çarkı" loading="eager"></a>
-              <div><h2>Pentaspin</h2><strong>Güncel fiyatı gör</strong><button type="button" data-add-product="35">Sepete ekle</button></div>
-            </article>
-          </div>
+          <!-- Sunucu doldurur; script.js sonra AYNI fonksiyonla (product-templates.js
+               commerceStageCardHTML) yeniden basar. Elle yazılmış yedek işaretleme
+               vardı ama fiyat yerine "Güncel fiyatı gör" diyordu: JS gelince kutu
+               644px'e büyüyüp hero'yu itiyordu (CLS 0,16). -->
+          <div class="commerce-product-stage" id="landing-product-stage" aria-label="Öne çıkan ürünler"><!--landing-vitrin--></div>
         </div>
       </section>
 

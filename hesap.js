@@ -106,15 +106,30 @@
 
   tabs.forEach((tab) => tab.addEventListener("click", () => showForm(tab.dataset.accountTab)));
 
+  /* `event.currentTarget` YALNIZCA olay dağıtımı sürerken doludur; ilk await'te
+     handler geri döner ve tarayıcı onu null'a çeker. Formu await'ten önce
+     yakalamak şart — aksi halde catch bloğu message(null, ...) çağırıyor,
+     TypeError atıyor ve kullanıcı hiçbir hata mesajı görmüyordu: "Giriş yap"a
+     basınca hiçbir şey olmuyor gibi görünüyordu. */
   forms.login.addEventListener("submit", async (event) => {
     event.preventDefault();
-    message(event.currentTarget, "");
+    const form = event.currentTarget;
+    const button = form.querySelector('button[type="submit"]');
+    message(form, "");
+    // Kayıt formundaki gibi bekleme durumu: yavaş bağlantıda istek uçarken
+    // butonun sessiz kalması da "hiçbir şey olmuyor" gibi görünüyordu.
+    button.disabled = true;
+    button.textContent = "Giriş yapılıyor…";
     try {
       const data = await request("/api/customer/login", {
-        method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget)))
+        method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(form)))
       });
       await showDashboard(data.customer);
-    } catch (error) { message(event.currentTarget, error.message, true); }
+    } catch (error) { message(form, error.message, true); }
+    finally {
+      button.disabled = false;
+      button.textContent = "Giriş yap";
+    }
   });
 
   forms.register.addEventListener("submit", async (event) => {
@@ -156,7 +171,8 @@
 
   forms.reset.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const values = Object.fromEntries(new FormData(event.currentTarget));
+    const form = event.currentTarget;
+    const values = Object.fromEntries(new FormData(form));
     try {
       await request("/api/customer/reset-password", {
         method: "POST", body: JSON.stringify({ token: resetToken, password: values.password })
@@ -164,18 +180,19 @@
       history.replaceState({}, "", "/hesap");
       showForm("login");
       message(forms.login, "Şifreniz yenilendi. Yeni şifrenizle giriş yapabilirsiniz.");
-    } catch (error) { message(event.currentTarget, error.message, true); }
+    } catch (error) { message(form, error.message, true); }
   });
 
   document.querySelector("#customer-profile-form").addEventListener("submit", async (event) => {
     event.preventDefault();
+    const form = event.currentTarget;
     try {
       const data = await request("/api/customer/profile", {
-        method: "PUT", body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget)))
+        method: "PUT", body: JSON.stringify(Object.fromEntries(new FormData(form)))
       });
       document.querySelector("#account-welcome").textContent = `Merhaba, ${data.customer.name}`;
-      message(event.currentTarget, "Bilgileriniz kaydedildi.");
-    } catch (error) { message(event.currentTarget, error.message, true); }
+      message(form, "Bilgileriniz kaydedildi.");
+    } catch (error) { message(form, error.message, true); }
   });
 
   document.querySelector("#customer-logout").addEventListener("click", async () => {
