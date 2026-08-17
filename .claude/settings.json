@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"pass\")",
+      "Bash(sed -i 's/^const SCHEMA_VERSION = \"25\";$/const SCHEMA_VERSION = \"26\";/' server.js)"
+    ]
+  }
+}
