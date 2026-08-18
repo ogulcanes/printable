@@ -16,6 +16,7 @@ const state = {
   katlac: [],
   sessionUser: null,
   pricing: {},
+  tiers: [],
   seo: { pages: [], site: {} }
 };
 
@@ -305,7 +306,10 @@ function renderMaterials() {
         <h3>${escapeHtml(material.name)}</h3>
         <p>${escapeHtml(material.description) || "Açıklama yok."}</p>
         <div class="meta-line">
-          <span class="badge blue">${money(material.price_per_cm3)} / cm³</span>
+          <!-- Fiyat cm³ olarak girilir ama herkes gram üzerinden konuşur;
+               ikisini yan yana göstermek çeviri hatasını görünür kılıyor. -->
+          <span class="badge blue">${money(material.price_per_cm3 / (material.density_g_cm3 || 1.24))} / g</span>
+          <span class="badge">${money(material.price_per_cm3)} / cm³</span>
           <span class="badge">${Number(material.density_g_cm3 || 1.24).toFixed(2)} g/cm³</span>
           <span class="badge ${material.is_active ? "green" : "orange"}">${material.is_active ? "Kullanımda" : "Pasif"}</span>
           <span class="badge">Sıra ${material.sort_order}</span>
@@ -322,7 +326,39 @@ function renderMaterials() {
   ["setup_fee", "size_fee_per_cm", "min_order_total", "shell_share", "color_change_fee"].forEach((key) => {
     form.elements[key].value = state.pricing[key] ?? "";
   });
+
+  renderTierRows();
 }
+
+/* Kademe önizlemesinin referans malzemesi: yüzdeyi somut bir gram fiyatına
+   çevirmeden "%16" hiçbir şey ifade etmiyor. PLA varsa o, yoksa ilk malzeme. */
+function referencePerGram() {
+  const ref = state.materials.find((m) => (m.name || "").toLowerCase() === "pla") || state.materials[0];
+  return ref ? { name: ref.name, perGram: ref.price_per_cm3 / (ref.density_g_cm3 || 1.24) } : null;
+}
+
+/* Kademe satırları. Liste değişken uzunlukta olduğu için satırlar DOM'da
+   tutuluyor ve kaydederken topluca okunuyor — sunucu da listeyi bir bütün
+   olarak alıyor (tek tek PUT eden bir uç yok). */
+function renderTierRows(tiers = state.tiers) {
+  const ref = referencePerGram();
+  qs("#tier-rows").innerHTML = tiers.map((tier) => {
+    const percent = Number(tier.discount_percent) || 0;
+    const onizleme = ref ? `${escapeHtml(ref.name)}: ${money(ref.perGram * (1 - percent / 100))}/g` : "";
+    return `
+      <div class="tier-row">
+        <label>Eşik (g)<input type="number" min="0" step="1" class="tier-grams" value="${Number(tier.min_grams) || 0}"></label>
+        <label>İndirim (%)<input type="number" min="0" max="90" step="0.1" class="tier-percent" value="${percent}"></label>
+        <span class="tier-preview">${onizleme}</span>
+        <button type="button" class="danger" data-remove-tier="1">Sil</button>
+      </div>`;
+  }).join("") || "<p>Kademe yok — gram fiyatı her ağırlıkta aynı kalır.</p>";
+}
+
+const readTierRows = () => qsa("#tier-rows .tier-row").map((row) => ({
+  min_grams: Number(qs(".tier-grams", row).value) || 0,
+  discount_percent: Number(qs(".tier-percent", row).value) || 0
+}));
 
 function renderQuotes() {
   const search = quoteFilters.search.trim().toLocaleLowerCase("tr-TR");
@@ -791,7 +827,7 @@ function renderCampaignOptions(campaign) {
 }
 
 async function refresh() {
-  const [stats, products, customers, orders, slides, categories, colors, materials, quotes, pricing, seo, messages, reviews, campaigns, subscribers, adminUsers, settings, katlac] = await Promise.all([
+  const [stats, products, customers, orders, slides, categories, colors, materials, quotes, pricing, tiers, seo, messages, reviews, campaigns, subscribers, adminUsers, settings, katlac] = await Promise.all([
     api("/api/stats"),
     api("/api/products"),
     api("/api/customers"),
@@ -802,6 +838,7 @@ async function refresh() {
     api("/api/materials?all=1"),
     api("/api/quotes"),
     api("/api/pricing"),
+    api("/api/pricing-tiers"),
     api("/api/seo"),
     api("/api/messages"),
     api("/api/reviews"),
@@ -820,6 +857,7 @@ async function refresh() {
   state.materials = materials;
   state.quotes = quotes;
   state.pricing = pricing;
+  state.tiers = tiers;
   state.seo = seo;
   state.messages = messages;
   state.reviews = reviews;
@@ -2141,6 +2179,40 @@ qs("#pricing-form").addEventListener("submit", async (event) => {
   });
   await refresh();
   alert("Fiyat katsayıları kaydedildi.");
+});
+
+qs("#add-tier").addEventListener("click", () => {
+  renderTierRows([...readTierRows(), { min_grams: 0, discount_percent: 0 }]);
+});
+
+qs("#tier-rows").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-remove-tier]");
+  if (!button) return;
+  const kalan = readTierRows();
+  kalan.splice(qsa("#tier-rows .tier-row").indexOf(button.closest(".tier-row")), 1);
+  renderTierRows(kalan);
+});
+
+/* Önizleme yerinde güncellenir; satırı yeniden çizmek yazarken odağı
+   kaybettirir ve rakamın ortasında imleci başa atardı. */
+qs("#tier-rows").addEventListener("input", (event) => {
+  if (!event.target.classList.contains("tier-percent")) return;
+  const ref = referencePerGram();
+  const preview = qs(".tier-preview", event.target.closest(".tier-row"));
+  if (!ref || !preview) return;
+  const percent = Math.min(90, Math.max(0, Number(event.target.value) || 0));
+  preview.textContent = `${ref.name}: ${money(ref.perGram * (1 - percent / 100))}/g`;
+});
+
+qs("#tier-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await api("/api/pricing-tiers", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tiers: readTierRows() })
+  });
+  await refresh();
+  alert("Gramaj kademeleri kaydedildi.");
 });
 
 qs("#quote-search")?.addEventListener("input", (event) => {

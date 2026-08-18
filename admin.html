@@ -224,6 +224,26 @@
                 2 ek renk × 2 adet × ücret.
               </p>
             </form>
+
+            <form id="tier-form" class="admin-card form-card" style="margin-top:18px">
+              <div class="card-title"><h2>Gramaj Kademeleri</h2></div>
+              <div id="tier-rows" class="tier-rows"></div>
+              <div class="actions">
+                <button type="submit">Kademeleri kaydet</button>
+                <button type="button" class="ghost" id="add-tier">Kademe ekle</button>
+              </div>
+              <p class="form-note">
+                Sipariş <strong>ne kadar ağırsa gram fiyatı o kadar düşer</strong> — müşteriyi sepeti
+                büyütmeye teşvik eden kademe budur. Eşik, siparişin <em>tamamının</em> gramajıdır
+                (<em>parça ağırlığı × adet</em>), yani adedi artırmak da kademe atlatır.<br>
+                İndirim <strong>yüzde</strong> olarak tutulur, mutlak gram fiyatı olarak değil: böylece
+                aynı kademe her malzemede aynı oranda iner ve pahalı malzemeler (reçine) maliyetin
+                altına düşmez. İndirim yalnızca <strong>malzeme ücretine</strong> uygulanır; boyut
+                ücreti makine zamanıdır, çok gram basmak onu ucuzlatmaz.<br>
+                <strong>0 g</strong> satırı taban fiyattır, indirimi genelde %0 olur. Eşik büyüdükçe
+                indirim küçülemez — kaydederken engellenir.
+              </p>
+            </form>
           </div>
 
           <div class="admin-card">

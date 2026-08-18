@@ -14,6 +14,7 @@ const volumeEl = document.querySelector("#stl-volume");
 const weightEl = document.querySelector("#stl-weight");
 const priceEl = document.querySelector("#stl-price");
 const breakdownEl = document.querySelector("#stl-breakdown");
+const tiersEl = document.querySelector("#stl-tiers");
 const stepsEl = document.querySelector("#stl-steps");
 const panels = [...document.querySelectorAll(".stl-panel")];
 const prevButton = document.querySelector("#stl-prev");
@@ -949,6 +950,53 @@ const distinctColorCount = () =>
 
 let priceRequestId = 0;
 
+/* Gramaj merdiveni. Amacı bilgi vermek değil, teşvik etmek: müşteri bir üst
+   kademeye ne kadar kaldığını gördüğünde adedi artırıyor. Bu yüzden "kaç gram
+   kaldı" satırı merdivenin altında, en görünür yerde duruyor.
+
+   Kademeleri sunucu hesaplayıp gönderiyor (fiyatın tamamı gibi) — burada
+   yalnızca biçimlendiriliyor. */
+function renderTiers(price) {
+  if (!tiersEl) return;
+  const tiers = Array.isArray(price.tiers) ? price.tiers : [];
+  // Tek kademe = tanımlı indirim yok. Merdiven anlamsız, hiç gösterme.
+  if (tiers.length < 2) {
+    tiersEl.hidden = true;
+    return;
+  }
+
+  const toplam = Number(price.total_weight_g) || 0;
+  const steps = tiers.map((tier) => {
+    const gecildi = toplam >= tier.min_grams;
+    const durum = tier.active ? " is-active" : gecildi ? " is-done" : "";
+    return `
+      <div class="stl-tier${durum}">
+        <span class="stl-tier__range">${tier.min_grams > 0 ? `${tier.min_grams} g+` : "başlangıç"}</span>
+        <strong class="stl-tier__price">${money(tier.price_per_gram)}<span>/g</span></strong>
+        ${tier.discount_percent > 0 ? `<span class="stl-tier__off">%${tier.discount_percent} indirim</span>` : ""}
+      </div>`;
+  }).join("");
+
+  const next = price.next_tier;
+  const nudge = next
+    ? `<p class="stl-tiers__nudge"><strong>${Math.ceil(next.grams_needed)} g</strong> daha eklerseniz gram fiyatı
+       <strong>${money(next.price_per_gram)}</strong>'ye iner — adedi artırmak da bu toplama sayılır.</p>`
+    : `<p class="stl-tiers__nudge is-top">En yüksek kademedesiniz — gram fiyatınız ${money(price.price_per_gram)}.</p>`;
+
+  /* Sipariş toplamı burada yazılmalı: yandaki "Tahmini gramaj" tek parçanın
+     ağırlığı, kademe ise adetle çarpılmış toplama bakıyor. İkisi arasındaki
+     farkı söylemezsek "32 g" görüp "58 g daha" okuyan müşteri hesabı
+     tutturamıyor. */
+  tiersEl.innerHTML = `
+    <div class="stl-tiers__head">
+      <span class="stl-tiers__title">Gramaj arttıkça gram fiyatı düşer</span>
+      <span class="stl-tiers__now">sipariş toplamı ${toplam.toFixed(1)} g</span>
+    </div>
+    <div class="stl-tiers__grid">${steps}</div>
+    ${nudge}`;
+  tiersEl.hidden = false;
+}
+
 async function refreshPrice() {
   if (!quote.file || !quote.materialId) return;
   // Her istek sıra numarası alır; yanıt döndüğünde daha yenisi başladıysa yok sayılır.
@@ -972,8 +1020,17 @@ async function refreshPrice() {
     priceEl.textContent = money(price.total);
     if (weightEl) weightEl.textContent = `${Number(price.estimated_weight_g || 0).toFixed(1)} g`;
 
+    renderTiers(price);
+
+    /* Gram fiyatını artık sunucu veriyor: burada yeniden bölmek kademe
+       indirimini yok sayar ve dökümde liste fiyatı görünürken toplamda
+       indirimli fiyat çıkardı. */
+    const gram = price.tier_discount_percent > 0
+      ? `${money(price.price_per_gram)}/g (liste ${money(price.price_per_gram_base)}/g, kademe indirimi %${price.tier_discount_percent})`
+      : `${money(price.price_per_gram)}/g`;
+
     const lines = [
-      `${price.material.name} · ${money(Number(price.material.price_per_cm3) / Number(price.material.density_g_cm3 || 1.24))}/g · %${price.infill} dolgu · yaklaşık ${Number(price.estimated_weight_g || 0).toFixed(1)} g`,
+      `${price.material.name} · ${gram} · %${price.infill} dolgu · yaklaşık ${Number(price.estimated_weight_g || 0).toFixed(1)} g`,
       `${Number(price.used_volume_cm3 || 0).toFixed(2)} cm³ kullanılan hacim · ${Number(price.material.density_g_cm3 || 1.24).toFixed(2)} g/cm³ yoğunluk`,
       `hazırlık ${money(price.setup_fee)} + ${price.quantity} x ${money(price.unit_price)}`
     ];

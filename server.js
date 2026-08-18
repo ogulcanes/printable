@@ -121,7 +121,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "26";
+const SCHEMA_VERSION = "27";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -254,6 +254,21 @@ async function initDb() {
     color_change_fee REAL NOT NULL DEFAULT 35,
     tax_rate REAL NOT NULL DEFAULT 0,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  /* Gramaj kademeleri — "çok alana ucuz gram". Kademe MUTLAK bir gram fiyatı
+     değil, YÜZDE indirim tutar: mutlak yazsaydık "500 g üstü 4 TL" kuralı
+     reçineyi (10,50 TL/g) maliyetin çok altına düşürürdü. Yüzde ile PLA
+     5,00 → 4,00 inerken reçine de aynı oranda iner, malzemeler arası fark
+     korunur.
+
+     min_grams, siparişin TAMAMININ gramajıdır (parça ağırlığı × adet):
+     müşteriyi tek bir dev parça basmaya değil, sepeti büyütmeye teşvik eder. */
+  CREATE TABLE IF NOT EXISTS pricing_tiers (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    min_grams REAL NOT NULL DEFAULT 0,
+    discount_percent REAL NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
   -- colors ve categories yukarıda: Postgres, foreign key verilen tablonun
@@ -743,29 +758,52 @@ if (!existingMaterials) {
   `);
   // Fiyatlar içeride hacimle hesaplanır; müşteri tarafındaki baz gramdır.
   const materials = [
-    { name: "PLA", description: "Standart, ekonomik, iç mekan kullanımı", price_per_cm3: 2.48, density_g_cm3: 1.24 },
-    { name: "PETG", description: "Dayanıklı, ısıya ve neme daha dirençli", price_per_cm3: 3.29, density_g_cm3: 1.27 },
-    { name: "ABS", description: "Mekanik parçalar, yüksek sıcaklık dayanımı", price_per_cm3: 2.45, density_g_cm3: 1.04 },
-    { name: "Reçine (SLA)", description: "Yüksek detay, pürüzsüz yüzey", price_per_cm3: 4.66, density_g_cm3: 1.10 }
+    { name: "PLA", description: "Standart, ekonomik, iç mekan kullanımı", price_per_cm3: 6.20, density_g_cm3: 1.24 },
+    { name: "PETG", description: "Dayanıklı, ısıya ve neme daha dirençli", price_per_cm3: 8.26, density_g_cm3: 1.27 },
+    { name: "ABS", description: "Mekanik parçalar, yüksek sıcaklık dayanımı", price_per_cm3: 6.24, density_g_cm3: 1.04 },
+    { name: "Reçine (SLA)", description: "Yüksek detay, pürüzsüz yüzey", price_per_cm3: 11.55, density_g_cm3: 1.10 }
   ];
   for (const [index, material] of materials.entries()) {
     await seedMaterial.run({ ...material, sort_order: index + 1 });
   }
 }
 
-// PLA 2 TL/g temel alınır. Diğer malzemelerin eski fiyat farkı korunarak
-// hesaplanan gram fiyatları: PETG 2,59; ABS 2,35; Reçine 4,24 TL/g.
-// Hesap motoru hacim kullandığı için değerler yoğunlukla çarpılmıştır.
-await db.prepare(`
-  UPDATE materials SET price_per_cm3 = CASE
-    WHEN LOWER(name) = 'pla' THEN 2.48
-    WHEN LOWER(name) = 'petg' THEN 3.29
-    WHEN LOWER(name) = 'abs' THEN 2.45
-    WHEN LOWER(name) = 'reçine (sla)' OR LOWER(name) = 'resin (sla)' THEN 4.66
-    ELSE price_per_cm3
-  END
-  WHERE LOWER(name) IN ('pla', 'petg', 'abs', 'reçine (sla)', 'resin (sla)')
-`).run();
+/* PLA 5,00 TL/g temel alınır. Diğer malzemelerin birbirine olan eski oranı
+   korunarak gram fiyatları: ABS 6,00; PETG 6,50; Reçine 10,50 TL/g.
+   Hesap motoru hacim kullandığı için değerler yoğunlukla çarpılmıştır.
+
+   Sürüm anahtarıyla korunuyor: bu blok eskiden her SCHEMA_VERSION artışında
+   koşulsuz çalışıyordu, yani panelden elle girilen her fiyat bir sonraki
+   şema güncellemesinde sessizce eski değere dönüyordu. Artık zam yalnızca
+   bir kez, kendi sürümüyle iner; sonrasında fiyatın sahibi paneldir. */
+const FIYAT_REVIZYONU = "2026-08-gram-zam";
+const fiyatRevizyonu = await db.prepare("SELECT value FROM app_meta WHERE key = 'materials_price_rev'").get();
+if (fiyatRevizyonu?.value !== FIYAT_REVIZYONU) {
+  await db.prepare(`
+    UPDATE materials SET price_per_cm3 = CASE
+      WHEN LOWER(name) = 'pla' THEN 6.20
+      WHEN LOWER(name) = 'petg' THEN 8.26
+      WHEN LOWER(name) = 'abs' THEN 6.24
+      WHEN LOWER(name) = 'reçine (sla)' OR LOWER(name) = 'resin (sla)' THEN 11.55
+      ELSE price_per_cm3
+    END
+    WHERE LOWER(name) IN ('pla', 'petg', 'abs', 'reçine (sla)', 'resin (sla)')
+  `).run();
+  await db.prepare(`
+    INSERT INTO app_meta (key, value) VALUES ('materials_price_rev', ?)
+    ON CONFLICT (key) DO UPDATE SET value = excluded.value
+  `).run(FIYAT_REVIZYONU);
+}
+
+/* Kademeler yalnızca tablo boşken tohumlanır — panelden değiştirilen bir
+   kademe bir sonraki şema güncellemesinde geri gelmemeli. */
+if (!(await db.prepare("SELECT COUNT(*) count FROM pricing_tiers").get()).count) {
+  const seedTier = db.prepare("INSERT INTO pricing_tiers (min_grams, discount_percent) VALUES (?, ?)");
+  // PLA üzerinden okunuşu: 5,00 → 4,50 → 4,20 → 4,00 TL/g.
+  for (const [grams, percent] of [[0, 0], [100, 10], [250, 16], [500, 20]]) {
+    await seedTier.run(grams, percent);
+  }
+}
 
 if (!(await db.prepare("SELECT COUNT(*) count FROM pricing_settings").get()).count) {
   await db.prepare(`
@@ -4007,6 +4045,22 @@ const uploadModel = multer({
 
 const pricingSettings = async () => await db.prepare("SELECT * FROM pricing_settings WHERE id = 1").get();
 
+const pricingTiers = async () => await db.prepare(`
+  SELECT id, min_grams, discount_percent FROM pricing_tiers ORDER BY min_grams ASC, id ASC
+`).all();
+
+/* Sipariş gramajının düştüğü kademe ve bir üstü. Kademeler artan sırada
+   geldiği için "eşiği geçilenlerin sonuncusu" aranan kademedir; hiçbiri
+   geçilmediyse indirim yok. Bir üst kademe müşteriye "şu kadar gram daha
+   eklersen gram fiyatın şu olur" diyebilmek için döner. */
+function tierFor(tiers, totalGrams) {
+  const reached = tiers.filter((t) => totalGrams >= Number(t.min_grams));
+  return {
+    current: reached.length ? reached[reached.length - 1] : { min_grams: 0, discount_percent: 0 },
+    next: tiers.find((t) => Number(t.min_grams) > totalGrams) || null
+  };
+}
+
 async function priceQuote({ volume_cm3, max_dim_mm, material_id, infill, quantity, color_count }) {
   const settings = await pricingSettings();
   const material = material_id
@@ -4021,8 +4075,22 @@ async function priceQuote({ volume_cm3, max_dim_mm, material_id, infill, quantit
 
   // The shell is always printed solid, so only the interior scales with infill.
   const usedVolume = volume * (settings.shell_share + (1 - settings.shell_share) * infillRatio);
-  const materialFee = usedVolume * material.price_per_cm3;
-  const estimatedWeight = usedVolume * (Number(material.density_g_cm3) || 1.24);
+  const density = Number(material.density_g_cm3) || 1.24;
+  const estimatedWeight = usedVolume * density;
+
+  /* Kademe indirimi siparişin TAMAMININ gramajına bakar (parça × adet): adet
+     artırmak da kademe atlatır, teşvik etmek istediğimiz davranış bu.
+     İndirim yalnızca MALZEME ücretine uygulanır — boyut ücreti makine
+     zamanıdır, çok gram basmak onu ucuzlatmaz. */
+  const tiers = await pricingTiers();
+  const totalWeight = estimatedWeight * qty;
+  const { current: tier, next: nextTier } = tierFor(tiers, totalWeight);
+  const tierDiscount = Math.min(100, Math.max(0, Number(tier.discount_percent) || 0)) / 100;
+
+  const basePerGram = material.price_per_cm3 / density;
+  const perGram = basePerGram * (1 - tierDiscount);
+
+  const materialFee = usedVolume * material.price_per_cm3 * (1 - tierDiscount);
   const sizeFee = (maxDim / 10) * settings.size_fee_per_cm;
   // Per piece. Setup is charged once per order, and the floor applies to the
   // order total — putting the floor on the unit price would swallow the whole
@@ -4046,6 +4114,28 @@ async function priceQuote({ volume_cm3, max_dim_mm, material_id, infill, quantit
     volume_cm3: volume,
     used_volume_cm3: usedVolume,
     estimated_weight_g: estimatedWeight,
+    total_weight_g: totalWeight,
+    /* Gram fiyatı iki değerle döner: zamsız taban ve kademe uygulanmış hâli.
+       Vitrin ikisini birden gösterip üstünü çiziyor — indirimin görünmesi
+       kademenin varlık sebebi. */
+    price_per_gram_base: basePerGram,
+    price_per_gram: perGram,
+    tier_discount_percent: Number(tier.discount_percent) || 0,
+    tier_min_grams: Number(tier.min_grams) || 0,
+    next_tier: nextTier
+      ? {
+          min_grams: Number(nextTier.min_grams),
+          discount_percent: Number(nextTier.discount_percent),
+          grams_needed: Number(nextTier.min_grams) - totalWeight,
+          price_per_gram: basePerGram * (1 - Number(nextTier.discount_percent) / 100)
+        }
+      : null,
+    tiers: tiers.map((t) => ({
+      min_grams: Number(t.min_grams),
+      discount_percent: Number(t.discount_percent),
+      price_per_gram: basePerGram * (1 - Number(t.discount_percent) / 100),
+      active: Number(t.min_grams) === Number(tier.min_grams)
+    })),
     infill: Math.round(infillRatio * 100),
     quantity: qty,
     setup_fee: settings.setup_fee,
@@ -4127,6 +4217,48 @@ app.put("/api/pricing", requireAdmin, async (req, res) => {
     color_change_fee: Math.max(0, Number(req.body.color_change_fee) || 0)
   });
   res.json(await pricingSettings());
+});
+
+/* Kademeler herkese açık: zaten /api/quote-price yanıtının içinde dönüyorlar
+   ve sayfada müşteriye gösteriliyorlar — gizlenecek bir taraf yok. Ayrı uç,
+   dosya yüklenmeden de merdiveni gösterebilmek için. */
+app.get("/api/pricing-tiers", async (req, res) => res.json(await pricingTiers()));
+
+/* Kademe listesi bir bütün olarak kaydedilir: satır satır PUT/DELETE yerine
+   "gelen liste yeni gerçektir". Aralarındaki ilişki (eşiklerin sırası,
+   çakışmaması) tek tek düzenlemede kolayca bozulur. */
+app.put("/api/pricing-tiers", requireAdmin, async (req, res) => {
+  const gelen = Array.isArray(req.body?.tiers) ? req.body.tiers : null;
+  if (!gelen) return res.status(400).json({ error: "Kademe listesi gönderilmedi." });
+
+  const temiz = [];
+  for (const satir of gelen) {
+    const grams = Math.max(0, Number(satir?.min_grams) || 0);
+    const percent = Number(satir?.discount_percent) || 0;
+    if (percent < 0 || percent > 90) {
+      return res.status(400).json({ error: "İndirim oranı %0 ile %90 arasında olmalıdır." });
+    }
+    if (temiz.some((t) => t.min_grams === grams)) {
+      return res.status(400).json({ error: `Aynı gram eşiği birden fazla kez girilmiş: ${grams} g.` });
+    }
+    temiz.push({ min_grams: grams, discount_percent: percent });
+  }
+  temiz.sort((a, b) => a.min_grams - b.min_grams);
+
+  /* Eşik büyüdükçe indirim de büyümeli. Aksi hâlde müşteri gram ekleyince
+     fiyatı ARTAN bir merdiven çıkar — teşvik yerine ceza. */
+  for (let i = 1; i < temiz.length; i += 1) {
+    if (temiz[i].discount_percent < temiz[i - 1].discount_percent) {
+      return res.status(400).json({ error: "Gram eşiği arttıkça indirim oranı azalamaz." });
+    }
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.prepare("DELETE FROM pricing_tiers").run();
+    const ekle = tx.prepare("INSERT INTO pricing_tiers (min_grams, discount_percent) VALUES (?, ?)");
+    for (const satir of temiz) await ekle.run(satir.min_grams, satir.discount_percent);
+  });
+  res.json(await pricingTiers());
 });
 
 // Live price for the wizard. The browser never computes the price itself.
