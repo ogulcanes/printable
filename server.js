@@ -121,7 +121,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "27";
+const SCHEMA_VERSION = "28";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -795,14 +795,34 @@ if (fiyatRevizyonu?.value !== FIYAT_REVIZYONU) {
   `).run(FIYAT_REVIZYONU);
 }
 
+/* Varsayılan kademe merdiveni. PLA üzerinden okunuşu:
+   5,00 → 4,50 → 4,20 → 4,00 TL/g. */
+const VARSAYILAN_KADEMELER = [[0, 0], [250, 10], [500, 16], [1000, 20]];
+
 /* Kademeler yalnızca tablo boşken tohumlanır — panelden değiştirilen bir
    kademe bir sonraki şema güncellemesinde geri gelmemeli. */
 if (!(await db.prepare("SELECT COUNT(*) count FROM pricing_tiers").get()).count) {
   const seedTier = db.prepare("INSERT INTO pricing_tiers (min_grams, discount_percent) VALUES (?, ?)");
-  // PLA üzerinden okunuşu: 5,00 → 4,50 → 4,20 → 4,00 TL/g.
-  for (const [grams, percent] of [[0, 0], [100, 10], [250, 16], [500, 20]]) {
-    await seedTier.run(grams, percent);
-  }
+  for (const [grams, percent] of VARSAYILAN_KADEMELER) await seedTier.run(grams, percent);
+}
+
+/* Eşikler bir kez yukarı kaydırıldı: ilk indirim 100 g yerine 250 g'de
+   başlıyor — 100 g fazla ucuza geliyordu. Fiyat zammıyla aynı kalıp: sürüm
+   anahtarına bağlı, bir kez iner, sonrasında kademelerin sahibi yine panel.
+   Tablo dolu olduğu için yukarıdaki tohumlama canlıya ulaşmıyor, güncelleme
+   ancak böyle geçiyor. */
+const KADEME_REVIZYONU = "2026-08-esik-250";
+const kademeRevizyonu = await db.prepare("SELECT value FROM app_meta WHERE key = 'pricing_tiers_rev'").get();
+if (kademeRevizyonu?.value !== KADEME_REVIZYONU) {
+  await db.transaction(async (tx) => {
+    await tx.prepare("DELETE FROM pricing_tiers").run();
+    const ekle = tx.prepare("INSERT INTO pricing_tiers (min_grams, discount_percent) VALUES (?, ?)");
+    for (const [grams, percent] of VARSAYILAN_KADEMELER) await ekle.run(grams, percent);
+  });
+  await db.prepare(`
+    INSERT INTO app_meta (key, value) VALUES ('pricing_tiers_rev', ?)
+    ON CONFLICT (key) DO UPDATE SET value = excluded.value
+  `).run(KADEME_REVIZYONU);
 }
 
 if (!(await db.prepare("SELECT COUNT(*) count FROM pricing_settings").get()).count) {
