@@ -987,7 +987,21 @@ function renderTiers(price) {
      ağırlığı, kademe ise adetle çarpılmış toplama bakıyor. İkisi arasındaki
      farkı söylemezsek "32 g" görüp "58 g daha" okuyan müşteri hesabı
      tutturamıyor. */
+  /* Kazanılmış indirim kutlanmalı: müşteri kademeyi geçtiğini fark etmezse
+     merdiven yalnızca bir fiyat listesi olur. Kazanılan tutar en büyük punto,
+     yanında indirimsiz fiyat üstü çizili — karşılaştırma olmadan rakam
+     havada kalıyor. */
+  const kazanc = Number(price.tier_savings) > 0
+    ? `<div class="stl-tiers__win">
+         <span class="stl-tiers__win-badge">%${price.tier_discount_percent} indirim</span>
+         <strong class="stl-tiers__win-amount">${money(price.tier_savings)} kazandınız</strong>
+         <span class="stl-tiers__win-note">Tebrikler — ${price.tier_min_grams} g kademesindesiniz.
+           İndirimsiz fiyat <s>${money(price.total_without_tier)}</s></span>
+       </div>`
+    : "";
+
   tiersEl.innerHTML = `
+    ${kazanc}
     <div class="stl-tiers__head">
       <span class="stl-tiers__title">Gramaj arttıkça gram fiyatı düşer</span>
       <span class="stl-tiers__now">sipariş toplamı ${toplam.toFixed(1)} g</span>

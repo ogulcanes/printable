@@ -4124,6 +4124,17 @@ async function priceQuote({ volume_cm3, max_dim_mm, material_id, infill, quantit
 
   const total = Math.max(settings.min_order_total, settings.setup_fee + unitPrice * qty + colorFee);
 
+  /* Kademenin müşteriye kazandırdığı tutar. Yüzdeden çarparak değil, indirimsiz
+     toplamı bütünüyle kurup farkını alarak buluyoruz: minimum sipariş tutarı
+     tabanı devredeyse indirimin bir kısmı tabana yutulur ve "şu kadar kazandınız"
+     yazısı müşterinin cebinde göremediği bir rakamı vaat ederdi. */
+  const indirimsizBirim = usedVolume * material.price_per_cm3 + sizeFee;
+  const indirimsizToplam = Math.max(
+    settings.min_order_total,
+    settings.setup_fee + indirimsizBirim * qty + colorFee
+  );
+  const tierSavings = Math.max(0, indirimsizToplam - total);
+
   return {
     material: {
       id: material.id,
@@ -4142,6 +4153,8 @@ async function priceQuote({ volume_cm3, max_dim_mm, material_id, infill, quantit
     price_per_gram: perGram,
     tier_discount_percent: Number(tier.discount_percent) || 0,
     tier_min_grams: Number(tier.min_grams) || 0,
+    tier_savings: tierSavings,
+    total_without_tier: indirimsizToplam,
     next_tier: nextTier
       ? {
           min_grams: Number(nextTier.min_grams),
