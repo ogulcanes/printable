@@ -121,7 +121,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "28";
+const SCHEMA_VERSION = "29";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -1122,6 +1122,86 @@ if (!existingProducts) {
     const product = await productIdBySku.get(sku);
     if (product) for (const name of names) await linkCategory.run(product.id, name);
   }
+}
+
+// August 2026 catalogue release.  Unlike the initial demo seed above, this is
+// deliberately idempotent so it also reaches an already-populated production
+// database after deployment.  SKU is the stable external identifier.
+const catalogReleaseProducts = [
+  {
+    name: "Sevimli Tavşan Anahtarlık ve Mini Figür",
+    sku: "MW-2325579",
+    description: "Anahtarlık olarak kullanılabilen, masaüstünde de sergilenebilen sevimli tavşan mini figürü.",
+    color: "PLA / çok renkli",
+    price: 169,
+    stock: 25,
+    image_path: "/assets/products/sevimli-tavsan-anahtarlik.png",
+    image_alt: "Sevimli tavşan anahtarlık ve mini figür 3D baskı",
+    meta_keywords: "tavşan anahtarlık, mini tavşan figür, kawaii tavşan, 3d baskı"
+  },
+  {
+    name: "Kawaii Boba Çayı Anahtarlık",
+    sku: "MW-2081222",
+    description: "Gülümseyen yüz detaylı, boba çayı formunda sevimli 3D baskı anahtarlık.",
+    color: "PLA / çok renkli",
+    price: 149,
+    stock: 25,
+    image_path: "/assets/products/kawaii-boba-cay-anahtarlik.png",
+    image_alt: "Kawaii boba çayı anahtarlık 3D baskı",
+    meta_keywords: "boba anahtarlık, bubble tea anahtarlık, kawaii çay, 3d baskı"
+  },
+  {
+    name: "Kişiselleştirilebilir Boba Milk Tea Anahtarlık",
+    sku: "MW-1682650",
+    description: "Boba milk tea temalı, renk tercihinize göre hazırlanabilen sevimli anahtarlık.",
+    color: "PLA / çok renkli",
+    price: 159,
+    stock: 25,
+    image_path: "/assets/products/kawaii-boba-cay-anahtarlik.png",
+    image_alt: "Kişiselleştirilebilir boba milk tea anahtarlık 3D baskı",
+    meta_keywords: "kişiselleştirilebilir boba, milk tea anahtarlık, boba çayı, 3d baskı"
+  },
+  {
+    name: "Zarif Kırmızı Fiyonk Anahtarlık",
+    sku: "MW-2316097",
+    description: "Çanta, anahtar ve hediyeler için zarif kırmızı fiyonk formunda hafif anahtarlık.",
+    color: "PLA / kırmızı",
+    price: 129,
+    stock: 25,
+    image_path: "/assets/products/zarif-kirmizi-fiyonk-anahtarlik.png",
+    image_alt: "Zarif kırmızı fiyonk anahtarlık 3D baskı",
+    meta_keywords: "kırmızı fiyonk, fiyonk anahtarlık, bow keychain, 3d baskı"
+  },
+  {
+    name: "Kiraz Çanta Süsü",
+    sku: "MW-1518291",
+    description: "Çantalara, anahtarlara ve fermuarlara renk katan ikili kiraz formunda sevimli süs.",
+    color: "PLA / kırmızı ve yeşil",
+    price: 149,
+    stock: 25,
+    image_path: "/assets/products/kiraz-canta-susu.png",
+    image_alt: "Kiraz çanta süsü 3D baskı",
+    meta_keywords: "kiraz çanta süsü, kiraz anahtarlık, bag charm, 3d baskı"
+  }
+];
+
+const insertCatalogReleaseProduct = db.prepare(`
+  INSERT INTO products (name, sku, description, color, price, stock, image_path, image_alt, meta_keywords, is_active)
+  SELECT @name, @sku, @description, @color, @price, @stock, @image_path, @image_alt, @meta_keywords, 1
+  WHERE NOT EXISTS (SELECT 1 FROM products WHERE sku = @sku)
+`);
+const releasedProductBySku = db.prepare("SELECT id FROM products WHERE sku = ?");
+const linkReleaseCategory = db.prepare(`
+  INSERT INTO product_categories (product_id, category_id)
+  SELECT ?, id FROM categories WHERE name = ?
+  ON CONFLICT DO NOTHING
+`);
+for (const product of catalogReleaseProducts) {
+  await insertCatalogReleaseProduct.run(product);
+  const saved = await releasedProductBySku.get(product.sku);
+  if (!saved) continue;
+  await linkReleaseCategory.run(saved.id, "Anahtarlıklar");
+  if (product.sku === "MW-2325579") await linkReleaseCategory.run(saved.id, "Figürler");
 }
 
 // Baseline price history: every product gets at least one entry so the log is never
