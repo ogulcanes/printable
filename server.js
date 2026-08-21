@@ -121,7 +121,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "31";
+const SCHEMA_VERSION = "32";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -1165,6 +1165,34 @@ if (!existingProducts) {
 // not the storefront product inventory. Remove the misplaced previous release
 // on every database migration; the SKU scope is explicit and safe.
 await db.prepare("DELETE FROM products WHERE sku IN ('MW-2325579', 'MW-2081222', 'MW-1682650', 'MW-2316097', 'MW-1518291')").run();
+
+// A published example makes the new blog design and its structured-data output
+// visible immediately. It is safe to edit or delete later from Admin > Blog.
+await db.prepare(`
+  INSERT INTO blog_posts (slug, title, excerpt, content, cover_image, cover_alt, author_name, status, published_at, meta_title, meta_description, meta_keywords, canonical, og_title, og_description, og_image, robots)
+  VALUES (@slug, @title, @excerpt, @content, @cover_image, @cover_alt, @author_name, 'published', NOW(), @meta_title, @meta_description, @meta_keywords, @canonical, @og_title, @og_description, @og_image, 'index,follow')
+  ON CONFLICT (slug) DO NOTHING
+`).run({
+  slug: "3d-baski-anahtarlik-secerken-nelere-dikkat-etmeli",
+  title: "3D Baskı Anahtarlık Seçerken Nelere Dikkat Etmeli?",
+  excerpt: "Malzeme, kullanım amacı ve tasarım detayları üzerinden uzun ömürlü bir 3D baskı anahtarlık seçmenin kısa rehberi.",
+  content: `<p>3D baskı anahtarlıklar, küçük bir hediyeyi veya günlük kullandığınız anahtar takımını kişiselleştirmenin pratik yoludur. Doğru modeli seçerken görünüm kadar kullanım şekli de önemlidir.</p>
+<h2>1. Kullanım amacını belirleyin</h2><p>Çanta süsü, promosyon ürünü veya günlük anahtarlık için farklı kalınlıklar ve halka noktaları gerekir. Sık kullanılacak bir modelde bağlantı halkasının gövdeden yeterince kalın olmasına dikkat edin.</p>
+<h2>2. Malzeme seçimi fark yaratır</h2><p>PLA, canlı renkleri ve temiz yüzeyiyle dekoratif anahtarlıklar için güçlü bir başlangıçtır. Daha esnek ya da darbeye dayanıklı bir kullanım gerekiyorsa tasarım ve malzeme seçimini birlikte değerlendirmek en iyi sonucu verir.</p>
+<h2>3. Tasarımı okunaklı tutun</h2><p>Çok küçük yazılar ve ince detaylar baskıda kaybolabilir. Tek bakışta ayırt edilebilen siluetler, güçlü kontrastlar ve sade renk kombinasyonları anahtarlıkta daha etkili görünür.</p>
+<h2>4. Kişiselleştirme seçeneklerini inceleyin</h2><p>İsim, renk veya küçük bir simge eklemek anahtarlığı daha anlamlı hâle getirir. İlham için <a href="/anahtarlik-katalogu">anahtarlık kataloğundaki modelleri</a> inceleyebilir, baskıya uygun bir fikriniz varsa bize iletebilirsiniz.</p>
+<p>İyi bir anahtarlık; hafif, dayanıklı ve sizi yansıtan bir tasarımı bir araya getirir. Seçim yaparken bu dört başlık, hem kullanım ömrünü hem de görünümü iyileştirir.</p>`,
+  cover_image: "/assets/blog/3d-baski-anahtarlik-secim-rehberi.png",
+  cover_alt: "3D yazıcı ve renkli anahtarlık örnekleriyle 3D baskı atölyesi",
+  author_name: "Printable Atölye",
+  meta_title: "3D Baskı Anahtarlık Seçme Rehberi | Printable",
+  meta_description: "3D baskı anahtarlık seçerken malzeme, kullanım amacı, tasarım ve kişiselleştirme ayrıntılarına dair pratik rehber.",
+  meta_keywords: "3d baskı anahtarlık, anahtarlık seçme rehberi, pla anahtarlık, kişiselleştirilmiş anahtarlık",
+  canonical: "/blog/3d-baski-anahtarlik-secerken-nelere-dikkat-etmeli",
+  og_title: "3D Baskı Anahtarlık Seçme Rehberi",
+  og_description: "Dayanıklı, kullanışlı ve kişisel bir 3D baskı anahtarlık için 4 pratik ipucu.",
+  og_image: "/assets/blog/3d-baski-anahtarlik-secim-rehberi.png"
+});
 
 // Baseline price history: every product gets at least one entry so the log is never
 // empty and the "current price since" reference exists. Idempotent — only products
