@@ -121,7 +121,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "29";
+const SCHEMA_VERSION = "30";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -381,6 +381,36 @@ async function initDb() {
     og_image TEXT,
     robots TEXT NOT NULL DEFAULT 'index,follow',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  -- Blog posts are deliberately content-first: the automation can send one
+  -- complete record without relying on a page builder or client-side state.
+  -- Status keeps drafts and scheduled posts out of the public index.
+  CREATE TABLE IF NOT EXISTS blog_posts (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    slug TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    excerpt TEXT,
+    content TEXT NOT NULL DEFAULT '',
+    cover_image TEXT,
+    cover_alt TEXT,
+    media_url TEXT,
+    media_type TEXT NOT NULL DEFAULT 'none',
+    author_name TEXT,
+    status TEXT NOT NULL DEFAULT 'draft',
+    published_at TIMESTAMPTZ,
+    meta_title TEXT,
+    meta_description TEXT,
+    meta_keywords TEXT,
+    canonical TEXT,
+    og_title TEXT,
+    og_description TEXT,
+    og_image TEXT,
+    robots TEXT NOT NULL DEFAULT 'index,follow',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (media_type IN ('none', 'image', 'video', 'embed')),
+    CHECK (status IN ('draft', 'scheduled', 'published'))
   );
 
   CREATE TABLE IF NOT EXISTS site_settings (
@@ -922,6 +952,13 @@ const addSeoPage = db.prepare(`
   ON CONFLICT (slug) DO NOTHING
 `);
 const extraSeoPages = [
+  {
+    slug: "blog", label: "Blog sayfası",
+    title: "3D Baskı Rehberi, Fikirler ve İpuçları | Printable",
+    description: "3D baskı malzemeleri, tasarım fikirleri, ürün rehberleri ve atölyeden pratik bilgiler.",
+    og_title: "Printable Blog | 3D Baskı Rehberi ve Fikirler",
+    og_description: "3D baskı dünyasından anlaşılır rehberler, fikirler ve pratik ipuçları."
+  },
   {
     slug: "urunler", label: "Ürünler sayfası",
     title: "Tüm 3D Baskı Ürünleri | Printable",
@@ -1920,6 +1957,7 @@ async function renderHeader(active, customer) {
         <nav class="main-links" id="main-links" aria-label="Ana menü">
           ${await link("/", "Ana Sayfa", "home")}
           ${await link("/urunler", "Ürünler", "urunler")}
+          ${await link("/blog", "Blog", "blog")}
           ${await link("/tasarim", "Özel Tasarım", "tasarim")}
           ${await link("/hakkinda", "Hakkımızda", "hakkinda")}
           ${await link("/iletisim", "İletişim", "iletisim")}
@@ -2574,6 +2612,7 @@ app.get("/sitemap.xml", async (req, res) => {
     { loc: "/", priority: "1.0" },
     { loc: "/landing", priority: "0.9" },
     { loc: "/urunler", priority: "0.9" },
+    { loc: "/blog", priority: "0.8" },
     { loc: "/stl-teklif", priority: "0.8" },
     { loc: "/tasarim", priority: "0.7" },
     { loc: "/hakkinda", priority: "0.5" },
@@ -2594,6 +2633,13 @@ app.get("/sitemap.xml", async (req, res) => {
     priority: "0.7",
     lastmod: String(p.updated_at instanceof Date ? p.updated_at.toISOString() : p.updated_at || "").slice(0, 10)
   }));
+  await publishDueBlogPosts();
+  const publishedPosts = await db.prepare("SELECT slug, status, published_at, updated_at FROM blog_posts WHERE status = 'published' ORDER BY id").all();
+  publishedPosts.filter(blogIsPublic).forEach((post) => urls.push({
+    loc: `/blog/${post.slug}`,
+    priority: "0.7",
+    lastmod: String(post.updated_at instanceof Date ? post.updated_at.toISOString() : post.updated_at || "").slice(0, 10)
+  }));
 
   const body = urls.map((u) => {
     const loc = escapeHtml(absoluteUrl(req, u.loc, site.site_url));
@@ -2603,6 +2649,98 @@ app.get("/sitemap.xml", async (req, res) => {
   res.type("application/xml").send(
     `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`
   );
+});
+
+const blogIsPublic = (post) => post.status === "published"
+  && (!post.published_at || new Date(post.published_at).getTime() <= Date.now());
+
+function formatBlogDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : new Intl.DateTimeFormat("tr-TR", {
+    day: "numeric", month: "long", year: "numeric"
+  }).format(date);
+}
+
+function blogCardHTML(post) {
+  const cover = post.cover_image
+    ? `<img src="${escapeHtml(post.cover_image)}" alt="${escapeHtml(post.cover_alt || post.title)}" loading="lazy">`
+    : `<div class="blog-card__placeholder" aria-hidden="true">Printable</div>`;
+  return `<article class="blog-card">
+    <a class="blog-card__image" href="/blog/${encodeURIComponent(post.slug)}">${cover}</a>
+    <div class="blog-card__body">
+      <p class="blog-card__meta">${escapeHtml(formatBlogDate(post.published_at || post.created_at))}${post.author_name ? ` · ${escapeHtml(post.author_name)}` : ""}</p>
+      <h2><a href="/blog/${encodeURIComponent(post.slug)}">${escapeHtml(post.title)}</a></h2>
+      ${post.excerpt ? `<p>${escapeHtml(post.excerpt)}</p>` : ""}
+      <a class="blog-card__more" href="/blog/${encodeURIComponent(post.slug)}">Yazıyı oku <span aria-hidden="true">→</span></a>
+    </div>
+  </article>`;
+}
+
+function blogMediaHTML(post) {
+  if (!post.media_url || post.media_type === "none") return "";
+  if (post.media_type === "video") return `<video class="blog-post__media" controls preload="metadata" src="${escapeHtml(post.media_url)}"></video>`;
+  if (post.media_type === "embed" && /^https:\/\/(www\.)?(youtube\.com|youtu\.be|player\.vimeo\.com)\//i.test(post.media_url)) {
+    return `<div class="blog-post__embed"><iframe src="${escapeHtml(post.media_url)}" title="${escapeHtml(post.title)} videosu" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>`;
+  }
+  return `<img class="blog-post__media" src="${escapeHtml(post.media_url)}" alt="${escapeHtml(post.title)}">`;
+}
+
+async function blogMetaTags(req, post) {
+  const site = await db.prepare("SELECT * FROM site_settings WHERE id = 1").get() || {};
+  const canonical = absoluteUrl(req, post.canonical || `/blog/${post.slug}`, site.site_url);
+  const image = absoluteUrl(req, post.og_image || post.cover_image || site.default_og_image, site.site_url);
+  const title = post.meta_title || `${post.title} | ${site.site_name || "Printable"}`;
+  const description = post.meta_description || post.excerpt || "";
+  const datePublished = post.published_at || post.created_at;
+  const tags = [
+    `<title>${escapeHtml(title)}</title>`, FAVICON_TAGS,
+    description && `<meta name="description" content="${escapeHtml(description)}">`,
+    post.meta_keywords && `<meta name="keywords" content="${escapeHtml(post.meta_keywords)}">`,
+    `<meta name="robots" content="${escapeHtml(post.robots || "index,follow")}">`,
+    `<link rel="canonical" href="${escapeHtml(canonical)}">`,
+    `<meta property="og:type" content="article">`,
+    `<meta property="og:locale" content="tr_TR">`,
+    `<meta property="og:title" content="${escapeHtml(post.og_title || title)}">`,
+    description && `<meta property="og:description" content="${escapeHtml(post.og_description || description)}">`,
+    `<meta property="og:url" content="${escapeHtml(canonical)}">`,
+    image && `<meta property="og:image" content="${escapeHtml(image)}">`,
+    `<meta property="article:published_time" content="${escapeHtml(new Date(datePublished).toISOString())}">`,
+    `<meta name="twitter:card" content="${image ? "summary_large_image" : "summary"}">`
+  ].filter(Boolean);
+  const article = {
+    "@context": "https://schema.org", "@type": "BlogPosting", headline: post.title,
+    ...(description ? { description } : {}), ...(image ? { image } : {}),
+    mainEntityOfPage: { "@type": "WebPage", "@id": canonical },
+    datePublished: new Date(datePublished).toISOString(), dateModified: new Date(post.updated_at || datePublished).toISOString(),
+    author: { "@type": "Person", name: post.author_name || site.site_name || "Printable" },
+    publisher: { "@type": "Organization", name: site.site_name || "Printable" }
+  };
+  tags.push(`<script type="application/ld+json">${JSON.stringify(article).replace(/</g, "\\u003c")}</script>`);
+  return tags.join("\n    ");
+}
+
+app.get("/blog", async (req, res) => {
+  const posts = (await db.prepare("SELECT * FROM blog_posts WHERE status = 'published' ORDER BY published_at DESC NULLS LAST, id DESC").all())
+    .filter(blogIsPublic);
+  const html = fs.readFileSync(path.join(ROOT, "blog.html"), "utf8");
+  res.type("html").send(await injectShell(html
+    .replace("<!--seo-->", await seoHead(req, "blog"))
+    .replace("<!--blog-list-->", posts.map(blogCardHTML).join("") || '<p class="blog-empty">Yeni yazılar çok yakında burada olacak.</p>'), "blog", await pageCustomer(req, res)));
+});
+
+app.get("/blog/:slug", async (req, res) => {
+  const post = await db.prepare("SELECT * FROM blog_posts WHERE slug = ?").get(req.params.slug);
+  if (!post || !blogIsPublic(post)) return res.status(404).redirect("/blog");
+  const html = fs.readFileSync(path.join(ROOT, "blog-yazi.html"), "utf8");
+  const cover = post.cover_image ? `<img class="blog-post__cover" src="${escapeHtml(post.cover_image)}" alt="${escapeHtml(post.cover_alt || post.title)}">` : "";
+  res.type("html").send(await injectShell(html
+    .replace("<!--seo-->", await blogMetaTags(req, post))
+    .replace("<!--blog-title-->", escapeHtml(post.title))
+    .replace("<!--blog-meta-->", `${escapeHtml(formatBlogDate(post.published_at || post.created_at))}${post.author_name ? ` · ${escapeHtml(post.author_name)}` : ""}`)
+    .replace("<!--blog-cover-->", cover)
+    .replace("<!--blog-media-->", blogMediaHTML(post))
+    .replace("<!--blog-content-->", post.content || ""), "blog", await pageCustomer(req, res)));
 });
 
 ["styles.css", "script.js", "product-templates.js", "stl-viewer.js", "admin.css", "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js", "katalog.js", "hesap.js", "anahtarlik-katalog.js"].forEach((file) => {
@@ -3815,6 +3953,84 @@ app.get("/api/products/:id", async (req, res) => {
   if (!product) return res.status(404).json({ error: "Ürün bulunamadı." });
   const suslu = await withColors(product);
   res.json(await isAuthed(req) ? suslu : maliyetiGizle(suslu));
+});
+
+/* ---------- blog ---------- */
+
+const slugify = (value) => String(value || "")
+  .toLocaleLowerCase("tr").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  .replace(/ı/g, "i").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 110);
+
+function sanitizeBlogHtml(value) {
+  return String(value || "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<(script|style|object|embed|form)[\s\S]*?<\/\1\s*>/gi, "")
+    .replace(/<\/?(?:script|style|object|embed|form)[^>]*>/gi, "")
+    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/\s+(?:href|src)\s*=\s*(?:"\s*javascript:[^"]*"|'\s*javascript:[^']*'|javascript:[^\s>]+)/gi, "");
+}
+
+async function publishDueBlogPosts() {
+  await db.prepare("UPDATE blog_posts SET status = 'published', updated_at = CURRENT_TIMESTAMP WHERE status = 'scheduled' AND published_at IS NOT NULL AND published_at <= NOW()").run();
+}
+
+function blogPayload(body, files = {}) {
+  const coverFile = files.image?.[0];
+  const mediaFile = files.media?.[0];
+  const mediaUrl = body.media_key ? storage.publicUrl(body.media_key) : mediaFile ? `/uploads/${mediaFile.filename}` : body.media_url?.trim() || body.current_media || null;
+  const status = ["draft", "scheduled", "published"].includes(body.status) ? body.status : "draft";
+  const title = String(body.title || "").replace(/\s+/g, " ").trim();
+  return {
+    slug: slugify(body.slug || title), title,
+    excerpt: seoMetniKisalt(body.excerpt || "", 300) || null,
+    content: sanitizeBlogHtml(body.content),
+    cover_image: body.cover_key ? storage.publicUrl(body.cover_key) : resolveImagePath({ image_url: body.cover_image, current_image: body.current_cover }, coverFile),
+    cover_alt: body.cover_alt?.trim() || title || null,
+    media_url: mediaUrl,
+    media_type: ["none", "image", "video", "embed"].includes(body.media_type) ? body.media_type : (mediaUrl ? "image" : "none"),
+    author_name: body.author_name?.trim() || "Printable", status,
+    published_at: body.published_at?.trim() || (status === "published" ? new Date().toISOString() : null),
+    meta_title: seoMetniKisalt(body.meta_title || `${title} | Printable`, 70) || null,
+    meta_description: seoMetniKisalt(body.meta_description || body.excerpt || "", 170) || null,
+    meta_keywords: body.meta_keywords?.trim() || null, canonical: body.canonical?.trim() || null,
+    og_title: body.og_title?.trim() || null, og_description: body.og_description?.trim() || null,
+    og_image: body.og_image?.trim() || null, robots: body.robots?.trim() || "index,follow"
+  };
+}
+
+app.get("/api/blog", async (req, res) => {
+  await publishDueBlogPosts();
+  const posts = await db.prepare("SELECT * FROM blog_posts WHERE status = 'published' ORDER BY published_at DESC NULLS LAST, id DESC").all();
+  res.json(posts.filter(blogIsPublic));
+});
+
+app.get("/api/blog-posts", requireAdmin, async (req, res) => {
+  await publishDueBlogPosts();
+  res.json(await db.prepare("SELECT * FROM blog_posts ORDER BY created_at DESC, id DESC").all());
+});
+
+app.post("/api/blog-posts", requireAdmin, galleryUpload.fields([{ name: "image", maxCount: 1 }, { name: "media", maxCount: 1 }]), async (req, res) => {
+  const post = blogPayload(req.body, req.files || {});
+  if (!post.title || !post.slug) return res.status(400).json({ error: "Başlık ve geçerli bir slug zorunludur." });
+  if (post.status === "scheduled" && !post.published_at) return res.status(400).json({ error: "Zamanlanmış yazı için yayın tarihi girin." });
+  if (await db.prepare("SELECT id FROM blog_posts WHERE slug = ?").get(post.slug)) return res.status(409).json({ error: "Bu slug zaten kullanılıyor." });
+  const result = await db.prepare(`INSERT INTO blog_posts (slug, title, excerpt, content, cover_image, cover_alt, media_url, media_type, author_name, status, published_at, meta_title, meta_description, meta_keywords, canonical, og_title, og_description, og_image, robots) VALUES (@slug, @title, @excerpt, @content, @cover_image, @cover_alt, @media_url, @media_type, @author_name, @status, @published_at, @meta_title, @meta_description, @meta_keywords, @canonical, @og_title, @og_description, @og_image, @robots)`).run(post);
+  res.status(201).json(await db.prepare("SELECT * FROM blog_posts WHERE id = ?").get(result.lastInsertRowid));
+});
+
+app.put("/api/blog-posts/:id", requireAdmin, galleryUpload.fields([{ name: "image", maxCount: 1 }, { name: "media", maxCount: 1 }]), async (req, res) => {
+  const current = await db.prepare("SELECT * FROM blog_posts WHERE id = ?").get(req.params.id);
+  if (!current) return res.status(404).json({ error: "Blog yazısı bulunamadı." });
+  const post = blogPayload({ ...req.body, current_cover: current.cover_image, current_media: current.media_url }, req.files || {});
+  if (!post.title || !post.slug) return res.status(400).json({ error: "Başlık ve geçerli bir slug zorunludur." });
+  if (await db.prepare("SELECT id FROM blog_posts WHERE slug = ? AND id <> ?").get(post.slug, current.id)) return res.status(409).json({ error: "Bu slug zaten kullanılıyor." });
+  await db.prepare(`UPDATE blog_posts SET slug=@slug, title=@title, excerpt=@excerpt, content=@content, cover_image=@cover_image, cover_alt=@cover_alt, media_url=@media_url, media_type=@media_type, author_name=@author_name, status=@status, published_at=@published_at, meta_title=@meta_title, meta_description=@meta_description, meta_keywords=@meta_keywords, canonical=@canonical, og_title=@og_title, og_description=@og_description, og_image=@og_image, robots=@robots, updated_at=CURRENT_TIMESTAMP WHERE id=@id`).run({ ...post, id: current.id });
+  res.json(await db.prepare("SELECT * FROM blog_posts WHERE id = ?").get(current.id));
+});
+
+app.delete("/api/blog-posts/:id", requireAdmin, async (req, res) => {
+  await db.prepare("DELETE FROM blog_posts WHERE id = ?").run(req.params.id);
+  res.status(204).end();
 });
 
 /* ---------- müşteri değerlendirmeleri ---------- */

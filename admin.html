@@ -27,7 +27,8 @@
         <button class="tab" data-tab="materials"><span>05</span>Malzeme & Fiyat</button>
         <button class="tab" data-tab="quotes"><span>06</span>3D Teklifler</button>
         <button class="tab" data-tab="seo"><span>07</span>SEO</button>
-        <button class="tab" data-tab="products"><span>08</span>Ürünler</button>
+        <button class="tab" data-tab="blog"><span>08</span>Blog</button>
+        <button class="tab" data-tab="products"><span>09</span>Ürünler</button>
         <button class="tab" data-tab="orders"><span>09</span>Siparişler</button>
         <button class="tab" data-tab="customers"><span>10</span>Müşteriler</button>
         <button class="tab" data-tab="messages"><span>11</span>Mesajlar</button>
@@ -324,6 +325,44 @@
             </div>
             <p class="form-note" id="seo-note">Bu alanlar sayfaya JSON-LD (Organization + WebSite) olarak gömülür. Site adresini doldurmak önemli: paylaşım görselleri ve canonical adresler mutlak URL olmak zorundadır.</p>
           </form>
+        </div>
+      </section>
+
+      <section id="blog" class="panel">
+        <div class="grid-two">
+          <form id="blog-form" class="admin-card form-card" enctype="multipart/form-data">
+            <input type="hidden" name="id">
+            <div class="card-title"><h2>Blog Yazısı Ekle / Düzenle</h2></div>
+            <label>Başlık<input name="title" required maxlength="160"></label>
+            <label>Slug<input name="slug" placeholder="3d-baski-rehberi"></label>
+            <label>Özet<textarea name="excerpt" rows="3" maxlength="300" placeholder="Kartta ve meta açıklamada kullanılacak kısa özet."></textarea></label>
+            <label>İçerik (HTML)<textarea name="content" rows="12" placeholder="<h2>Ara başlık</h2><p>Yazı metni...</p>"></textarea></label>
+            <div class="form-grid">
+              <label>Yazar<input name="author_name" value="Printable"></label>
+              <label>Durum<select name="status"><option value="draft">Taslak</option><option value="scheduled">Zamanla</option><option value="published">Yayınla</option></select></label>
+              <label>Yayın tarihi<input name="published_at" type="datetime-local"></label>
+              <label>Arama motoru izni<select name="robots"><option value="index,follow">Index, follow</option><option value="noindex,nofollow">Noindex</option></select></label>
+            </div>
+            <label>Kapak görseli<input name="image" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+            <label>veya kapak görseli URL'si<input name="cover_image" placeholder="https://..."></label>
+            <label>Kapak alt metni<input name="cover_alt"></label>
+            <label>Yazı medyası (görsel, MP4 veya WEBM)<input name="media" type="file" accept="image/*,video/mp4,video/webm"></label>
+            <div class="form-grid">
+              <label>veya medya / embed URL'si<input name="media_url" placeholder="https://..."></label>
+              <label>Medya türü<select name="media_type"><option value="none">Yok</option><option value="image">Görsel</option><option value="video">Video</option><option value="embed">YouTube / Vimeo embed</option></select></label>
+            </div>
+            <details><summary>SEO ve paylaşım ayarları</summary>
+              <label>Meta başlık<input name="meta_title" maxlength="70"></label>
+              <label>Meta açıklama<textarea name="meta_description" rows="2" maxlength="170"></textarea></label>
+              <label>Anahtar kelimeler<input name="meta_keywords"></label>
+              <label>Canonical URL<input name="canonical"></label>
+              <label>OG başlık<input name="og_title"></label>
+              <label>OG açıklama<textarea name="og_description" rows="2"></textarea></label>
+              <label>OG görsel URL'si<input name="og_image"></label>
+            </details>
+            <div class="actions"><button type="submit">Yazıyı kaydet</button><button type="button" class="ghost" id="blog-reset">Temizle</button></div>
+          </form>
+          <div class="admin-card"><div class="card-title"><h2>Blog yazıları</h2><span id="blog-count" class="count-pill">0 yazı</span></div><div id="blog-list" class="list"></div></div>
         </div>
       </section>
 

@@ -14,6 +14,7 @@ const state = {
   adminUsers: [],
   settings: {},
   katlac: [],
+  blogPosts: [],
   sessionUser: null,
   pricing: {},
   tiers: [],
@@ -827,7 +828,7 @@ function renderCampaignOptions(campaign) {
 }
 
 async function refresh() {
-  const [stats, products, customers, orders, slides, categories, colors, materials, quotes, pricing, tiers, seo, messages, reviews, campaigns, subscribers, adminUsers, settings, katlac] = await Promise.all([
+  const [stats, products, customers, orders, slides, categories, colors, materials, quotes, pricing, tiers, seo, messages, reviews, campaigns, subscribers, adminUsers, settings, katlac, blogPosts] = await Promise.all([
     api("/api/stats"),
     api("/api/products"),
     api("/api/customers"),
@@ -846,7 +847,8 @@ async function refresh() {
     api("/api/subscribers"),
     api("/api/admin-users"),
     api("/api/settings"),
-    api("/api/katlac")
+    api("/api/katlac"),
+    api("/api/blog-posts")
   ]);
   state.products = products;
   state.customers = customers;
@@ -866,6 +868,7 @@ async function refresh() {
   state.settings = settings;
   state.katlac = katlac;
   state.subscribers = subscribers;
+  state.blogPosts = blogPosts;
   qs("#stat-products").textContent = stats.products;
   qs("#stat-customers").textContent = stats.customers;
   qs("#stat-orders").textContent = stats.orders;
@@ -893,6 +896,23 @@ async function refresh() {
   renderProductColorOptions(currentProductColorIds());
   renderProductCategoryOptions(currentProductCategoryIds());
   renderSeo();
+  renderBlogPosts();
+}
+
+async function hoistBlogUpload(formData, field, keyField, kind) {
+  const file = formData.get(field);
+  if (!(file instanceof File) || !file.size) return;
+  const signRes = await fetch("/api/uploads/sign", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind, filename: file.name })
+  });
+  if (signRes.status === 503) return;
+  const signed = await signRes.json();
+  if (!signRes.ok) throw new Error(signed.error || "Yükleme adresi alınamadı.");
+  const put = await fetch(signed.signedUrl, { method: "PUT", headers: file.type ? { "Content-Type": file.type } : undefined, body: file });
+  if (!put.ok) throw new Error("Blog medyası yüklenemedi.");
+  formData.delete(field);
+  formData.set(keyField, signed.path);
 }
 
 qs("#message-list").addEventListener("click", async (event) => {
@@ -2475,6 +2495,68 @@ document.addEventListener("click", async (event) => {
     body: JSON.stringify({ tracking_code: tracking })
   });
   await refresh();
+});
+
+/* ---------- Blog ---------- */
+function localDateTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function renderBlogPosts() {
+  const list = qs("#blog-list");
+  if (!list) return;
+  qs("#blog-count").textContent = `${state.blogPosts.length} yazı`;
+  list.innerHTML = state.blogPosts.map((post) => `
+    <article class="row">
+      ${post.cover_image ? `<img src="${escapeHtml(post.cover_image)}" alt="">` : '<div class="row-image-placeholder">Blog</div>'}
+      <div><h3>${escapeHtml(post.title)}</h3><p>${escapeHtml(post.excerpt || "Özet yok.")}</p>
+        <div class="meta-line"><span class="badge ${post.status === "published" ? "green" : post.status === "scheduled" ? "blue" : "orange"}">${post.status === "published" ? "Yayında" : post.status === "scheduled" ? "Zamanlandı" : "Taslak"}</span>
+        <span class="badge">${escapeHtml(post.slug)}</span>${post.published_at ? `<span class="badge">${formatDateTime(post.published_at)}</span>` : ""}</div></div>
+      <div class="row-actions"><a class="small-button" href="/blog/${encodeURIComponent(post.slug)}" target="_blank" rel="noopener">Görüntüle</a><button data-edit-blog="${post.id}">Düzenle</button><button class="danger" data-delete-blog="${post.id}">Sil</button></div>
+    </article>`).join("") || "<p>Henüz blog yazısı yok.</p>";
+}
+
+function resetBlogForm() {
+  const form = qs("#blog-form");
+  form.reset(); form.elements.id.value = ""; form.elements.author_name.value = "Printable";
+  form.elements.status.value = "draft"; form.elements.robots.value = "index,follow";
+}
+
+function fillBlogForm(post) {
+  const form = qs("#blog-form");
+  for (const [key, value] of Object.entries(post)) {
+    if (!form.elements[key] || ["image", "media"].includes(key)) continue;
+    form.elements[key].value = key === "published_at" ? localDateTime(value) : (value ?? "");
+  }
+  form.elements.id.value = post.id;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+qs("#blog-form")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const body = new FormData(form);
+  await hoistBlogUpload(body, "image", "cover_key", "image");
+  await hoistBlogUpload(body, "media", "media_key", "media");
+  const id = body.get("id");
+  await api(id ? `/api/blog-posts/${id}` : "/api/blog-posts", { method: id ? "PUT" : "POST", body });
+  resetBlogForm();
+  await refresh();
+});
+
+qs("#blog-reset")?.addEventListener("click", resetBlogForm);
+qs("#blog-list")?.addEventListener("click", async (event) => {
+  const editId = event.target.dataset.editBlog;
+  const deleteId = event.target.dataset.deleteBlog;
+  if (editId) fillBlogForm(state.blogPosts.find((post) => post.id === Number(editId)));
+  if (deleteId && confirm("Bu blog yazısı silinsin mi?")) {
+    await api(`/api/blog-posts/${deleteId}`, { method: "DELETE" });
+    await refresh();
+  }
 });
 
 loadCostSettings();
