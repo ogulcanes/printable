@@ -22,14 +22,14 @@ KEYCHAIN_PRODUCTS.push(
 );
 
 const CATALOG_IMAGES = {
-  "1087902": "/assets/anahtarlik-katalog/1087902.png", "1675119": "/assets/anahtarlik-katalog/1675119.png",
-  "3100409": "/assets/anahtarlik-katalog/3100409.png", "3074928": "/assets/anahtarlik-katalog/3074928.png",
-  "2955443": "/assets/anahtarlik-katalog/2955443.png", "3040546": "/assets/anahtarlik-katalog/3040546.png",
-  "2977192": "/assets/anahtarlik-katalog/2977192.png", "3177321": "/assets/anahtarlik-katalog/3177321.png",
-  "2711840": "/assets/anahtarlik-katalog/2711840.png", "2547479": "/assets/anahtarlik-katalog/2547479.png",
-  "2390909": "/assets/anahtarlik-katalog/2390909.png", "2332414": "/assets/anahtarlik-katalog/2332414.png",
-  "2273139": "/assets/anahtarlik-katalog/2273139.png", "2196891": "/assets/anahtarlik-katalog/2196891.png",
-  "2215493": "/assets/anahtarlik-katalog/2215493.png", "2139940": "/assets/anahtarlik-katalog/2139940.png"
+  "1087902": "/assets/anahtarlik-katalog/1087902.jpg", "1675119": "/assets/anahtarlik-katalog/1675119.jpg",
+  "3100409": "/assets/anahtarlik-katalog/3100409.jpg", "3074928": "/assets/anahtarlik-katalog/3074928.jpg",
+  "2955443": "/assets/anahtarlik-katalog/2955443.jpg", "3040546": "/assets/anahtarlik-katalog/3040546.jpg",
+  "2977192": "/assets/anahtarlik-katalog/2977192.jpg", "3177321": "/assets/anahtarlik-katalog/3177321.jpg",
+  "2711840": "/assets/anahtarlik-katalog/2711840.jpg", "2547479": "/assets/anahtarlik-katalog/2547479.jpg",
+  "2390909": "/assets/anahtarlik-katalog/2390909.jpg", "2332414": "/assets/anahtarlik-katalog/2332414.jpg",
+  "2273139": "/assets/anahtarlik-katalog/2273139.jpg", "2196891": "/assets/anahtarlik-katalog/2196891.jpg",
+  "2215493": "/assets/anahtarlik-katalog/2215493.jpg", "2139940": "/assets/anahtarlik-katalog/2139940.jpg"
 };
 KEYCHAIN_PRODUCTS.forEach((product) => {
   if (CATALOG_IMAGES[product.id]) product.img = CATALOG_IMAGES[product.id];
