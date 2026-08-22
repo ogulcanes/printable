@@ -7944,6 +7944,9 @@ body.catalog-view-table .catalog-table-view { display: block; overflow-x: auto; 
   overflow: hidden;
 }
 .keychain-card__thumb img { width: 100%; height: 100%; object-fit: cover; }
+.keychain-card__fallback { display: grid; place-content: center; gap: 5px; width: 100%; height: 100%; padding: 18px; color: #fff; background: linear-gradient(135deg, #171f91, #665eea); text-align: center; }
+.keychain-card__fallback span { font-size: 2rem; font-weight: 800; letter-spacing: -.08em; }
+.keychain-card__fallback small { max-width: 116px; font-weight: 700; line-height: 1.25; }
 
 .keychain-card__tag {
   position: absolute;
