@@ -51,6 +51,9 @@ const SESSION_SECRET = process.env.SESSION_SECRET || "local-printable-session-se
    Bu durumda sunucuyu komple düşürmüyoruz — vitrin çalışmaya devam etsin — ama
    admin girişini kapatıyoruz: müşteriye kapalı dükkan, saldırgana açık kasa demek. */
 const IS_PRODUCTION = Boolean(process.env.VERCEL || process.env.NODE_ENV === "production");
+// Blog stays reachable by its direct URL while it is being reviewed, but it is
+// not advertised or indexed until BLOG_DISCOVERABLE=1 is explicitly enabled.
+const BLOG_DISCOVERABLE = process.env.BLOG_DISCOVERABLE === "1";
 const ADMIN_LOCKED = IS_PRODUCTION && ["ADMIN_PASSWORD", "SESSION_SECRET"].some((key) => !process.env[key]);
 if (ADMIN_LOCKED) {
   console.error("UYARI: ADMIN_PASSWORD veya SESSION_SECRET tanımlı değil — admin paneli kilitlendi.");
@@ -1910,7 +1913,7 @@ async function renderHeader(active, customer) {
         <nav class="main-links" id="main-links" aria-label="Ana menü">
           ${await link("/", "Ana Sayfa", "home")}
           ${await link("/urunler", "Ürünler", "urunler")}
-          ${await link("/blog", "Blog", "blog")}
+          ${BLOG_DISCOVERABLE ? await link("/blog", "Blog", "blog") : ""}
           ${await link("/tasarim", "Özel Tasarım", "tasarim")}
           ${await link("/hakkinda", "Hakkımızda", "hakkinda")}
           ${await link("/iletisim", "İletişim", "iletisim")}
@@ -2565,7 +2568,7 @@ app.get("/sitemap.xml", async (req, res) => {
     { loc: "/", priority: "1.0" },
     { loc: "/landing", priority: "0.9" },
     { loc: "/urunler", priority: "0.9" },
-    { loc: "/blog", priority: "0.8" },
+    ...(BLOG_DISCOVERABLE ? [{ loc: "/blog", priority: "0.8" }] : []),
     { loc: "/stl-teklif", priority: "0.8" },
     { loc: "/tasarim", priority: "0.7" },
     { loc: "/hakkinda", priority: "0.5" },
@@ -2586,13 +2589,15 @@ app.get("/sitemap.xml", async (req, res) => {
     priority: "0.7",
     lastmod: String(p.updated_at instanceof Date ? p.updated_at.toISOString() : p.updated_at || "").slice(0, 10)
   }));
-  await publishDueBlogPosts();
-  const publishedPosts = await db.prepare("SELECT slug, status, published_at, updated_at FROM blog_posts WHERE status = 'published' ORDER BY id").all();
-  publishedPosts.filter(blogIsPublic).forEach((post) => urls.push({
-    loc: `/blog/${post.slug}`,
-    priority: "0.7",
-    lastmod: String(post.updated_at instanceof Date ? post.updated_at.toISOString() : post.updated_at || "").slice(0, 10)
-  }));
+  if (BLOG_DISCOVERABLE) {
+    await publishDueBlogPosts();
+    const publishedPosts = await db.prepare("SELECT slug, status, published_at, updated_at FROM blog_posts WHERE status = 'published' ORDER BY id").all();
+    publishedPosts.filter(blogIsPublic).forEach((post) => urls.push({
+      loc: `/blog/${post.slug}`,
+      priority: "0.7",
+      lastmod: String(post.updated_at instanceof Date ? post.updated_at.toISOString() : post.updated_at || "").slice(0, 10)
+    }));
+  }
 
   const body = urls.map((u) => {
     const loc = escapeHtml(absoluteUrl(req, u.loc, site.site_url));
@@ -2650,7 +2655,7 @@ async function blogMetaTags(req, post) {
     `<title>${escapeHtml(title)}</title>`, FAVICON_TAGS,
     description && `<meta name="description" content="${escapeHtml(description)}">`,
     post.meta_keywords && `<meta name="keywords" content="${escapeHtml(post.meta_keywords)}">`,
-    `<meta name="robots" content="${escapeHtml(post.robots || "index,follow")}">`,
+    `<meta name="robots" content="${BLOG_DISCOVERABLE ? escapeHtml(post.robots || "index,follow") : "noindex,follow"}">`,
     `<link rel="canonical" href="${escapeHtml(canonical)}">`,
     `<meta property="og:type" content="article">`,
     `<meta property="og:locale" content="tr_TR">`,
@@ -2677,8 +2682,9 @@ app.get("/blog", async (req, res) => {
   const posts = (await db.prepare("SELECT * FROM blog_posts WHERE status = 'published' ORDER BY published_at DESC NULLS LAST, id DESC").all())
     .filter(blogIsPublic);
   const html = fs.readFileSync(path.join(ROOT, "blog.html"), "utf8");
+  const blogHead = (await seoHead(req, "blog")).replace(/<meta name="robots" content="[^"]*">/, `<meta name="robots" content="${BLOG_DISCOVERABLE ? "index,follow" : "noindex,follow"}">`);
   res.type("html").send(await injectShell(html
-    .replace("<!--seo-->", await seoHead(req, "blog"))
+    .replace("<!--seo-->", blogHead)
     .replace("<!--blog-list-->", posts.map(blogCardHTML).join("") || '<p class="blog-empty">Yeni yazılar çok yakında burada olacak.</p>'), "blog", await pageCustomer(req, res)));
 });
 
