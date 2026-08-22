@@ -17,7 +17,8 @@ KEYCHAIN_PRODUCTS.push(
   { id: "2332414", name: "Bob the Minion Mini Flexi", tag: "Esnek / Eklemli", note: "Mini eklemli karakter figürü", img: "", url: "https://makerworld.com/tr/models/2332414-bob-the-minion-mini-flexi-articulated-figure" },
   { id: "2273139", name: "Hulk Mini Flexi Figür", tag: "Esnek / Eklemli", note: "Mini eklemli süper kahraman figürü", img: "", url: "https://makerworld.com/tr/models/2273139-hulk-mini-flexi-articulated-superhero-figure" },
   { id: "2196891", name: "Darwin Watterson Mini Flexi", tag: "Esnek / Eklemli", note: "Gumball temalı mini figür", img: "", url: "https://makerworld.com/tr/models/2196891-darwin-watterson-mini-flexi-gumball" },
-  { id: "2215493", name: "Harry Potter Mini Flexi", tag: "Esnek / Eklemli", note: "Mini eklemli sihirbaz figürü", img: "", url: "https://makerworld.com/tr/models/2215493-harry-potter-mini-flexi-articulated-wizard" }
+  { id: "2215493", name: "Harry Potter Mini Flexi", tag: "Esnek / Eklemli", note: "Mini eklemli sihirbaz figürü", img: "", url: "https://makerworld.com/tr/models/2215493-harry-potter-mini-flexi-articulated-wizard" },
+  { id: "2139940", name: "Gumball Mini Flexi", tag: "Esnek / Eklemli", note: "Mini esnek Gumball karakter anahtarlığı", img: "", url: "https://makerworld.com/tr/models/2139940-gumball-mini-flexi-keychain" }
 );
 
 (function () {
