@@ -60,6 +60,22 @@
       ? Math.round((1 - product.sale_price / product.price) * 100)
       : 0;
 
+  /* Kampanya etiketi yalnızca öne çıkarılan %10 ve %20 gruplarında görünür.
+     Genel %5 indirimi fiyata yansır ama kartı etiket kalabalığına çevirmez. */
+  const promotionBadge = (product) => {
+    const off = discountPercent(product);
+    if (off >= 20) return { off, tier: "deal", label: "Fırsat" };
+    if (off >= 10) return { off, tier: "special", label: "Özel İndirim" };
+    return null;
+  };
+
+  const promotionBadgeHTML = (product, baseClass = "discount-badge") => {
+    const badge = promotionBadge(product);
+    return badge
+      ? `<span class="${baseClass} campaign-badge campaign-badge--${badge.tier}">${badge.label} · %${badge.off}</span>`
+      : "";
+  };
+
   const stars = (rating) => {
     const rounded = Math.round(Number(rating) || 0);
     return `<span class="stars" aria-label="5 üzerinden ${rating}">${"★".repeat(rounded)}${"☆".repeat(5 - rounded)}</span>`;
@@ -75,8 +91,8 @@
     : "";
 
   function productCardHTML(product) {
-    const off = discountPercent(product);
     const scales = productScales(product);
+    const badgeHTML = !scales.length ? promotionBadgeHTML(product) : "";
     /* Ölçekli üründe indirim rozeti ve üstü çizili fiyat gösterilmiyor: fiyat
        ölçekten geliyor, sale_price o üründe uygulanmıyor (bkz. displayPrice). */
     const priceHTML = scales.length
@@ -95,7 +111,7 @@
        Detay şablonu zaten kaçışlıyordu; kart unutulmuştu. */
     return `
     <article class="product-card">
-      ${off && !scales.length ? `<span class="discount-badge">-%${off}</span>` : ""}
+      ${badgeHTML}
       <a class="product-card__link" href="/urun/${product.id}">
         <img src="${escapeHtml(gorselAdresi(product.image_path, 500) || "/assets/printable-logo.svg")}" alt="${escapeHtml(product.image_alt || product.name)}" loading="lazy">
         <h3>${escapeHtml(product.name)}</h3>
@@ -161,7 +177,7 @@
     const price = olcek ? olcek.price : (product.sale_price || product.price);
     const inStock = product.stock > 0;
     const onSale = !olcekler.length && product.sale_price && product.price > product.sale_price;
-    const off = onSale ? Math.round((1 - product.sale_price / product.price) * 100) : 0;
+    const badgeHTML = onSale ? promotionBadgeHTML(product) : "";
     const cats = (product.categories || [])
       .map((c) => `<a class="chip" href="/urunler?kategori=${c.id}">${escapeHtml(c.name)}</a>`).join("");
 
@@ -225,7 +241,7 @@
                  <span>${product.rating.average} · ${product.rating.count} değerlendirme</span></a>`
             : `<a class="product-detail__rating product-detail__rating--empty" href="#reviews-section">${stars(0)}
                  <span>Henüz değerlendirilmemiş</span></a>`}
-          <p class="product-detail__price">${money(price)}${onSale ? ` <s>${money(product.price)}</s> <span class="discount-badge">-%${off}</span>` : ""}</p>
+          <p class="product-detail__price">${money(price)}${onSale ? ` <s>${money(product.price)}</s>${badgeHTML ? ` ${badgeHTML}` : ""}` : ""}</p>
           ${onSale ? `<p class="product-detail__save">${money(product.price - product.sale_price)} tasarruf edin</p>` : ""}
           <p class="product-detail__tax">KDV dahil · Kargo alıcı ödemeli</p>
           ${olcekSecici}
@@ -267,12 +283,11 @@ function preferredProductList(active, ids, limit, excluded = new Set()) {
 }
 
 function commerceStageCardHTML(product, index) {
-  const off = discountPercent(product);
   const scales = productScales(product);
   const inStock = Number(product.stock) > 0;
   return `
     <article class="commerce-product${index === 0 ? " commerce-product--lead" : ""}">
-      ${off ? `<span class="commerce-product__discount">%${off} indirim</span>` : ""}
+      ${!scales.length ? promotionBadgeHTML(product, "commerce-product__discount") : ""}
       <a href="/urun/${product.id}">
         <img src="${gorselAdresi(product.image_path, index === 0 ? 900 : 500) || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" ${index === 0 ? 'fetchpriority="high"' : 'loading="eager"'}>
       </a>
@@ -286,7 +301,7 @@ function commerceStageCardHTML(product, index) {
 }
 
   const disaAktar = {
-    escapeHtml, money, stars, productScales, displayPrice, discountPercent, ratingHTML,
+    escapeHtml, money, stars, productScales, displayPrice, discountPercent, promotionBadge, promotionBadgeHTML, ratingHTML,
     productCardHTML, productDetailHTML, commerceStageCardHTML, preferredProductList, gorselAdresi,
     olceklerOf, seciliOlcek, galeriKareleri, anaMedyaHTML, galeriMedyaTuru
   };

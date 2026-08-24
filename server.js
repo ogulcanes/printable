@@ -126,7 +126,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "34";
+const SCHEMA_VERSION = "35";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -1226,6 +1226,69 @@ if (urunFiyatRevizyonu?.value !== URUN_FIYAT_REVIZYONU) {
           price = ROUND(price * 60) / 100,
           updated_at = NOW()
       WHERE price > 0
+    `).run();
+  });
+}
+
+/* Kampanya fiyatlarını bir kez ve atomik olarak uygula:
+   1) Her ürünün normal fiyatını %20 yükselt.
+   2) Fırsat grubuna %20, özel indirim grubuna %10, kalanlara %5 indirim tanımla.
+   SKU'su olan seed ürünlerini SKU ile seçiyoruz; sonradan eklenen canlı ürünler için
+   sabit ürün kimliklerini kullanıyoruz. Sipariş satırları bağımsız fiyat tuttuğundan
+   geçmiş sipariş tutarları değişmez. */
+const URUN_KAMPANYA_REVIZYONU = "2026-08-normal-arti20-kademeli-indirim";
+const urunKampanyaRevizyonu = await db.prepare("SELECT value FROM app_meta WHERE key = 'product_campaign_rev'").get();
+if (urunKampanyaRevizyonu?.value !== URUN_KAMPANYA_REVIZYONU) {
+  const firsatKosulu = "(sku IN ('PR-3D-002') OR id IN (21, 22, 28, 35, 39, 48, 49, 50, 53))";
+  const ozelIndirimKosulu = "(sku IN ('PR-3D-001', 'PR-3D-003', 'PR-3D-006', 'PR-3D-008', 'PR-3D-013', 'PR-3D-016') OR id IN (24, 26, 38, 54))";
+  const revisedProductsSql = `
+    SELECT id,
+           ROUND(price * 120) / 100 AS new_price,
+           CASE
+             WHEN ${firsatKosulu} THEN ROUND((ROUND(price * 120) / 100) * 80) / 100
+             WHEN ${ozelIndirimKosulu} THEN ROUND((ROUND(price * 120) / 100) * 90) / 100
+             ELSE ROUND((ROUND(price * 120) / 100) * 95) / 100
+           END AS new_sale_price
+    FROM products
+    WHERE price > 0
+  `;
+
+  await db.transaction(async (tx) => {
+    // Eşzamanlı iki serverless başlangıcından yalnızca biri kampanyayı uygular.
+    const claim = await tx.prepare(`
+      INSERT INTO app_meta (key, value) VALUES ('product_campaign_rev', ?)
+      ON CONFLICT (key) DO UPDATE SET value = excluded.value
+      WHERE app_meta.value <> excluded.value
+    `).run(URUN_KAMPANYA_REVIZYONU);
+    if (!claim.changes) return;
+
+    await tx.prepare(`
+      WITH revised AS (${revisedProductsSql})
+      INSERT INTO price_history (product_id, price, sale_price)
+      SELECT id, new_price, new_sale_price FROM revised
+    `).run();
+
+    /* Ölçek fiyatı doğrudan satış fiyatıdır; ürünün normal/sale_price alanları bu
+       ürünlerde kullanılmadığı için aynı kampanyanın net oranını ölçeğe uygula. */
+    await tx.prepare(`
+      UPDATE product_cost_scales
+      SET price = CASE
+            WHEN product_id IN (SELECT id FROM products WHERE ${firsatKosulu}) THEN ROUND(price * 96) / 100
+            WHEN product_id IN (SELECT id FROM products WHERE ${ozelIndirimKosulu}) THEN ROUND(price * 108) / 100
+            ELSE ROUND(price * 114) / 100
+          END,
+          updated_at = NOW()
+      WHERE price IS NOT NULL AND price > 0
+    `).run();
+
+    await tx.prepare(`
+      WITH revised AS (${revisedProductsSql})
+      UPDATE products
+      SET price = revised.new_price,
+          sale_price = revised.new_sale_price,
+          updated_at = NOW()
+      FROM revised
+      WHERE products.id = revised.id
     `).run();
   });
 }

@@ -205,12 +205,11 @@ function renderFeaturePanel(product) {
   if (!panel) return;
   if (!product) { panel.hidden = true; return; }
 
-  const off = discountPercent(product);
   const scales = productScales(product);
   const price = displayPrice(product);
   panel.innerHTML = `
     <a class="feature-panel__media" href="/urun/${product.id}">
-      ${off && !scales.length ? `<span class="discount-badge">-%${off}</span>` : ""}
+      ${!scales.length ? promotionBadgeHTML(product) : ""}
       <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" loading="lazy">
     </a>
     <div class="feature-panel__body">
@@ -237,7 +236,7 @@ function landingShelfCardHTML(product) {
   return `
     <article class="landing-shelf-product">
       <a class="landing-shelf-product__media" href="/urun/${product.id}">
-        ${off ? `<span>%${off} indirim</span>` : ""}
+        ${!scales.length ? promotionBadgeHTML(product, "landing-shelf-product__discount") : ""}
         <img src="${product.image_path || "/assets/printable-logo.svg"}" alt="${product.image_alt || product.name}" loading="lazy">
       </a>
       <div class="landing-shelf-product__body">
@@ -311,7 +310,7 @@ function renderFidgetSpotlight(active) {
         </ul>
         <div class="spinball-spotlight__buy">
           <div>
-            ${off ? `<span class="fidget-discount">%${off} indirim</span>` : ""}
+            ${promotionBadgeHTML(spinball, "fidget-discount")}
             <strong>${money(currentPrice)}</strong>
             ${off ? `<s>${money(spinball.price)}</s>` : ""}
             <small>${inStock ? `${spinball.stock} adet stokta` : "Stokta yok"}</small>

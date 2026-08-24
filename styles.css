@@ -8861,3 +8861,23 @@ body.promo-modal-open .discovery-popup { display: none; }
 @media (min-width: 1051px) {
   .main-links a { padding-inline: 12px; }
 }
+
+/* ---- Kademeli kampanya etiketleri ----
+   %5 indirimi fiyat üzerinde görünür, ancak kartlarda rozet oluşturmaz. */
+.campaign-badge { white-space: nowrap; }
+.discount-badge.campaign-badge--deal,
+.commerce-product__discount.campaign-badge--deal,
+.landing-shelf-product__media > .campaign-badge--deal,
+.fidget-discount.campaign-badge--deal {
+  background: linear-gradient(135deg, #f0442f, #ff7653);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(240, 68, 47, .28);
+}
+.discount-badge.campaign-badge--special,
+.commerce-product__discount.campaign-badge--special,
+.landing-shelf-product__media > .campaign-badge--special,
+.fidget-discount.campaign-badge--special {
+  background: #252a74;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(37, 42, 116, .24);
+}

@@ -45,6 +45,7 @@ global.fetch = async (url, options = {}) => {
 const app = require("./server.js");
 const db = require("./db.js");
 const keychainProducts = require("./anahtarlik-katalog.js");
+const productTemplates = require("./product-templates.js");
 let server;
 let baseUrl;
 
@@ -65,23 +66,54 @@ test.before(async () => {
   });
 });
 
-test("Ürün normal fiyatları yalnızca bir kez yüzde 40 düşürülür", async () => {
-  // İlk istek şema/seed kurulumunu ve tek seferlik fiyat revizyonunu çalıştırır.
+test("Kademeli ürün kampanyası yalnızca bir kez uygulanır", async () => {
+  // İlk istek şema/seed kurulumunu ve tek seferlik fiyat revizyonlarını çalıştırır.
   const { response } = await request("/api/products");
   assert.equal(response.status, 200);
 
-  const product = await db.prepare("SELECT id, price FROM products WHERE sku = 'PR-3D-001'").get();
-  const formerSale = await db.prepare("SELECT price, sale_price FROM products WHERE sku = 'PR-3D-002'").get();
+  const special = await db.prepare("SELECT id, price, sale_price FROM products WHERE sku = 'PR-3D-001'").get();
+  const deal = await db.prepare("SELECT price, sale_price FROM products WHERE sku = 'PR-3D-002'").get();
   const history = await db.prepare(`
     SELECT COUNT(*)::int count, MIN(price) min_price, MAX(price) max_price
     FROM price_history WHERE product_id = ?
-  `).get(product.id);
+  `).get(special.id);
   const revision = await db.prepare("SELECT value FROM app_meta WHERE key = 'products_price_rev'").get();
+  const campaignRevision = await db.prepare("SELECT value FROM app_meta WHERE key = 'product_campaign_rev'").get();
 
-  assert.equal(product.price, 119.4);
-  assert.deepEqual(formerSale, { price: 179.4, sale_price: null });
-  assert.deepEqual(history, { count: 1, min_price: 119.4, max_price: 119.4 });
+  assert.deepEqual(special, { id: special.id, price: 143.28, sale_price: 128.95 });
+  assert.deepEqual(deal, { price: 215.28, sale_price: 172.22 });
+  assert.deepEqual(history, { count: 2, min_price: 119.4, max_price: 143.28 });
   assert.equal(revision.value, "2026-08-tum-urunler-yuzde-40-indirim");
+  assert.equal(campaignRevision.value, "2026-08-normal-arti20-kademeli-indirim");
+
+  const secondRequest = await request("/api/products");
+  assert.equal(secondRequest.response.status, 200);
+  const unchanged = await db.prepare("SELECT price, sale_price FROM products WHERE sku = 'PR-3D-001'").get();
+  assert.deepEqual(unchanged, { price: 143.28, sale_price: 128.95 });
+});
+
+test("Yüzde 20 ve yüzde 10 indirimleri ayrı etiketlenir, yüzde 5 etiketsiz kalır", () => {
+  const fixture = (salePrice) => ({
+    id: 999,
+    name: "Kampanya Test Ürünü",
+    price: 100,
+    sale_price: salePrice,
+    stock: 10,
+    image_path: "/assets/printable-logo.svg",
+    colors: [],
+    scales: []
+  });
+
+  const dealHTML = productTemplates.productCardHTML(fixture(80));
+  const specialHTML = productTemplates.productCardHTML(fixture(90));
+  const generalHTML = productTemplates.productCardHTML(fixture(95));
+
+  assert.match(dealHTML, /campaign-badge--deal/);
+  assert.match(dealHTML, /Fırsat · %20/);
+  assert.match(specialHTML, /campaign-badge--special/);
+  assert.match(specialHTML, /Özel İndirim · %10/);
+  assert.match(generalHTML, /<s>/);
+  assert.doesNotMatch(generalHTML, /campaign-badge|Fırsat|Özel İndirim/);
 });
 
 test.after(async () => {
