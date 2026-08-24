@@ -9,6 +9,7 @@ const state = {
   quotes: [],
   messages: [],
   reviews: [],
+  customerShowcases: [],
   campaigns: [],
   subscribers: [],
   adminUsers: [],
@@ -750,6 +751,34 @@ function renderReviews() {
   `).join("") || "<p>Henüz yorum yok.</p>";
 }
 
+function renderCustomerShowcases() {
+  const published = state.customerShowcases.filter((item) => item.is_active && item.consent_confirmed).length;
+  qs("#customer-showcase-count").textContent =
+    `${state.customerShowcases.length} paylaşım · ${published} yayında`;
+  qs("#customer-showcase-list").innerHTML = state.customerShowcases.map((item) => `
+    <article class="row">
+      <img src="${escapeHtml(item.image_path)}" alt="">
+      <div>
+        <h3>${escapeHtml(item.customer_name)}${item.product_name ? ` — ${escapeHtml(item.product_name)}` : ""}</h3>
+        <p>${escapeHtml(item.comment) || "Kısa not eklenmemiş."}</p>
+        <div class="meta-line">
+          <span class="badge ${item.is_active && item.consent_confirmed ? "green" : "orange"}">${item.is_active && item.consent_confirmed ? "Yayında" : "Taslak / gizli"}</span>
+          <span class="badge">${starsHtml(item.rating)}</span>
+          ${item.city ? `<span class="badge blue">${escapeHtml(item.city)}</span>` : ""}
+          ${item.is_featured ? '<span class="badge blue">Ana sayfada öne çıkar</span>' : ""}
+          <span class="badge ${item.consent_confirmed ? "green" : "orange"}">${item.consent_confirmed ? "Yayın izni var" : "İzin bekleniyor"}</span>
+          <span class="badge">Sıra ${item.sort_order}</span>
+          <span class="badge">${formatDateTime(item.created_at)}</span>
+        </div>
+      </div>
+      <div class="row-actions">
+        <button data-edit-customer-showcase="${item.id}">Düzenle</button>
+        <button class="danger" data-delete-customer-showcase="${item.id}">Sil</button>
+      </div>
+    </article>
+  `).join("") || "<p>Henüz müşteri fotoğrafı eklenmemiş.</p>";
+}
+
 /* ---------- kampanyalar ---------- */
 
 const campaignRule = (c) => {
@@ -832,7 +861,7 @@ function renderCampaignOptions(campaign) {
 }
 
 async function refresh() {
-  const [stats, products, customers, orders, slides, categories, colors, materials, quotes, pricing, tiers, seo, messages, reviews, campaigns, subscribers, adminUsers, settings, katlac, blogPosts] = await Promise.all([
+  const [stats, products, customers, orders, slides, categories, colors, materials, quotes, pricing, tiers, seo, messages, reviews, customerShowcases, campaigns, subscribers, adminUsers, settings, katlac, blogPosts] = await Promise.all([
     api("/api/stats"),
     api("/api/products"),
     api("/api/customers"),
@@ -847,6 +876,7 @@ async function refresh() {
     api("/api/seo"),
     api("/api/messages"),
     api("/api/reviews"),
+    api("/api/customer-showcases?all=1"),
     api("/api/campaigns"),
     api("/api/subscribers"),
     api("/api/admin-users"),
@@ -867,6 +897,7 @@ async function refresh() {
   state.seo = seo;
   state.messages = messages;
   state.reviews = reviews;
+  state.customerShowcases = customerShowcases;
   state.campaigns = campaigns;
   state.adminUsers = adminUsers;
   state.settings = settings;
@@ -888,6 +919,7 @@ async function refresh() {
   renderQuotes();
   renderMessages();
   renderReviews();
+  renderCustomerShowcases();
   renderCampaigns();
   renderSubscribers();
   renderAdminUsers();
@@ -1899,6 +1931,58 @@ qs("#review-list").addEventListener("click", async (event) => {
   }
   if (deleteId && confirm("Bu yorum silinsin mi?")) {
     await api(`/api/reviews/${deleteId}`, { method: "DELETE" });
+    await refresh();
+  }
+});
+
+function resetCustomerShowcaseForm() {
+  const form = qs("#customer-showcase-form");
+  form.reset();
+  form.elements.id.value = "";
+  form.elements.image_url.value = "";
+  form.elements.rating.value = "5";
+  form.elements.sort_order.value = "0";
+  form.elements.is_active.checked = true;
+}
+
+qs("#customer-showcase-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const formData = new FormData(form);
+  ["consent_confirmed", "is_featured", "is_active"].forEach((key) => {
+    formData.set(key, form.elements[key].checked ? "1" : "0");
+  });
+  await hoistImageUpload(formData);
+  const id = formData.get("id");
+  await api(id ? `/api/customer-showcases/${id}` : "/api/customer-showcases", {
+    method: id ? "PUT" : "POST",
+    body: formData
+  });
+  resetCustomerShowcaseForm();
+  await refresh();
+});
+
+qs("#reset-customer-showcase").addEventListener("click", resetCustomerShowcaseForm);
+
+qs("#customer-showcase-list").addEventListener("click", async (event) => {
+  const editId = event.target.dataset.editCustomerShowcase;
+  const deleteId = event.target.dataset.deleteCustomerShowcase;
+  if (editId) {
+    const item = state.customerShowcases.find((entry) => entry.id === Number(editId));
+    if (!item) return;
+    const form = qs("#customer-showcase-form");
+    form.elements.id.value = item.id;
+    form.elements.image_url.value = item.image_path || "";
+    ["customer_name", "city", "product_name", "comment", "rating", "image_alt", "sort_order"].forEach((key) => {
+      form.elements[key].value = item[key] ?? "";
+    });
+    form.elements.consent_confirmed.checked = Boolean(item.consent_confirmed);
+    form.elements.is_featured.checked = Boolean(item.is_featured);
+    form.elements.is_active.checked = Boolean(item.is_active);
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  if (deleteId && confirm("Bu müşteri paylaşımı kalıcı olarak silinsin mi?")) {
+    await api(`/api/customer-showcases/${deleteId}`, { method: "DELETE" });
     await refresh();
   }
 });

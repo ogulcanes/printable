@@ -174,6 +174,68 @@ test("Özel parça tasarım talebi panel kaydı ve mağaza e-postası oluşturur
   assert.equal(row.subject, "Özel parça tasarım talebi");
 });
 
+test("Sizden Gelenler paylaşımları izin kontrolüyle yönetilir ve vitrinde görünür", async () => {
+  const login = await realFetch(`${baseUrl}/api/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "ogulcan", password: "email-test-admin-password" })
+  });
+  assert.equal(login.status, 200);
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+
+  const form = new FormData();
+  form.set("customer_name", "Ayşe K.");
+  form.set("city", "İstanbul");
+  form.set("product_name", "HelixCore Fidget Topu");
+  form.set("comment", "Rengi ve baskı kalitesi çok güzel.");
+  form.set("rating", "5");
+  form.set("image_url", "/assets/tasarim/olcuye-gore-adaptor.jpg");
+  form.set("image_alt", "Müşterinin masasında 3D baskı ürün");
+  form.set("is_featured", "1");
+  form.set("is_active", "1");
+
+  const withoutConsent = await realFetch(`${baseUrl}/api/customer-showcases`, {
+    method: "POST", headers: { Cookie: cookie }, body: form
+  });
+  assert.equal(withoutConsent.status, 400);
+
+  form.set("consent_confirmed", "1");
+  const created = await realFetch(`${baseUrl}/api/customer-showcases`, {
+    method: "POST", headers: { Cookie: cookie }, body: form
+  });
+  assert.equal(created.status, 201);
+  const item = await created.json();
+
+  const publicItems = await realFetch(`${baseUrl}/api/customer-showcases`).then((response) => response.json());
+  assert.equal(publicItems.length, 1);
+  assert.equal(publicItems[0].customer_name, "Ayşe K.");
+  assert.equal(Object.hasOwn(publicItems[0], "consent_confirmed"), false);
+
+  const homeHTML = await realFetch(`${baseUrl}/`).then((response) => response.text());
+  assert.match(homeHTML, /id="customer-stories-home-title">Sizden Gelenler</);
+  assert.match(homeHTML, /Rengi ve baskı kalitesi çok güzel/);
+  assert.match(homeHTML, /href="\/sizden-gelenler">Tüm paylaşımları gör/);
+
+  const page = await realFetch(`${baseUrl}/sizden-gelenler`);
+  const pageHTML = await page.text();
+  assert.equal(page.status, 200);
+  assert.match(pageHTML, /<h1>Sizden Gelenler<\/h1>/);
+  assert.match(pageHTML, /Ayşe K\./);
+  assert.match(pageHTML, /5 üzerinden · 1 müşteri paylaşımı/);
+  assert.match(pageHTML, /Yalnızca yayın izni verilen paylaşımlar gösterilir/);
+
+  const adminPage = await realFetch(`${baseUrl}/admin`, { headers: { Cookie: cookie } });
+  const adminHTML = await adminPage.text();
+  assert.equal(adminPage.status, 200);
+  assert.match(adminHTML, /data-tab="customer-showcases"/);
+  assert.match(adminHTML, /Müşteri fotoğrafın sitede yayınlanmasına izin verdi/);
+
+  const removed = await realFetch(`${baseUrl}/api/customer-showcases/${item.id}`, {
+    method: "DELETE", headers: { Cookie: cookie }
+  });
+  assert.equal(removed.status, 204);
+});
+
 test("Toplu anahtarlık talebi adet kurallarını uygular, panele ve e-postaya düşer", async () => {
   const page = await realFetch(`${baseUrl}/anahtarlik-katalogu`);
   const html = await page.text();

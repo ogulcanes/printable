@@ -33,11 +33,12 @@
         <button class="tab" data-tab="customers"><span>10</span>Müşteriler</button>
         <button class="tab" data-tab="messages"><span>11</span>Mesajlar & Tasarım</button>
         <button class="tab" data-tab="reviews"><span>12</span>Yorumlar</button>
-        <button class="tab" data-tab="campaigns"><span>13</span>Kampanyalar</button>
-        <button class="tab" data-tab="admins"><span>14</span>Yöneticiler</button>
-        <button class="tab" data-tab="katlac"><span>15</span>Katlaç</button>
-        <button class="tab" data-tab="cost"><span>16</span>Maliyet</button>
-        <button class="tab" data-tab="settings"><span>17</span>Ayarlar</button>
+        <button class="tab" data-tab="customer-showcases"><span>13</span>Sizden Gelenler</button>
+        <button class="tab" data-tab="campaigns"><span>14</span>Kampanyalar</button>
+        <button class="tab" data-tab="admins"><span>15</span>Yöneticiler</button>
+        <button class="tab" data-tab="katlac"><span>16</span>Katlaç</button>
+        <button class="tab" data-tab="cost"><span>17</span>Maliyet</button>
+        <button class="tab" data-tab="settings"><span>18</span>Ayarlar</button>
       </nav>
       <div class="sidebar-note">
         <strong>Vercel notu</strong>
@@ -82,6 +83,7 @@
               <button data-open-tab="banner">Banner düzenle</button>
               <button data-open-tab="categories">Kategori ekle</button>
               <button data-open-tab="products">Ürün ekle</button>
+              <button data-open-tab="customer-showcases">Müşteri fotoğrafı ekle</button>
               <button data-open-tab="customers">Müşteri ekle</button>
               <button data-open-tab="orders">Sipariş oluştur</button>
             </div>
@@ -747,6 +749,53 @@
           </div>
           <p class="form-note">Müşteri yorumları onaylanana kadar sitede görünmez. Onayladığınız yorumlar ürün sayfasında yayınlanır ve ürünün yıldız ortalamasına katılır.</p>
           <div id="review-list" class="list"></div>
+        </div>
+      </section>
+
+      <section id="customer-showcases" class="panel">
+        <div class="grid-two">
+          <form id="customer-showcase-form" class="admin-card form-card" enctype="multipart/form-data">
+            <input type="hidden" name="id">
+            <div class="card-title"><h2>Müşteri Fotoğrafı Ekle / Düzenle</h2></div>
+            <p class="form-note">Müşterinin WhatsApp veya mesajla gönderdiği fotoğrafı buradan yayınlayın. Gizlilik için tam ad yerine <strong>Ayşe K.</strong> gibi gösterilecek bir ad yazabilirsiniz.</p>
+            <label>Fotoğraf yükle<input name="image" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+            <label>veya fotoğraf URL'si<input name="image_url" placeholder="https://..."></label>
+            <div class="form-grid">
+              <label>Gösterilecek ad *<input name="customer_name" required maxlength="80" placeholder="Ayşe K."></label>
+              <label>Şehir<input name="city" maxlength="80" placeholder="İstanbul"></label>
+            </div>
+            <label>Ürün / çalışma adı<input name="product_name" maxlength="140" placeholder="HelixCore Fidget Topu"></label>
+            <label>Müşterinin kısa notu<textarea name="comment" rows="4" maxlength="600" placeholder="Rengi ve baskı kalitesi çok güzel, teşekkür ederim."></textarea></label>
+            <div class="form-grid">
+              <label>Yıldız puanı
+                <select name="rating">
+                  <option value="5">5 yıldız</option>
+                  <option value="4">4 yıldız</option>
+                  <option value="3">3 yıldız</option>
+                  <option value="2">2 yıldız</option>
+                  <option value="1">1 yıldız</option>
+                </select>
+              </label>
+              <label>Sıra<input name="sort_order" type="number" min="0" value="0"></label>
+            </div>
+            <label>Fotoğraf alt metni<input name="image_alt" maxlength="180" placeholder="Müşterinin masasında turuncu fidget topu"></label>
+            <label class="check"><input name="consent_confirmed" type="checkbox" required value="1"> Müşteri fotoğrafın sitede yayınlanmasına izin verdi</label>
+            <label class="check"><input name="is_featured" type="checkbox" value="1"> Ana sayfada önce göster</label>
+            <label class="check"><input name="is_active" type="checkbox" checked value="1"> Sitede yayınla</label>
+            <div class="actions">
+              <button type="submit">Paylaşımı kaydet</button>
+              <button type="button" class="ghost" id="reset-customer-showcase">Temizle</button>
+            </div>
+          </form>
+
+          <div class="admin-card">
+            <div class="card-title">
+              <h2>Sizden Gelenler</h2>
+              <span id="customer-showcase-count" class="count-pill">0 paylaşım</span>
+            </div>
+            <p class="form-note">Yalnızca izin onayı bulunan ve “Sitede yayınla” seçili kayıtlar müşterilere görünür.</p>
+            <div id="customer-showcase-list" class="list"></div>
+          </div>
         </div>
       </section>
 

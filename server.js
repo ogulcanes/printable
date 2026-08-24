@@ -126,7 +126,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "35";
+const SCHEMA_VERSION = "36";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -625,6 +625,31 @@ async function initDb() {
     FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
   );
 
+  /* Müşterilerin WhatsApp/mesaj yoluyla gönderdiği kullanım fotoğrafları.
+     Kayıtları yalnızca yönetici oluşturur; izin onayı olmayan içerik public
+     sorgularda hiçbir zaman dönmez. */
+  CREATE TABLE IF NOT EXISTS customer_showcases (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    customer_name TEXT NOT NULL,
+    city TEXT,
+    product_name TEXT,
+    comment TEXT,
+    rating INTEGER NOT NULL DEFAULT 5,
+    image_path TEXT NOT NULL,
+    image_alt TEXT,
+    consent_confirmed INTEGER NOT NULL DEFAULT 0,
+    is_featured INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 0,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (rating BETWEEN 1 AND 5)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_customer_showcases_public
+  ON customer_showcases (is_featured DESC, sort_order ASC, created_at DESC)
+  WHERE is_active = 1 AND consent_confirmed = 1;
+
   CREATE TABLE IF NOT EXISTS order_items (
     id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     order_id INTEGER NOT NULL,
@@ -1040,6 +1065,13 @@ const extraSeoPages = [
     description: "3D baskılı anahtarlık koleksiyonunu inceleyin; model ve adet seçerek toplu sipariş talebinizi doğrudan gönderin.",
     og_title: "Toptan Anahtarlık Kataloğu | Printable",
     og_description: "Anahtarlık modellerini ve adetlerini seçin, toplu sipariş talebinizi Printable'a gönderin."
+  },
+  {
+    slug: "sizden-gelenler", label: "Sizden Gelenler sayfası",
+    title: "Sizden Gelenler | Müşteri Fotoğrafları | Printable",
+    description: "Printable müşterilerinin evlerinden, masalarından ve günlük kullanımından gerçek 3D baskı ürün fotoğrafları ve kısa yorumlar.",
+    og_title: "Sizden Gelenler | Printable Müşteri Vitrini",
+    og_description: "3D baskı ürünlerimizin müşterilerimizden gelen fotoğraflarını ve deneyim notlarını keşfedin."
   }
 ];
 for (const page of extraSeoPages) await addSeoPage.run(page);
@@ -1712,6 +1744,7 @@ async function seoHead(req, slug) {
     sss: "Sıkça Sorulan Sorular",
     katalog: "Katalog",
     "anahtarlik-katalogu": "Toptan Anahtarlık Kataloğu",
+    "sizden-gelenler": "Sizden Gelenler",
     landing: "Ürün Seçkisi",
     iade: "İade ve Cayma Hakkı",
     gizlilik: "Gizlilik ve KVKK",
@@ -2239,7 +2272,7 @@ async function renderFooter() {
       </div>
       <div class="container footer__grid">
         <div><h3>Kategoriler</h3><a href="/urunler">Figürler</a><a href="/urunler">Anahtarlıklar</a><a href="/urunler">Fidget & Stres</a><a href="/urunler">Düdükler</a></div>
-        <div><h3>Kurumsal</h3><a href="/katalog">Katalog</a><a href="/hakkinda">Hakkımızda</a><a href="/iletisim">İletişim</a><a href="/stl-teklif">Özel 3D baskı</a><a href="/tasarim">Özel tasarım</a><a href="/urunler">Tüm ürünler</a></div>
+        <div><h3>Kurumsal</h3><a href="/sizden-gelenler">Sizden Gelenler</a><a href="/katalog">Katalog</a><a href="/hakkinda">Hakkımızda</a><a href="/iletisim">İletişim</a><a href="/stl-teklif">Özel 3D baskı</a><a href="/tasarim">Özel tasarım</a><a href="/urunler">Tüm ürünler</a></div>
         <div><h3>Müşteri Desteği</h3><a href="/iletisim">Bize ulaşın</a><a href="/iade">İade & Değişim</a><a href="/sss">Kargo</a><a href="/sss">S.S.S.</a></div>
         <div><h3>Yasal</h3><a href="/mesafeli-satis">Mesafeli Satış Sözleşmesi</a><a href="/iade">İade ve Cayma Hakkı</a><a href="/gizlilik">Gizlilik ve KVKK</a></div>
         <div class="footer-logo printable-wordmark">
@@ -2432,6 +2465,66 @@ async function renderHero(sayfa) {
     .replace("<!--hero-metni-->", metin);
 }
 
+const customerShowcaseInitials = (name) => String(name || "Müşteri")
+  .trim().split(/\s+/).slice(0, 2).map((part) => part.charAt(0).toLocaleUpperCase("tr-TR")).join("");
+
+function customerShowcaseCardHTML(item) {
+  const rating = Math.max(1, Math.min(5, Number(item.rating) || 5));
+  const stars = `${"★".repeat(rating)}${"☆".repeat(5 - rating)}`;
+  const details = [item.city, item.product_name].filter(Boolean).map(escapeHtml).join(" · ");
+  const sharedAt = item.created_at
+    ? new Intl.DateTimeFormat("tr-TR", { month: "short", year: "numeric" }).format(new Date(item.created_at))
+    : "";
+  return `
+    <article class="customer-story-card" id="paylasim-${item.id}">
+      <div class="customer-story-card__media">
+        <img src="${escapeHtml(sablonlar.gorselAdresi(item.image_path, 900))}" alt="${escapeHtml(item.image_alt || `${item.customer_name} tarafından paylaşılan 3D baskı ürün fotoğrafı`)}" loading="lazy">
+        <span>Müşteri fotoğrafı</span>
+      </div>
+      <div class="customer-story-card__body">
+        <div class="customer-story-card__rating" aria-label="5 üzerinden ${rating} yıldız">
+          <span aria-hidden="true">${stars}</span>${sharedAt ? `<time>${escapeHtml(sharedAt)}</time>` : ""}
+        </div>
+        <blockquote><p>“${escapeHtml(item.comment || "Fotoğrafını bizimle paylaştı.")}”</p></blockquote>
+        <div class="customer-story-card__author">
+          <span aria-hidden="true">${escapeHtml(customerShowcaseInitials(item.customer_name))}</span>
+          <div><strong>${escapeHtml(item.customer_name)}</strong>${details ? `<small>${details}</small>` : ""}</div>
+        </div>
+      </div>
+    </article>`;
+}
+
+async function renderCustomerShowcases(sayfa) {
+  const items = await db.prepare(`
+    SELECT id, customer_name, city, product_name, comment, rating, image_path, image_alt,
+           is_featured, sort_order, created_at
+    FROM customer_showcases
+    WHERE is_active = 1 AND consent_confirmed = 1
+    ORDER BY is_featured DESC, sort_order ASC, created_at DESC, id DESC
+  `).all();
+  const empty = `
+    <div class="customer-stories-empty">
+      <strong>İlk müşteri kareleri hazırlanıyor.</strong>
+      <p>Siparişiniz ulaştığında fotoğrafını bizimle paylaşın; izninizle bu vitrinde yer verelim.</p>
+      <a href="/iletisim">Fotoğrafınızı bize gönderin</a>
+    </div>`;
+  const average = items.length
+    ? items.reduce((sum, item) => sum + Number(item.rating || 0), 0) / items.length
+    : 0;
+  const summary = items.length
+    ? `<strong>${average.toFixed(1).replace(".", ",")}</strong><span>5 üzerinden · ${items.length} müşteri paylaşımı</span>`
+    : `<strong>Yeni</strong><span>Müşteri fotoğrafları eklendikçe burada görünecek</span>`;
+
+  return sayfa
+    .replace("<!--customer-showcases-home-->", items.length
+      ? items.slice(0, 4).map(customerShowcaseCardHTML).join("")
+      : empty)
+    .replace("<!--customer-showcases-all-->", items.length
+      ? items.map(customerShowcaseCardHTML).join("")
+      : empty)
+    .replace("<!--customer-showcases-summary-->", summary);
+}
+
 /* Ana sayfa vitrinleri. Seçim mantığı script.js'teki ile BİREBİR aynı olmalı —
    JS aynı kutuları yeniden bastığında kartlar yer değiştirmesin. Eskiden ana
    sayfanın 1602 kelimesinin 1000'i yalnızca JS ile geliyordu; tarayıcı için
@@ -2540,6 +2633,7 @@ async function sendPage(req, res, file, slug) {
   if (sayfa.includes("<!--filtre-kategoriler-->")) sayfa = await renderProductFilters(sayfa, req.query);
   if (sayfa.includes("<!--urun-izgarasi-->")) sayfa = sayfa.replace("<!--urun-izgarasi-->", await renderProductGrid(req.query));
   if (sayfa.includes("<!--landing-vitrin-->")) sayfa = sayfa.replace("<!--landing-vitrin-->", await renderLandingStage());
+  if (sayfa.includes("<!--customer-showcases-")) sayfa = await renderCustomerShowcases(sayfa);
   if (sayfa.includes("<!--hero-slaytlari-->")) sayfa = await renderHero(sayfa);
   if (sayfa.includes("<!--vitrin-yeni-->")) sayfa = await renderHomeGrids(sayfa);
   res.type("html").send(await injectShell(sayfa, slug, await pageCustomer(req, res)));
@@ -2562,6 +2656,7 @@ app.get("/katlac-spinball", async (req, res) => res.redirect(301, "/landing"));
 app.get("/urunler", async (req, res) => await sendPage(req, res, "urunler.html", "urunler"));
 app.get("/stl-teklif", async (req, res) => await sendPage(req, res, "stl-teklif.html", "stl-teklif"));
 app.get("/tasarim", async (req, res) => await sendPage(req, res, "tasarim.html", "tasarim"));
+app.get("/sizden-gelenler", async (req, res) => await sendPage(req, res, "sizden-gelenler.html", "sizden-gelenler"));
 app.get("/hakkinda", async (req, res) => await sendPage(req, res, "hakkinda.html", "hakkinda"));
 app.get("/iletisim", async (req, res) => await sendPage(req, res, "iletisim.html", "iletisim"));
 app.get("/hesap", async (req, res) => await sendPage(req, res, "hesap.html", "hesap"));
@@ -2707,6 +2802,7 @@ app.get("/sitemap.xml", async (req, res) => {
     ...(BLOG_DISCOVERABLE ? [{ loc: "/blog", priority: "0.8" }] : []),
     { loc: "/stl-teklif", priority: "0.8" },
     { loc: "/tasarim", priority: "0.7" },
+    { loc: "/sizden-gelenler", priority: "0.7" },
     { loc: "/hakkinda", priority: "0.5" },
     { loc: "/iletisim", priority: "0.5" },
     { loc: "/katalog", priority: "0.8" },
@@ -4463,6 +4559,90 @@ app.put("/api/hero-slides/:id", requireAdmin, upload.single("image"), async (req
 
 app.delete("/api/hero-slides/:id", requireAdmin, async (req, res) => {
   await db.prepare("DELETE FROM hero_slides WHERE id = ?").run(req.params.id);
+  res.status(204).end();
+});
+
+const showcaseText = (value, max) => String(value || "").trim().slice(0, max) || null;
+const showcaseChecked = (value) => ["1", "true", "on"].includes(String(value || "").toLowerCase()) ? 1 : 0;
+
+function customerShowcasePayload(body, file, current = {}) {
+  const customerName = showcaseText(body.customer_name, 80);
+  const imagePath = resolveImagePath({ ...body, current_image: current.image_path }, file);
+  const rating = Math.max(1, Math.min(5, toInt(body.rating) || 5));
+  return {
+    customer_name: customerName,
+    city: showcaseText(body.city, 80),
+    product_name: showcaseText(body.product_name, 140),
+    comment: showcaseText(body.comment, 600),
+    rating,
+    image_path: imagePath,
+    image_alt: showcaseText(body.image_alt, 180),
+    consent_confirmed: showcaseChecked(body.consent_confirmed),
+    is_featured: showcaseChecked(body.is_featured),
+    is_active: showcaseChecked(body.is_active),
+    sort_order: Math.max(0, toInt(body.sort_order))
+  };
+}
+
+/* Public istek yalnızca yayın izni bulunan kayıtları görür. `all=1` ise admin
+   panelinin taslakları ve izin durumunu yönetebilmesi için oturum zorunludur. */
+app.get("/api/customer-showcases", async (req, res) => {
+  const wantsAll = req.query.all === "1";
+  if (wantsAll && !(await isAuthed(req))) return res.status(401).json({ error: "Yetkiniz yok." });
+  const rows = await db.prepare(wantsAll ? `
+    SELECT * FROM customer_showcases
+    ORDER BY is_featured DESC, sort_order ASC, created_at DESC, id DESC
+  ` : `
+    SELECT id, customer_name, city, product_name, comment, rating, image_path, image_alt,
+           is_featured, sort_order, created_at
+    FROM customer_showcases
+    WHERE is_active = 1 AND consent_confirmed = 1
+    ORDER BY is_featured DESC, sort_order ASC, created_at DESC, id DESC
+  `).all();
+  res.json(rows);
+});
+
+app.post("/api/customer-showcases", requireAdmin, upload.single("image"), async (req, res) => {
+  const item = customerShowcasePayload(req.body, req.file);
+  if (!item.customer_name) return res.status(400).json({ error: "Müşterinin gösterilecek adı zorunludur." });
+  if (!item.image_path) return res.status(400).json({ error: "Müşteri fotoğrafı zorunludur." });
+  if (item.is_active && !item.consent_confirmed) {
+    return res.status(400).json({ error: "Yayınlamak için müşterinin paylaşım iznini onaylayın." });
+  }
+  const result = await db.prepare(`
+    INSERT INTO customer_showcases
+      (customer_name, city, product_name, comment, rating, image_path, image_alt,
+       consent_confirmed, is_featured, is_active, sort_order)
+    VALUES
+      (@customer_name, @city, @product_name, @comment, @rating, @image_path, @image_alt,
+       @consent_confirmed, @is_featured, @is_active, @sort_order)
+  `).run(item);
+  res.status(201).json(await db.prepare("SELECT * FROM customer_showcases WHERE id = ?").get(result.lastInsertRowid));
+});
+
+app.put("/api/customer-showcases/:id", requireAdmin, upload.single("image"), async (req, res) => {
+  const current = await db.prepare("SELECT * FROM customer_showcases WHERE id = ?").get(req.params.id);
+  if (!current) return res.status(404).json({ error: "Müşteri paylaşımı bulunamadı." });
+  const item = { ...customerShowcasePayload(req.body, req.file, current), id: current.id };
+  if (!item.customer_name) return res.status(400).json({ error: "Müşterinin gösterilecek adı zorunludur." });
+  if (!item.image_path) return res.status(400).json({ error: "Müşteri fotoğrafı zorunludur." });
+  if (item.is_active && !item.consent_confirmed) {
+    return res.status(400).json({ error: "Yayınlamak için müşterinin paylaşım iznini onaylayın." });
+  }
+  await db.prepare(`
+    UPDATE customer_showcases SET
+      customer_name=@customer_name, city=@city, product_name=@product_name,
+      comment=@comment, rating=@rating, image_path=@image_path, image_alt=@image_alt,
+      consent_confirmed=@consent_confirmed, is_featured=@is_featured,
+      is_active=@is_active, sort_order=@sort_order, updated_at=NOW()
+    WHERE id=@id
+  `).run(item);
+  res.json(await db.prepare("SELECT * FROM customer_showcases WHERE id = ?").get(current.id));
+});
+
+app.delete("/api/customer-showcases/:id", requireAdmin, async (req, res) => {
+  const result = await db.prepare("DELETE FROM customer_showcases WHERE id = ?").run(req.params.id);
+  if (!result.changes) return res.status(404).json({ error: "Müşteri paylaşımı bulunamadı." });
   res.status(204).end();
 });
 
