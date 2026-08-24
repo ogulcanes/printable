@@ -35,236 +35,186 @@ KEYCHAIN_PRODUCTS.forEach((product) => {
   if (CATALOG_IMAGES[product.id]) product.img = CATALOG_IMAGES[product.id];
 });
 
-(function () {
+// Aynı katalog listesi sunucuda da kullanılır; istemciden gelen ürün adı veya
+// kimliği körü körüne kabul edilmez.
+if (typeof module !== "undefined" && module.exports) module.exports = KEYCHAIN_PRODUCTS;
+
+if (typeof document !== "undefined") (function () {
   const grid = document.getElementById("keychain-grid");
   const selectAllBox = document.getElementById("keychain-select-all");
   const countEl = document.getElementById("keychain-count-selected");
   const totalEl = document.getElementById("keychain-count-total");
-  const exportBtn = document.getElementById("keychain-export");
+  const totalQuantityEl = document.getElementById("keychain-total-quantity");
   const exportHint = document.getElementById("keychain-export-hint");
+  const form = document.getElementById("keychain-request-form");
+  const submitBtn = document.getElementById("keychain-request-submit");
+  const statusEl = document.getElementById("keychain-request-status");
+  const formModelCount = document.getElementById("keychain-form-model-count");
+  const formTotal = document.getElementById("keychain-form-total");
+  const formRule = document.getElementById("keychain-form-rule");
 
-  if (!grid) return;
+  if (!grid || !form) return;
 
   totalEl.textContent = KEYCHAIN_PRODUCTS.length;
 
   const selected = new Set();
-  let hintTimer = null;
 
   function showHint(text) {
     exportHint.textContent = text;
     exportHint.classList.add("is-visible");
-    clearTimeout(hintTimer);
-    hintTimer = setTimeout(() => exportHint.classList.remove("is-visible"), 5000);
+  }
+
+  function selectedItems() {
+    return KEYCHAIN_PRODUCTS.filter((product) => selected.has(product.id)).map((product) => ({
+      id: product.id,
+      quantity: Number(grid.querySelector(`[data-quantity-for="${product.id}"]`)?.value || 0)
+    }));
   }
 
   function updateCount() {
+    const items = selectedItems();
+    const invalidQuantity = items.some((item) => !Number.isInteger(item.quantity) || item.quantity < 5);
+    const totalQuantity = items.reduce((sum, item) => sum + (Number.isFinite(item.quantity) ? item.quantity : 0), 0);
     countEl.textContent = selected.size;
+    totalQuantityEl.textContent = totalQuantity;
+    formModelCount.textContent = selected.size;
+    formTotal.textContent = totalQuantity;
     selectAllBox.checked = selected.size === KEYCHAIN_PRODUCTS.length;
     selectAllBox.indeterminate = selected.size > 0 && selected.size < KEYCHAIN_PRODUCTS.length;
+    submitBtn.disabled = !selected.size || invalidQuantity || totalQuantity < 50;
+
+    if (!selected.size) {
+      showHint("Önce istediğiniz modelleri seçin. Toplam en az 50 adet olmalı.");
+      formRule.textContent = "Gönderebilmek için model seçin ve toplam 50 adede ulaşın.";
+    } else if (invalidQuantity) {
+      showHint("Seçilen her modelden en az 5 adet yazmalısınız.");
+      formRule.textContent = "Her seçilen model için adet sayısı en az 5 olmalı.";
+    } else if (totalQuantity < 50) {
+      const remaining = 50 - totalQuantity;
+      showHint(`Minimum sipariş için ${remaining} adet daha ekleyin.`);
+      formRule.textContent = `Gönderebilmek için ${remaining} adet daha ekleyin.`;
+    } else {
+      showHint("Seçiminiz hazır. İletişim bilgilerinizi yazıp talebi gönderebilirsiniz.");
+      formRule.textContent = "Minimum adet koşulları tamamlandı.";
+    }
   }
 
-  function toggle(id, cardEl) {
-    if (selected.has(id)) { selected.delete(id); cardEl.classList.remove("is-selected"); }
-    else { selected.add(id); cardEl.classList.add("is-selected"); }
-    cardEl.setAttribute("aria-checked", String(selected.has(id)));
+  function setSelected(id, cardEl, enabled) {
+    const selectButton = cardEl.querySelector(".keychain-card__select");
+    const quantityWrap = cardEl.querySelector(".keychain-card__quantity");
+    const quantityInput = quantityWrap.querySelector("input");
+    if (enabled) {
+      selected.add(id);
+      cardEl.classList.add("is-selected");
+      quantityWrap.hidden = false;
+      quantityInput.disabled = false;
+      if (Number(quantityInput.value) < 5) quantityInput.value = "5";
+    } else {
+      selected.delete(id);
+      cardEl.classList.remove("is-selected");
+      quantityWrap.hidden = true;
+      quantityInput.disabled = true;
+    }
+    selectButton.setAttribute("aria-pressed", String(enabled));
     updateCount();
   }
 
+  function toggle(id, cardEl) { setSelected(id, cardEl, !selected.has(id)); }
+
   KEYCHAIN_PRODUCTS.forEach((p) => {
-    const card = document.createElement("div");
+    const card = document.createElement("article");
     card.className = "keychain-card";
-    card.tabIndex = 0;
-    card.setAttribute("role", "checkbox");
-    card.setAttribute("aria-checked", "false");
-    card.setAttribute("aria-label", p.name);
+    card.dataset.keychainId = p.id;
     card.innerHTML = `
-      <div class="keychain-card__thumb">
-        <span class="keychain-card__tag">${p.tag}</span>
-        ${p.img
-          ? `<img src="${p.img}" alt="${p.name} anahtarlığı" loading="lazy">`
-          : `<div class="keychain-card__fallback" aria-hidden="true"><span>3D</span><small>${p.tag}</small></div>`}
-        <div class="keychain-card__check"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
-      </div>
-      <div class="keychain-card__body">
-        <div class="keychain-card__name">${p.name}</div>
-        <div class="keychain-card__note">${p.note}</div>
+      <button class="keychain-card__select" type="button" aria-pressed="false" aria-label="${p.name} modelini seç">
+        <span class="keychain-card__thumb">
+          <span class="keychain-card__tag">${p.tag}</span>
+          ${p.img
+            ? `<img src="${p.img}" alt="${p.name} anahtarlığı" loading="lazy">`
+            : `<span class="keychain-card__fallback" aria-hidden="true"><span>3D</span><small>${p.tag}</small></span>`}
+          <span class="keychain-card__check" aria-hidden="true"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span>
+        </span>
+        <span class="keychain-card__body">
+          <span class="keychain-card__name">${p.name}</span>
+          <span class="keychain-card__note">${p.note}</span>
+        </span>
+      </button>
+      <div class="keychain-card__quantity" hidden>
+        <label for="keychain-quantity-${p.id}">Adet</label>
+        <input id="keychain-quantity-${p.id}" data-quantity-for="${p.id}" type="number" inputmode="numeric" min="5" step="1" value="5" disabled>
+        <small>En az 5</small>
       </div>
     `;
-    card.addEventListener("click", () => toggle(p.id, card));
-    card.addEventListener("keydown", (e) => {
-      if (e.key === " " || e.key === "Enter") {
-        e.preventDefault();
-        card.click();
-      }
-    });
+    card.querySelector(".keychain-card__select").addEventListener("click", () => toggle(p.id, card));
+    card.querySelector("input").addEventListener("input", updateCount);
     grid.appendChild(card);
   });
 
   selectAllBox.addEventListener("change", () => {
     const cards = grid.querySelectorAll(".keychain-card");
     if (selectAllBox.checked) {
-      KEYCHAIN_PRODUCTS.forEach((p) => selected.add(p.id));
-      cards.forEach((c) => { c.classList.add("is-selected"); c.setAttribute("aria-checked", "true"); });
+      cards.forEach((card) => setSelected(card.dataset.keychainId, card, true));
     } else {
-      selected.clear();
-      cards.forEach((c) => { c.classList.remove("is-selected"); c.setAttribute("aria-checked", "false"); });
+      cards.forEach((card) => setSelected(card.dataset.keychainId, card, false));
     }
     updateCount();
   });
 
-  // --- Minimal in-browser .xlsx writer (hand-rolled ZIP, no external libraries:
-  // the app has no build step and Artifact-style sandboxing isn't a concern here,
-  // but a real .xlsx needs a real ZIP container, so we still build one by hand). ---
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    statusEl.textContent = "";
+    statusEl.className = "keychain-request-status";
 
-  let crc32Table = null;
-  function crc32(bytes) {
-    if (!crc32Table) {
-      crc32Table = new Uint32Array(256);
-      for (let n = 0; n < 256; n++) {
-        let c = n;
-        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-        crc32Table[n] = c >>> 0;
-      }
-    }
-    let crc = 0xFFFFFFFF;
-    for (let i = 0; i < bytes.length; i++) crc = crc32Table[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
-    return (crc ^ 0xFFFFFFFF) >>> 0;
-  }
-
-  function u32(arr, off, val) {
-    arr[off] = val & 0xFF; arr[off + 1] = (val >>> 8) & 0xFF;
-    arr[off + 2] = (val >>> 16) & 0xFF; arr[off + 3] = (val >>> 24) & 0xFF;
-  }
-  function u16(arr, off, val) { arr[off] = val & 0xFF; arr[off + 1] = (val >>> 8) & 0xFF; }
-
-  function buildZip(files) {
-    const DOS_DATE = 0x5821;
-    const localParts = [];
-    const centralParts = [];
-    let offset = 0;
-
-    files.forEach((file) => {
-      const nameBytes = new TextEncoder().encode(file.name);
-      const data = file.data;
-      const crc = crc32(data);
-      const size = data.length;
-
-      const lh = new Uint8Array(30 + nameBytes.length);
-      u32(lh, 0, 0x04034b50); u16(lh, 4, 20); u16(lh, 6, 0); u16(lh, 8, 0);
-      u16(lh, 10, 0); u16(lh, 12, DOS_DATE);
-      u32(lh, 14, crc); u32(lh, 18, size); u32(lh, 22, size);
-      u16(lh, 26, nameBytes.length); u16(lh, 28, 0);
-      lh.set(nameBytes, 30);
-      localParts.push(lh, data);
-
-      const ch = new Uint8Array(46 + nameBytes.length);
-      u32(ch, 0, 0x02014b50); u16(ch, 4, 20); u16(ch, 6, 20); u16(ch, 8, 0); u16(ch, 10, 0);
-      u16(ch, 12, 0); u16(ch, 14, DOS_DATE);
-      u32(ch, 16, crc); u32(ch, 20, size); u32(ch, 24, size);
-      u16(ch, 28, nameBytes.length); u16(ch, 30, 0); u16(ch, 32, 0);
-      u16(ch, 34, 0); u16(ch, 36, 0); u32(ch, 38, 0); u32(ch, 42, offset);
-      ch.set(nameBytes, 46);
-      centralParts.push(ch);
-
-      offset += lh.length + data.length;
-    });
-
-    const centralSize = centralParts.reduce((a, p) => a + p.length, 0);
-    const centralOffset = offset;
-    const eocd = new Uint8Array(22);
-    u32(eocd, 0, 0x06054b50); u16(eocd, 4, 0); u16(eocd, 6, 0);
-    u16(eocd, 8, files.length); u16(eocd, 10, files.length);
-    u32(eocd, 12, centralSize); u32(eocd, 16, centralOffset); u16(eocd, 20, 0);
-
-    const total = offset + centralSize + eocd.length;
-    const out = new Uint8Array(total);
-    let pos = 0;
-    localParts.forEach((p) => { out.set(p, pos); pos += p.length; });
-    centralParts.forEach((p) => { out.set(p, pos); pos += p.length; });
-    out.set(eocd, pos);
-    return out;
-  }
-
-  function xmlEscape(s) {
-    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
-  }
-
-  function colLetter(n) {
-    let s = "";
-    while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
-    return s;
-  }
-
-  function buildXlsxBlob(rows) {
-    let sheetRows = "";
-    rows.forEach((row, rIdx) => {
-      const r = rIdx + 1;
-      let cells = "";
-      row.forEach((val, cIdx) => {
-        const ref = colLetter(cIdx + 1) + r;
-        if (typeof val === "number") cells += `<c r="${ref}"><v>${val}</v></c>`;
-        else cells += `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(val)}</t></is></c>`;
-      });
-      sheetRows += `<row r="${r}">${cells}</row>`;
-    });
-
-    const enc = (s) => new TextEncoder().encode(s);
-    const files = [
-      { name: "[Content_Types].xml", data: enc(
-        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
-        `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
-        `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
-        `<Default Extension="xml" ContentType="application/xml"/>` +
-        `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
-        `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` +
-        `</Types>`) },
-      { name: "_rels/.rels", data: enc(
-        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
-        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
-        `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>` +
-        `</Relationships>`) },
-      { name: "xl/workbook.xml", data: enc(
-        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
-        `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
-        `<sheets><sheet name="Anahtarlik Katalogu" sheetId="1" r:id="rId1"/></sheets>` +
-        `</workbook>`) },
-      { name: "xl/_rels/workbook.xml.rels", data: enc(
-        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
-        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
-        `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>` +
-        `</Relationships>`) },
-      { name: "xl/worksheets/sheet1.xml", data: enc(
-        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
-        `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetRows}</sheetData></worksheet>`) },
-    ];
-
-    const zipBytes = buildZip(files);
-    return new Blob([zipBytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  }
-
-  exportBtn.addEventListener("click", () => {
-    if (selected.size === 0) {
-      showHint("Önce en az bir ürün seçin.");
+    const items = selectedItems();
+    const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+    if (!items.length || items.some((item) => !Number.isInteger(item.quantity) || item.quantity < 5)) {
+      statusEl.textContent = "Seçtiğiniz her modelden en az 5 adet yazın.";
+      statusEl.classList.add("is-error");
       return;
     }
-    const header = ["Sıra", "Ürün Adı", "Kategori"];
-    const rows = [header];
-    let i = 1;
-    KEYCHAIN_PRODUCTS.forEach((p) => {
-      if (selected.has(p.id)) rows.push([i++, p.name, p.tag]);
-    });
+    if (totalQuantity < 50) {
+      statusEl.textContent = "Toplu sipariş toplamı en az 50 adet olmalıdır.";
+      statusEl.classList.add("is-error");
+      return;
+    }
+    if (!form.reportValidity()) return;
 
-    const blob = buildXlsxBlob(rows);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "anahtarlik-katalog.xlsx";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    const formData = new FormData(form);
+    const payload = {
+      first_name: String(formData.get("first_name") || "").trim(),
+      last_name: String(formData.get("last_name") || "").trim(),
+      phone: String(formData.get("phone") || "").trim(),
+      email: String(formData.get("email") || "").trim(),
+      items
+    };
 
-    showHint(`${rows.length - 1} ürün için anahtarlik-katalog.xlsx indiriliyor…`);
+    const originalLabel = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Talebiniz gönderiliyor…";
+    try {
+      const response = await fetch("/api/keychain-bulk-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Talebiniz gönderilemedi.");
+
+      form.reset();
+      grid.querySelectorAll(".keychain-card").forEach((card) => {
+        const input = card.querySelector("input");
+        input.value = "5";
+        setSelected(card.dataset.keychainId, card, false);
+      });
+      statusEl.textContent = "Talebiniz alındı. Fiyat ve teslimat bilgileri için sizinle iletişime geçeceğiz.";
+      statusEl.classList.add("is-success");
+    } catch (error) {
+      statusEl.textContent = error.message;
+      statusEl.classList.add("is-error");
+    } finally {
+      submitBtn.textContent = originalLabel;
+      updateCount();
+    }
   });
 
   updateCount();

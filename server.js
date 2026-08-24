@@ -8,6 +8,8 @@ const crypto = require("crypto");
 const db = require("./db.js");
 // Ürün kartı/detayı işaretlemesi. Tarayıcı da AYNI dosyayı yüklüyor.
 const sablonlar = require("./product-templates.js");
+const KEYCHAIN_PRODUCTS = require("./anahtarlik-katalog.js");
+const KEYCHAIN_PRODUCT_BY_ID = new Map(KEYCHAIN_PRODUCTS.map((product) => [String(product.id), product]));
 const storage = require("./storage.js");
 const shopier = require("./shopier.js");
 
@@ -124,7 +126,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "33";
+const SCHEMA_VERSION = "34";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -1035,12 +1037,25 @@ const extraSeoPages = [
   {
     slug: "anahtarlik-katalogu", label: "Anahtarlık toptan kataloğu",
     title: "Toptan Anahtarlık Kataloğu | Printable",
-    description: "3D baskılı anahtarlık koleksiyonunu inceleyin, istediğiniz modelleri seçip Excel listesi olarak indirin.",
+    description: "3D baskılı anahtarlık koleksiyonunu inceleyin; model ve adet seçerek toplu sipariş talebinizi doğrudan gönderin.",
     og_title: "Toptan Anahtarlık Kataloğu | Printable",
-    og_description: "Seçtiğiniz anahtarlık modellerini tek tıkla Excel'e aktarın."
+    og_description: "Anahtarlık modellerini ve adetlerini seçin, toplu sipariş talebinizi Printable'a gönderin."
   }
 ];
 for (const page of extraSeoPages) await addSeoPage.run(page);
+
+// Canlı veritabanındaki eski katalog meta metni Excel indirme akışını anlatıyor.
+// Yalnızca artık geçersiz olan o metni değiştir; panelden yazılmış farklı metne dokunma.
+await db.prepare(`
+  UPDATE seo_pages SET
+    description = CASE WHEN LOWER(description) LIKE '%excel%'
+      THEN '3D baskılı anahtarlık koleksiyonunu inceleyin; model ve adet seçerek toplu sipariş talebinizi doğrudan gönderin.'
+      ELSE description END,
+    og_description = CASE WHEN LOWER(og_description) LIKE '%excel%'
+      THEN 'Anahtarlık modellerini ve adetlerini seçin, toplu sipariş talebinizi Printable''a gönderin.'
+      ELSE og_description END
+  WHERE slug = 'anahtarlik-katalogu'
+`).run();
 
 /* Paylaşım görseli. ON CONFLICT DO NOTHING satırı zaten varsa hiçbir alanı
    güncellemez, bu yüzden og_image ayrı geliyor. SADECE boşsa doldurur —
@@ -1959,6 +1974,7 @@ async function renderHeader(active, customer) {
         <nav class="main-links" id="main-links" aria-label="Ana menü">
           ${await link("/", "Ana Sayfa", "home")}
           ${await link("/urunler", "Ürünler", "urunler")}
+          ${await link("/anahtarlik-katalogu", "Toptan Anahtarlık", "anahtarlik-katalogu")}
           ${BLOG_DISCOVERABLE ? await link("/blog", "Blog", "blog") : ""}
           ${await link("/tasarim", "Özel Tasarım", "tasarim")}
           ${await link("/hakkinda", "Hakkımızda", "hakkinda")}
@@ -3140,6 +3156,22 @@ async function notifyNewDesignRequest({ name, email, phone, message, imageUrl })
       <div style="padding:14px;border-left:3px solid #ff6542;background:#fff7f3;white-space:pre-wrap"><strong>Parça açıklaması</strong><br>${escapeHtml(message)}</div>
       ${imageUrl ? `<p><a href="${escapeHtml(imageUrl)}" style="display:inline-block;padding:10px 14px;border-radius:8px;background:#ff6542;color:#fff;font-weight:700;text-decoration:none">Parça görselini aç</a></p>` : ""}
       <p><a href="https://printable.com.tr/admin#messages" style="color:#ff6542;font-weight:700">Tasarım talebini yönetim panelinde aç</a></p>
+    </div>`
+  });
+}
+
+async function notifyNewKeychainBulkRequest({ name, email, phone, items, totalQuantity }) {
+  const lines = items.map((item) => `<li style="margin:0 0 8px"><strong>${escapeHtml(item.name)}</strong> · ${item.quantity} adet <small style="color:#6b6660">(Model ${escapeHtml(item.id)})</small></li>`).join("");
+  return sendStoreNotification({
+    subject: `Yeni toplu anahtarlık talebi · ${String(totalQuantity)} adet`,
+    html: `<div style="font-family:Arial,sans-serif;color:#171c2c;line-height:1.6;max-width:680px">
+      <h2>Yeni toplu anahtarlık talebi geldi</h2>
+      <p><strong>Müşteri:</strong> ${escapeHtml(name)}<br>
+        <strong>E-posta:</strong> ${escapeHtml(email)}<br>
+        <strong>Telefon:</strong> ${escapeHtml(phone)}</p>
+      <p><strong>${items.length} model · toplam ${totalQuantity} adet</strong></p>
+      <ul style="padding-left:20px">${lines}</ul>
+      <p><a href="https://printable.com.tr/admin#messages" style="color:#ff6542;font-weight:700">Talebi yönetim panelinde aç</a></p>
     </div>`
   });
 }
@@ -6283,6 +6315,88 @@ app.post("/api/contact", async (req, res) => {
   });
   if (!ownerNotified) console.error("İletişim formu bildirimi gönderilemedi.");
   res.status(201).json({ ok: true, notification_sent: ownerNotified });
+});
+
+// Toptan anahtarlık kataloğu: müşteri model başına en az 5, toplamda en az 50
+// adet seçer. Ürün adları istemciden değil yukarıdaki ortak katalogdan alınır;
+// böylece panel kaydı ve e-posta değiştirilemez, gerçek modelleri gösterir.
+app.post("/api/keychain-bulk-requests", async (req, res) => {
+  const firstName = String(req.body.first_name || "").replace(/[\r\n]+/g, " ").trim();
+  const lastName = String(req.body.last_name || "").replace(/[\r\n]+/g, " ").trim();
+  const phone = String(req.body.phone || "").replace(/[\r\n]+/g, " ").trim();
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const rawItems = req.body.items;
+
+  if (!firstName || !lastName || !phone || !email) {
+    return res.status(400).json({ error: "Ad, soyad, telefon ve e-posta alanlarının tamamı zorunludur." });
+  }
+  if (firstName.length > 80 || lastName.length > 80) {
+    return res.status(400).json({ error: "Ad veya soyad alanı çok uzun." });
+  }
+  if (!validCustomerEmail(email) || email.length > 160) {
+    return res.status(400).json({ error: "Geçerli bir e-posta adresi girin." });
+  }
+  const phoneDigits = phone.replace(/\D/g, "");
+  if (phone.length > 30 || phoneDigits.length < 10 || phoneDigits.length > 15) {
+    return res.status(400).json({ error: "Geçerli bir telefon numarası girin." });
+  }
+  if (!Array.isArray(rawItems) || !rawItems.length || rawItems.length > KEYCHAIN_PRODUCTS.length) {
+    return res.status(400).json({ error: "En az bir geçerli anahtarlık modeli seçin." });
+  }
+
+  const seen = new Set();
+  const items = [];
+  for (const rawItem of rawItems) {
+    const id = String(rawItem?.id || "").trim();
+    const quantity = Number(rawItem?.quantity);
+    const product = KEYCHAIN_PRODUCT_BY_ID.get(id);
+    if (!product || seen.has(id)) {
+      return res.status(400).json({ error: "Anahtarlık seçiminizde geçersiz veya tekrarlanan bir model var." });
+    }
+    if (!Number.isSafeInteger(quantity) || quantity < 5 || quantity > 10000) {
+      return res.status(400).json({ error: "Seçilen her anahtarlık modelinden en az 5 adet istemelisiniz." });
+    }
+    seen.add(id);
+    items.push({ id, name: product.name, quantity });
+  }
+
+  const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+  if (totalQuantity < 50) {
+    return res.status(400).json({ error: "Toplu sipariş toplamı en az 50 adet olmalıdır." });
+  }
+  if (totalQuantity > 100000) {
+    return res.status(400).json({ error: "Adet bilgisi çok yüksek. Lütfen bizimle doğrudan iletişime geçin." });
+  }
+
+  const name = `${firstName} ${lastName}`;
+  const message = [
+    `Toplu anahtarlık talebi: ${items.length} model, toplam ${totalQuantity} adet`,
+    "",
+    ...items.map((item) => `- ${item.name} (Model ${item.id}): ${item.quantity} adet`)
+  ].join("\n");
+  const request = {
+    name,
+    email,
+    phone,
+    subject: "Toplu anahtarlık sipariş talebi",
+    message,
+    items,
+    totalQuantity
+  };
+
+  await db.prepare("INSERT INTO messages (name, email, phone, subject, message) VALUES (?,?,?,?,?)").run(
+    request.name,
+    request.email,
+    request.phone,
+    request.subject,
+    request.message
+  );
+  const ownerNotified = await notifyNewKeychainBulkRequest(request).catch((error) => {
+    console.error("Toplu anahtarlık talebi bildirimi gönderilemedi:", error.message);
+    return false;
+  });
+  if (!ownerNotified) console.error("Toplu anahtarlık talebi bildirimi gönderilemedi.");
+  res.status(201).json({ ok: true, total_quantity: totalQuantity, notification_sent: ownerNotified });
 });
 
 const DESIGN_IMAGE_MARKER = /\n*\[\[design-image:([^\]\r\n]+)\]\]\s*$/;

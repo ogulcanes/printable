@@ -15,7 +15,11 @@
       <section class="container page-hero">
         <p class="section-kicker">Toptan Anahtarlık Kataloğu</p>
         <h1>3D Baskılı Anahtarlık Koleksiyonu</h1>
-        <p class="page-lead">49 model tek sayfada. İstediklerinizi seçip listeyi Excel dosyası olarak indirebilirsiniz.</p>
+        <p class="page-lead">Onlarca modeli inceleyin, her birinden istediğiniz adedi yazın ve toplu sipariş talebinizi doğrudan bize gönderin.</p>
+        <div class="keychain-order-rules" aria-label="Toplu sipariş koşulları">
+          <span>Her modelden en az <strong>5 adet</strong></span>
+          <span>Sipariş toplamı en az <strong>50 adet</strong></span>
+        </div>
       </section>
 
       <section class="container keychain-toolbar-wrap">
@@ -24,14 +28,53 @@
             <input type="checkbox" id="keychain-select-all">
             Tümünü seç
           </label>
-          <span class="keychain-count"><strong id="keychain-count-selected">0</strong> / <span id="keychain-count-total">47</span> seçili</span>
-          <button type="button" class="btn-solid keychain-export" id="keychain-export">Excel'e Aktar</button>
+          <span class="keychain-count"><strong id="keychain-count-selected">0</strong> / <span id="keychain-count-total">0</span> model seçili</span>
+          <span class="keychain-count keychain-quantity-total"><strong id="keychain-total-quantity">0</strong> adet</span>
+          <a class="btn-solid keychain-request-jump" href="#toplu-talep-formu">Talep Formuna Geç</a>
         </div>
-        <span class="keychain-export-hint" id="keychain-export-hint" role="status" aria-live="polite"></span>
+        <span class="keychain-export-hint" id="keychain-export-hint" role="status" aria-live="polite">Toplam en az 50 adet seçmelisiniz.</span>
       </section>
 
       <section class="container">
         <div class="keychain-grid" id="keychain-grid"></div>
+      </section>
+
+      <section class="container keychain-request-section" id="toplu-talep-formu">
+        <div class="keychain-request-card">
+          <div class="keychain-request-copy">
+            <p class="section-kicker">TOPLU SİPARİŞ TALEBİ</p>
+            <h2>Seçiminizi bize gönderin</h2>
+            <p>Talebinizi inceleyip renk, fiyat ve teslimat bilgileri için sizinle iletişime geçeceğiz.</p>
+            <ul>
+              <li>Seçtiğiniz her modelden en az 5 adet</li>
+              <li>Tüm modellerin toplamında en az 50 adet</li>
+              <li>Ad, soyad, telefon ve e-posta zorunlu</li>
+            </ul>
+          </div>
+          <form class="keychain-request-form" id="keychain-request-form" novalidate>
+            <div class="keychain-request-fields">
+              <label>Ad
+                <input type="text" name="first_name" autocomplete="given-name" maxlength="80" required>
+              </label>
+              <label>Soyad
+                <input type="text" name="last_name" autocomplete="family-name" maxlength="80" required>
+              </label>
+              <label>Telefon
+                <input type="tel" name="phone" autocomplete="tel" maxlength="30" placeholder="05XX XXX XX XX" required>
+              </label>
+              <label>E-posta
+                <input type="email" name="email" autocomplete="email" maxlength="160" placeholder="ornek@firma.com" required>
+              </label>
+            </div>
+            <div class="keychain-request-summary" aria-live="polite">
+              <span><strong id="keychain-form-model-count">0</strong> model</span>
+              <span><strong id="keychain-form-total">0</strong> adet</span>
+              <small id="keychain-form-rule">Gönderebilmek için toplam 50 adede ulaşın.</small>
+            </div>
+            <button class="btn-solid" id="keychain-request-submit" type="submit" disabled>Toplu Sipariş Talebini Gönder</button>
+            <p class="keychain-request-status" id="keychain-request-status" role="status" aria-live="polite"></p>
+          </form>
+        </div>
       </section>
     </main>
 

@@ -44,6 +44,7 @@ global.fetch = async (url, options = {}) => {
 
 const app = require("./server.js");
 const db = require("./db.js");
+const keychainProducts = require("./anahtarlik-katalog.js");
 let server;
 let baseUrl;
 
@@ -139,6 +140,65 @@ test("Özel parça tasarım talebi panel kaydı ve mağaza e-postası oluşturur
   assert.match(email.html, /Kırılan kahve makinesi kapağını/);
   const row = await db.prepare("SELECT * FROM messages WHERE email = ?").get("tasarim@example.com");
   assert.equal(row.subject, "Özel parça tasarım talebi");
+});
+
+test("Toplu anahtarlık talebi adet kurallarını uygular, panele ve e-postaya düşer", async () => {
+  const page = await realFetch(`${baseUrl}/anahtarlik-katalogu`);
+  const html = await page.text();
+  assert.equal(page.status, 200);
+  assert.match(html, /href="\/anahtarlik-katalogu"[^>]*>Toptan Anahtarlık</);
+  assert.match(html, /Her modelden en az <strong>5 adet<\/strong>/);
+  assert.match(html, /Sipariş toplamı en az <strong>50 adet<\/strong>/);
+  assert.doesNotMatch(html, /Excel'e Aktar|Excel dosyası/i);
+  assert.match(html, /name="first_name"[^>]*required/);
+  assert.match(html, /name="last_name"[^>]*required/);
+  assert.match(html, /name="phone"[^>]*required/);
+  assert.match(html, /name="email"[^>]*required/);
+
+  const tooFewPerModel = await request("/api/keychain-bulk-requests", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      first_name: "Toplu", last_name: "Test", phone: "05550000003", email: "toplu@example.com",
+      items: [{ id: keychainProducts[0].id, quantity: 4 }]
+    })
+  });
+  assert.equal(tooFewPerModel.response.status, 400);
+
+  const belowTotal = await request("/api/keychain-bulk-requests", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      first_name: "Toplu", last_name: "Test", phone: "05550000003", email: "toplu@example.com",
+      items: keychainProducts.slice(0, 9).map((product) => ({ id: product.id, quantity: 5 }))
+    })
+  });
+  assert.equal(belowTotal.response.status, 400);
+
+  const items = keychainProducts.slice(0, 10).map((product) => ({ id: product.id, quantity: 5 }));
+  const valid = await request("/api/keychain-bulk-requests", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      first_name: "Toplu", last_name: "Müşteri", phone: "05550000003", email: "toplu@example.com", items
+    })
+  });
+  assert.equal(valid.response.status, 201);
+  assert.equal(valid.payload.total_quantity, 50);
+  assert.equal(valid.payload.notification_sent, true);
+
+  const email = storeMessage("Yeni toplu anahtarlık talebi");
+  assert.ok(email);
+  assert.deepEqual(email.to, ["info@printable.com.tr", "operations@example.com"]);
+  assert.match(email.html, /Toplu Müşteri/);
+  assert.match(email.html, new RegExp(keychainProducts[0].name));
+  assert.match(email.html, /toplam 50 adet/i);
+  const row = await db.prepare("SELECT * FROM messages WHERE email = ? AND subject = ?").get(
+    "toplu@example.com", "Toplu anahtarlık sipariş talebi"
+  );
+  assert.ok(row);
+  assert.match(row.message, /toplam 50 adet/i);
+  assert.match(row.message, /5 adet/);
 });
 
 test("İletişim sayfası taslak metin göstermeden sunucuda hazırlanır", async () => {
