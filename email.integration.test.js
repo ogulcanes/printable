@@ -273,28 +273,34 @@ test("Sizden Gelenler paylaşımları izin kontrolüyle yönetilir ve vitrinde g
   assert.equal(removed.status, 204);
 });
 
-test("Müşteri Yorumları sayfası Google değerlendirmelerini güvenli biçimde gösterir", async () => {
+test("Ana sayfa Google değerlendirmelerini fotoğraflı gösterir ve eski yorum adresini yönlendirir", async () => {
   googleReviewsMode = "success";
-  const page = await realFetch(`${baseUrl}/musteri-yorumlari`);
+  const page = await realFetch(`${baseUrl}/`);
   const html = await page.text();
 
   assert.equal(page.status, 200);
-  assert.match(html, /<h1>Müşteri<br>Yorumları<\/h1>/);
+  assert.match(html, /id="musteri-yorumlari"/);
+  assert.match(html, /Bizi müşterilerimizden dinleyin/);
   assert.match(html, /data-google-reviews-status="connected"/);
   assert.match(html, /4,9/);
   assert.match(html, /37 Google değerlendirmesi/);
   assert.match(html, /Deniz K\./);
+  assert.match(html, /src="https:\/\/lh3\.googleusercontent\.com\/a\/test-author"/);
   assert.match(html, /Baskı kalitesi çok güzel, iletişim de hızlıydı/);
   assert.match(html, /Yorumu Google Maps'te görüntüle/);
-  assert.match(html, /href="\/musteri-yorumlari"[^>]*>Yorumlar</);
+  assert.doesNotMatch(html, /href="\/musteri-yorumlari"[^>]*>Yorumlar</);
   assert.doesNotMatch(html, /google-places-test-key/);
 
   googleReviewsMode = "error";
-  const fallbackPage = await realFetch(`${baseUrl}/musteri-yorumlari`);
+  const fallbackPage = await realFetch(`${baseUrl}/`);
   const fallbackHtml = await fallbackPage.text();
   assert.equal(fallbackPage.status, 200);
   assert.match(fallbackHtml, /data-google-reviews-status="configuration-required"/);
   assert.match(fallbackHtml, /Güncel yorumlar Google Maps'te/);
+
+  const oldPage = await realFetch(`${baseUrl}/musteri-yorumlari`, { redirect: "manual" });
+  assert.equal(oldPage.status, 301);
+  assert.equal(oldPage.headers.get("location"), "/#musteri-yorumlari");
   googleReviewsMode = "success";
 });
 

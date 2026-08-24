@@ -9148,6 +9148,60 @@ body.promo-modal-open .discovery-popup { display: none; }
 }
 
 /* ---- Google müşteri yorumları ---- */
+.google-reviews-home {
+  padding: 84px 0 90px;
+  background:
+    radial-gradient(circle at 92% 4%, rgba(66, 133, 244, .1), transparent 25%),
+    #fbfaf8;
+}
+.google-reviews-home__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 390px);
+  align-items: end;
+  gap: clamp(34px, 7vw, 92px);
+  margin-bottom: 32px;
+}
+.google-reviews-home__head h2 {
+  max-width: 760px;
+  margin: 5px 0 12px;
+  color: #171c2c;
+  font-size: clamp(38px, 5vw, 66px);
+  line-height: .97;
+  letter-spacing: -.055em;
+}
+.google-reviews-home__head > div > p:last-child {
+  max-width: 650px;
+  margin: 0;
+  color: #747b88;
+  line-height: 1.7;
+}
+.google-reviews-grid--home { margin-top: 0; }
+.google-reviews-home .google-review-card__author > img,
+.google-reviews-home .google-review-card__author > span:first-child {
+  flex-basis: 52px;
+  width: 52px;
+  height: 52px;
+}
+.google-reviews-home__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 22px;
+}
+.google-reviews-home__footer .google-reviews-disclosure { max-width: 760px; margin: 0; }
+.google-reviews-home__cta {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: 999px;
+  background: #171c2c;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+}
 .google-reviews-page { background: #f7f4ef; }
 .google-reviews-hero {
   overflow: hidden;
@@ -9360,11 +9414,16 @@ body.promo-modal-open .discovery-popup { display: none; }
 }
 
 @media (max-width: 980px) {
+  .google-reviews-home__head { grid-template-columns: 1fr; gap: 28px; }
   .google-reviews-hero__grid { grid-template-columns: 1fr; gap: 38px; }
   .google-reviews-summary { max-width: 480px; }
   .google-reviews-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
+  .google-reviews-home { padding: 58px 0 64px; }
+  .google-reviews-home__head h2 { font-size: clamp(38px, 12vw, 52px); }
+  .google-reviews-home__footer { display: grid; }
+  .google-reviews-home__cta { justify-self: start; }
   .google-reviews-hero { padding: 58px 0 54px; }
   .google-reviews-hero h1 { font-size: clamp(54px, 18vw, 76px); }
   .google-reviews-hero__grid > div > p:last-child { font-size: 15px; }

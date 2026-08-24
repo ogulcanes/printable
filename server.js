@@ -1078,13 +1078,6 @@ const extraSeoPages = [
     og_title: "Sizden Gelenler | Printable Müşteri Vitrini",
     og_description: "3D baskı ürünlerimizin müşterilerimizden gelen fotoğraflarını ve deneyim notlarını keşfedin."
   },
-  {
-    slug: "musteri-yorumlari", label: "Google müşteri yorumları sayfası",
-    title: "Müşteri Yorumları | Google Değerlendirmeleri | Printable",
-    description: "Printable müşterilerinin Google'da paylaştığı puanları ve gerçek deneyim yorumlarını inceleyin; siz de değerlendirmenizi paylaşın.",
-    og_title: "Müşteri Yorumları | Printable",
-    og_description: "Printable hakkında Google'da paylaşılan gerçek müşteri değerlendirmelerini okuyun."
-  }
 ];
 for (const page of extraSeoPages) await addSeoPage.run(page);
 
@@ -1818,7 +1811,6 @@ async function seoHead(req, slug) {
     katalog: "Katalog",
     "anahtarlik-katalogu": "Toptan Anahtarlık Kataloğu",
     "sizden-gelenler": "Sizden Gelenler",
-    "musteri-yorumlari": "Müşteri Yorumları",
     landing: "Ürün Seçkisi",
     iade: "İade ve Cayma Hakkı",
     gizlilik: "Gizlilik ve KVKK",
@@ -2145,7 +2137,6 @@ async function renderHeader(active, customer) {
           ${await link("/", "Ana Sayfa", "home")}
           ${await link("/urunler", "Ürünler", "urunler")}
           ${await link("/anahtarlik-katalogu", "Toptan Anahtarlık", "anahtarlik-katalogu")}
-          ${await link("/musteri-yorumlari", "Yorumlar", "musteri-yorumlari")}
           ${BLOG_DISCOVERABLE ? await link("/blog", "Blog", "blog") : ""}
           ${await link("/tasarim", "Özel Tasarım", "tasarim")}
           ${await link("/hakkinda", "Hakkımızda", "hakkinda")}
@@ -2347,7 +2338,7 @@ async function renderFooter() {
       </div>
       <div class="container footer__grid">
         <div><h3>Kategoriler</h3><a href="/urunler">Figürler</a><a href="/urunler">Anahtarlıklar</a><a href="/urunler">Fidget & Stres</a><a href="/urunler">Düdükler</a></div>
-        <div><h3>Kurumsal</h3><a href="/musteri-yorumlari">Müşteri Yorumları</a><a href="/sizden-gelenler">Sizden Gelenler</a><a href="/katalog">Katalog</a><a href="/hakkinda">Hakkımızda</a><a href="/iletisim">İletişim</a><a href="/stl-teklif">Özel 3D baskı</a><a href="/tasarim">Özel tasarım</a><a href="/urunler">Tüm ürünler</a></div>
+        <div><h3>Kurumsal</h3><a href="/sizden-gelenler">Sizden Gelenler</a><a href="/katalog">Katalog</a><a href="/hakkinda">Hakkımızda</a><a href="/iletisim">İletişim</a><a href="/stl-teklif">Özel 3D baskı</a><a href="/tasarim">Özel tasarım</a><a href="/urunler">Tüm ürünler</a></div>
         <div><h3>Müşteri Desteği</h3><a href="/iletisim">Bize ulaşın</a><a href="/iade">İade & Değişim</a><a href="/sss">Kargo</a><a href="/sss">S.S.S.</a></div>
         <div><h3>Yasal</h3><a href="/mesafeli-satis">Mesafeli Satış Sözleşmesi</a><a href="/iade">İade ve Cayma Hakkı</a><a href="/gizlilik">Gizlilik ve KVKK</a></div>
         <div class="footer-logo printable-wordmark">
@@ -2726,12 +2717,14 @@ async function renderGoogleReviews(sayfa) {
         <a href="${escapeHtml(mapsUrl)}" target="_blank" rel="noopener">Google'da yorum yap <span aria-hidden="true">↗</span></a>
       </div>
     </section>`;
+  const homeCta = `<a class="google-reviews-home__cta" href="${escapeHtml(mapsUrl)}" target="_blank" rel="noopener">Google'da yorum yap <span aria-hidden="true">↗</span></a>`;
 
   return sayfa
     .replace("<!--google-reviews-summary-->", summary)
     .replace("<!--google-reviews-list-->", list)
     .replace("<!--google-reviews-disclosure-->", disclosure)
-    .replace("<!--google-reviews-cta-->", cta);
+    .replace("<!--google-reviews-cta-->", cta)
+    .replace("<!--google-reviews-home-cta-->", homeCta);
 }
 
 /* Ana sayfa vitrinleri. Seçim mantığı script.js'teki ile BİREBİR aynı olmalı —
@@ -2867,7 +2860,7 @@ app.get("/urunler", async (req, res) => await sendPage(req, res, "urunler.html",
 app.get("/stl-teklif", async (req, res) => await sendPage(req, res, "stl-teklif.html", "stl-teklif"));
 app.get("/tasarim", async (req, res) => await sendPage(req, res, "tasarim.html", "tasarim"));
 app.get("/sizden-gelenler", async (req, res) => await sendPage(req, res, "sizden-gelenler.html", "sizden-gelenler"));
-app.get("/musteri-yorumlari", async (req, res) => await sendPage(req, res, "musteri-yorumlari.html", "musteri-yorumlari"));
+app.get("/musteri-yorumlari", (req, res) => res.redirect(301, "/#musteri-yorumlari"));
 app.get("/hakkinda", async (req, res) => await sendPage(req, res, "hakkinda.html", "hakkinda"));
 app.get("/iletisim", async (req, res) => await sendPage(req, res, "iletisim.html", "iletisim"));
 app.get("/hesap", async (req, res) => await sendPage(req, res, "hesap.html", "hesap"));
@@ -3014,7 +3007,6 @@ app.get("/sitemap.xml", async (req, res) => {
     { loc: "/stl-teklif", priority: "0.8" },
     { loc: "/tasarim", priority: "0.7" },
     { loc: "/sizden-gelenler", priority: "0.7" },
-    { loc: "/musteri-yorumlari", priority: "0.7" },
     { loc: "/hakkinda", priority: "0.5" },
     { loc: "/iletisim", priority: "0.5" },
     { loc: "/katalog", priority: "0.8" },
