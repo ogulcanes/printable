@@ -126,7 +126,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "36";
+const SCHEMA_VERSION = "37";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -1315,6 +1315,67 @@ if (urunKampanyaRevizyonu?.value !== URUN_KAMPANYA_REVIZYONU) {
 
     await tx.prepare(`
       WITH revised AS (${revisedProductsSql})
+      UPDATE products
+      SET price = revised.new_price,
+          sale_price = revised.new_sale_price,
+          updated_at = NOW()
+      FROM revised
+      WHERE products.id = revised.id
+    `).run();
+  });
+}
+
+/* Müşterinin ödediği fiyatları en yakın 5 TL seviyesinin bir kuruş altına getir.
+   Kampanya yüzdeleri ürün kartlarındaki mevcut %20 / %10 / %5 ayrımını korusun diye
+   üzeri çizili normal fiyatı, yuvarlanan satış fiyatından yeniden hesaplıyoruz. */
+const URUN_FIYAT_SONU_REVIZYONU = "2026-08-en-yakin-5-eksi-1-kurus";
+const urunFiyatSonuRevizyonu = await db.prepare("SELECT value FROM app_meta WHERE key = 'product_price_ending_rev'").get();
+if (urunFiyatSonuRevizyonu?.value !== URUN_FIYAT_SONU_REVIZYONU) {
+  const roundedProductsSql = `
+    WITH priced AS (
+      SELECT id,
+             CASE ROUND((1 - sale_price / price) * 100)
+               WHEN 20 THEN 20
+               WHEN 10 THEN 10
+               ELSE 5
+             END AS discount_percent,
+             GREATEST(4.99, ROUND((sale_price + 0.01) / 5) * 5 - 0.01) AS new_sale_price
+      FROM products
+      WHERE price > 0 AND sale_price IS NOT NULL AND sale_price > 0 AND sale_price < price
+    )
+    SELECT id,
+           new_sale_price,
+           CASE discount_percent
+             WHEN 20 THEN ROUND((new_sale_price / 0.80) * 100) / 100
+             WHEN 10 THEN ROUND((new_sale_price / 0.90) * 100) / 100
+             ELSE ROUND((new_sale_price / 0.95) * 100) / 100
+           END AS new_price
+    FROM priced
+  `;
+
+  await db.transaction(async (tx) => {
+    const claim = await tx.prepare(`
+      INSERT INTO app_meta (key, value) VALUES ('product_price_ending_rev', ?)
+      ON CONFLICT (key) DO UPDATE SET value = excluded.value
+      WHERE app_meta.value <> excluded.value
+    `).run(URUN_FIYAT_SONU_REVIZYONU);
+    if (!claim.changes) return;
+
+    await tx.prepare(`
+      WITH revised AS (${roundedProductsSql})
+      INSERT INTO price_history (product_id, price, sale_price)
+      SELECT id, new_price, new_sale_price FROM revised
+    `).run();
+
+    await tx.prepare(`
+      UPDATE product_cost_scales
+      SET price = GREATEST(4.99, ROUND((price + 0.01) / 5) * 5 - 0.01),
+          updated_at = NOW()
+      WHERE price IS NOT NULL AND price > 0
+    `).run();
+
+    await tx.prepare(`
+      WITH revised AS (${roundedProductsSql})
       UPDATE products
       SET price = revised.new_price,
           sale_price = revised.new_sale_price,
