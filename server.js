@@ -124,7 +124,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "32";
+const SCHEMA_VERSION = "33";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -1168,6 +1168,52 @@ if (!existingProducts) {
 // not the storefront product inventory. Remove the misplaced previous release
 // on every database migration; the SKU scope is explicit and safe.
 await db.prepare("DELETE FROM products WHERE sku IN ('MW-2325579', 'MW-2081222', 'MW-1682650', 'MW-2316097', 'MW-1518291')").run();
+
+/* Tüm ürünlerin normal satış fiyatını bir kez %40 düşür. Yeni normal fiyatın
+   üzerinde kalan eski sale_price artık indirim değildir; vitrin ve ödeme akışı
+   onu normal fiyatın önünde kullanmasın diye temizlenir. Eski değer fiyat
+   geçmişinde kalır, geçmiş sipariş tutarları değişmez. Ölçeğe göre ayrı satış
+   fiyatı olan ürünlerde product_cost_scales.price da aynı oranda güncellenir.
+   Ayrı sürüm anahtarı, sonraki soğuk başlangıçlarda tekrar indirimi önler. */
+const URUN_FIYAT_REVIZYONU = "2026-08-tum-urunler-yuzde-40-indirim";
+const urunFiyatRevizyonu = await db.prepare("SELECT value FROM app_meta WHERE key = 'products_price_rev'").get();
+if (urunFiyatRevizyonu?.value !== URUN_FIYAT_REVIZYONU) {
+  await db.transaction(async (tx) => {
+    /* Aynı anda açılan iki serverless örneğinden yalnızca biri revizyonu alır.
+       İşlem yarıda kalırsa bu kayıt da rollback olur ve sonraki açılış dener. */
+    const claim = await tx.prepare(`
+      INSERT INTO app_meta (key, value) VALUES ('products_price_rev', ?)
+      ON CONFLICT (key) DO UPDATE SET value = excluded.value
+      WHERE app_meta.value <> excluded.value
+    `).run(URUN_FIYAT_REVIZYONU);
+    if (!claim.changes) return;
+
+    // Yeni normal fiyatı geçmişe de kaydet; admin fiyat geçmişi zinciri kopmasın.
+    await tx.prepare(`
+      INSERT INTO price_history (product_id, price, sale_price)
+      SELECT id,
+             ROUND(price * 60) / 100,
+             CASE WHEN sale_price >= ROUND(price * 60) / 100 THEN NULL ELSE sale_price END
+      FROM products
+      WHERE price > 0
+    `).run();
+    await tx.prepare(`
+      UPDATE product_cost_scales
+      SET price = ROUND(price * 60) / 100, updated_at = NOW()
+      WHERE price IS NOT NULL AND price > 0
+    `).run();
+    await tx.prepare(`
+      UPDATE products
+      SET sale_price = CASE
+            WHEN sale_price >= ROUND(price * 60) / 100 THEN NULL
+            ELSE sale_price
+          END,
+          price = ROUND(price * 60) / 100,
+          updated_at = NOW()
+      WHERE price > 0
+    `).run();
+  });
+}
 
 // A published example makes the new blog design and its structured-data output
 // visible immediately. It is safe to edit or delete later from Admin > Blog.

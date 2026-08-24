@@ -64,6 +64,25 @@ test.before(async () => {
   });
 });
 
+test("Ürün normal fiyatları yalnızca bir kez yüzde 40 düşürülür", async () => {
+  // İlk istek şema/seed kurulumunu ve tek seferlik fiyat revizyonunu çalıştırır.
+  const { response } = await request("/api/products");
+  assert.equal(response.status, 200);
+
+  const product = await db.prepare("SELECT id, price FROM products WHERE sku = 'PR-3D-001'").get();
+  const formerSale = await db.prepare("SELECT price, sale_price FROM products WHERE sku = 'PR-3D-002'").get();
+  const history = await db.prepare(`
+    SELECT COUNT(*)::int count, MIN(price) min_price, MAX(price) max_price
+    FROM price_history WHERE product_id = ?
+  `).get(product.id);
+  const revision = await db.prepare("SELECT value FROM app_meta WHERE key = 'products_price_rev'").get();
+
+  assert.equal(product.price, 119.4);
+  assert.deepEqual(formerSale, { price: 179.4, sale_price: null });
+  assert.deepEqual(history, { count: 1, min_price: 119.4, max_price: 119.4 });
+  assert.equal(revision.value, "2026-08-tum-urunler-yuzde-40-indirim");
+});
+
 test.after(async () => {
   await new Promise((resolve) => server.close(resolve));
   await db.close();
