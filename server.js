@@ -3071,6 +3071,22 @@ async function notifyNewContactMessage({ name, email, phone, subject, message, i
   });
 }
 
+async function notifyNewDesignRequest({ name, email, phone, message, imageUrl }) {
+  const cleanName = String(name || "Müşteri").replace(/[\r\n]+/g, " ").trim().slice(0, 100);
+  return sendStoreNotification({
+    subject: `Yeni özel parça tasarım talebi · ${cleanName || "Müşteri"}`,
+    html: `<div style="font-family:Arial,sans-serif;color:#171c2c;line-height:1.6;max-width:640px">
+      <h2>Yeni özel parça tasarım talebi geldi</h2>
+      <p><strong>Gönderen:</strong> ${escapeHtml(name)}<br>
+        <strong>E-posta:</strong> ${escapeHtml(email || "Belirtilmedi")}<br>
+        <strong>Telefon:</strong> ${escapeHtml(phone || "Belirtilmedi")}</p>
+      <div style="padding:14px;border-left:3px solid #ff6542;background:#fff7f3;white-space:pre-wrap"><strong>Parça açıklaması</strong><br>${escapeHtml(message)}</div>
+      ${imageUrl ? `<p><a href="${escapeHtml(imageUrl)}" style="display:inline-block;padding:10px 14px;border-radius:8px;background:#ff6542;color:#fff;font-weight:700;text-decoration:none">Parça görselini aç</a></p>` : ""}
+      <p><a href="https://printable.com.tr/admin#messages" style="color:#ff6542;font-weight:700">Tasarım talebini yönetim panelinde aç</a></p>
+    </div>`
+  });
+}
+
 app.post("/api/customer/forgot-password", async (req, res) => {
   const email = normalizeCustomerEmail(req.body.email);
   if (!validCustomerEmail(email)) return res.status(400).json({ error: "Geçerli bir e-posta adresi girin." });
@@ -6258,7 +6274,7 @@ app.post("/api/design-requests", designUploadMiddleware, async (req, res) => {
     contact.subject,
     storedMessage
   );
-  const ownerNotified = await notifyNewContactMessage(contact).catch((error) => {
+  const ownerNotified = await notifyNewDesignRequest(contact).catch((error) => {
     console.error("Özel parça talebi bildirimi gönderilemedi:", error.message);
     return false;
   });

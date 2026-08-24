@@ -8470,6 +8470,9 @@ body.promo-modal-open .discovery-popup { display: none; }
   border-radius: 9px;
   object-fit: cover;
 }
+/* Global `img { display:block }` tarayıcının `[hidden]` kuralını eziyordu;
+   dosya seçilmeden kırık görsel simgesi ve alt metin görünüyordu. */
+.design-upload__preview[hidden] { display: none; }
 .design-upload__name {
   min-height: 18px;
   margin: -8px 0 0;

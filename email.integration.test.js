@@ -99,6 +99,29 @@ test("İletişim formu info adresine bildirim gönderir", async () => {
   assert.equal(row.subject, "Ürün sorusu");
 });
 
+test("Özel parça tasarım talebi panel kaydı ve mağaza e-postası oluşturur", async () => {
+  const { response, payload } = await request("/api/design-requests", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "Tasarım Testi",
+      email: "tasarim@example.com",
+      phone: "05550000002",
+      message: "Kırılan kahve makinesi kapağını yeniden çizdirmek istiyorum."
+    })
+  });
+
+  assert.equal(response.status, 201);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.notification_sent, true);
+  const email = storeMessage("Yeni özel parça tasarım talebi");
+  assert.ok(email);
+  assert.deepEqual(email.to, ["info@printable.com.tr", "operations@example.com"]);
+  assert.match(email.html, /Kırılan kahve makinesi kapağını/);
+  const row = await db.prepare("SELECT * FROM messages WHERE email = ?").get("tasarim@example.com");
+  assert.equal(row.subject, "Özel parça tasarım talebi");
+});
+
 test("İletişim sayfası taslak metin göstermeden sunucuda hazırlanır", async () => {
   const response = await realFetch(`${baseUrl}/iletisim`);
   const html = await response.text();

@@ -648,25 +648,28 @@ function renderOrders() {
 function renderMessages() {
   const unread = state.messages.filter((m) => !m.is_read).length;
   qs("#message-count").textContent = `${state.messages.length} mesaj${unread ? ` · ${unread} okunmamış` : ""}`;
-  qs("#message-list").innerHTML = state.messages.map((m) => `
-    <article class="row ${m.is_read ? "" : "row--unread"}">
-      <span class="brand-mark">✉</span>
+  qs("#message-list").innerHTML = state.messages.map((m) => {
+    const isDesignRequest = m.subject === "Özel parça tasarım talebi";
+    return `
+    <article class="row ${m.is_read ? "" : "row--unread"} ${isDesignRequest ? "row--design-request" : ""}">
+      <span class="brand-mark">${isDesignRequest ? "✎" : "✉"}</span>
       <div>
-        <h3>${escapeHtml(m.name)}${m.subject ? ` — ${escapeHtml(m.subject)}` : ""} ${m.is_read ? "" : '<span class="badge orange">Yeni</span>'}</h3>
+        <h3>${escapeHtml(m.name)}${m.subject ? ` — ${escapeHtml(m.subject)}` : ""} ${isDesignRequest ? '<span class="badge orange">Özel Tasarım</span>' : ""} ${m.is_read ? "" : '<span class="badge orange">Yeni</span>'}</h3>
         <p>${escapeHtml(m.message)}</p>
         <div class="meta-line">
           <span class="badge">${escapeHtml(m.email) || "E-posta yok"}</span>
           <span class="badge">${escapeHtml(m.phone) || "Telefon yok"}</span>
           <span class="badge">${formatDateTime(m.created_at)}</span>
         </div>
-        ${m.design_image_url ? `<a class="small-button" href="${escapeHtml(m.design_image_url)}" target="_blank" rel="noopener">Parça görselini aç</a>` : ""}
+        ${m.design_image_url ? `<a class="message-attachment" href="${escapeHtml(m.design_image_url)}" target="_blank" rel="noopener"><img src="${escapeHtml(m.design_image_url)}" alt="${escapeHtml(m.name)} tarafından gönderilen parça görseli"><span><strong>Parça görseli</strong><small>Büyütmek için aç</small></span></a>` : ""}
       </div>
       <div class="row-actions">
         <button data-toggle-message="${m.id}" data-read="${m.is_read ? 1 : 0}">${m.is_read ? "Okunmadı yap" : "Okundu yap"}</button>
         <button class="danger" data-delete-message="${m.id}">Sil</button>
       </div>
     </article>
-  `).join("") || "<p>Henüz mesaj yok.</p>";
+  `;
+  }).join("") || "<p>Henüz mesaj yok.</p>";
 }
 
 // Yıldızlar metin olarak — puan 1-5 tam sayı, yarım yıldız yok.

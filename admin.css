@@ -466,6 +466,27 @@ textarea { resize: vertical; }
 .badge.green { color: var(--green); background: rgba(31,143,103,.1); }
 .badge.blue { color: var(--blue); background: rgba(72,100,201,.1); }
 .badge.orange { color: var(--orange-2); background: rgba(255,101,66,.12); }
+.row--design-request {
+  border-color: rgba(255,101,66,.34);
+  background: linear-gradient(135deg, rgba(255,101,66,.055), #fff 42%);
+}
+.message-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 7px 11px 7px 7px;
+  border: 1px solid rgba(255,101,66,.28);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  text-decoration: none;
+}
+.row .message-attachment img { width: 72px; height: 72px; }
+.message-attachment span { display: grid; gap: 2px; }
+.message-attachment strong { font-size: 13px; }
+.message-attachment small { color: var(--muted); font-size: 11px; }
+.message-attachment:hover { border-color: var(--orange-2); }
 .row-actions {
   display: flex;
   gap: 8px;
