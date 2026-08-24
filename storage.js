@@ -23,7 +23,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const enabled = Boolean(SUPABASE_URL && SERVICE_KEY);
 
-const BUCKETS = { image: "images", media: "images", model: "models" };
+const BUCKETS = { image: "images", media: "images", model: "models", design: "models" };
 
 const IMAGE_EXT = /\.(png|jpe?g|webp|gif)$/i;
 const MEDIA_EXT = /\.(png|jpe?g|webp|gif|mp4|webm)$/i;
@@ -51,7 +51,7 @@ function safeKey(originalName) {
 }
 
 const extensionAllowed = (kind, name) => {
-  const pattern = kind === "image" ? IMAGE_EXT : kind === "media" ? MEDIA_EXT : MODEL_EXT;
+  const pattern = kind === "image" || kind === "design" ? IMAGE_EXT : kind === "media" ? MEDIA_EXT : MODEL_EXT;
   return pattern.test(name || "");
 };
 
@@ -61,7 +61,7 @@ async function createUploadUrl(kind, originalName) {
   const bucket = BUCKETS[kind];
   if (!bucket) throw new Error("Geçersiz yükleme türü.");
   if (!extensionAllowed(kind, originalName)) {
-    if (kind === "image") throw new Error("Yalnızca PNG, JPG, WEBP ve GIF görselleri yüklenebilir.");
+    if (kind === "image" || kind === "design") throw new Error("Yalnızca PNG, JPG, WEBP ve GIF görselleri yüklenebilir.");
     if (kind === "media") throw new Error("Yalnızca PNG, JPG, WEBP, GIF, MP4 ve WEBM dosyaları yüklenebilir.");
     throw new Error("Yalnızca .stl ve .3mf dosyaları yüklenebilir.");
   }

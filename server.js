@@ -1363,8 +1363,8 @@ app.use("/uploads", express.static(UPLOAD_DIR));
    o yüzden uzantı doğrulaması burada, sunucuda yapılır. */
 app.post("/api/uploads/sign", async (req, res) => {
   const requestedKind = req.body?.kind;
-  const kind = ["image", "media", "model"].includes(requestedKind) ? requestedKind : "model";
-  if (kind !== "model" && !(await isAuthed(req))) {
+  const kind = ["image", "media", "model", "design"].includes(requestedKind) ? requestedKind : "model";
+  if (!["model", "design"].includes(kind) && !(await isAuthed(req))) {
     return res.status(401).json({ error: "Yetkiniz yok." });
   }
   if (!storage.enabled) {
@@ -2702,7 +2702,7 @@ app.get("/blog/:slug", async (req, res) => {
     .replace("<!--blog-content-->", post.content || ""), "blog", await pageCustomer(req, res)));
 });
 
-["styles.css", "script.js", "product-templates.js", "stl-viewer.js", "admin.css", "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js", "katalog.js", "hesap.js", "anahtarlik-katalog.js"].forEach((file) => {
+["styles.css", "script.js", "product-templates.js", "stl-viewer.js", "admin.css", "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js", "tasarim.js", "katalog.js", "hesap.js", "anahtarlik-katalog.js"].forEach((file) => {
   app.get(`/${file}`, async (req, res) => res.sendFile(path.join(ROOT, file)));
 });
 
@@ -3054,7 +3054,7 @@ async function notifyNewQuote({ quoteNumber, name, email, phone, fileName, mater
   });
 }
 
-async function notifyNewContactMessage({ name, email, phone, subject, message }) {
+async function notifyNewContactMessage({ name, email, phone, subject, message, imageUrl }) {
   const cleanSubject = String(subject || "Genel iletişim").replace(/[\r\n]+/g, " ").trim().slice(0, 100);
   return sendStoreNotification({
     subject: `Yeni iletişim mesajı · ${cleanSubject || "Genel iletişim"}`,
@@ -3065,6 +3065,7 @@ async function notifyNewContactMessage({ name, email, phone, subject, message })
         <strong>Telefon:</strong> ${escapeHtml(phone || "Belirtilmedi")}<br>
         <strong>Konu:</strong> ${escapeHtml(cleanSubject || "Genel iletişim")}</p>
       <div style="padding:14px;border-left:3px solid #ff6542;background:#fff7f3;white-space:pre-wrap">${escapeHtml(message)}</div>
+      ${imageUrl ? `<p><a href="${escapeHtml(imageUrl)}" style="display:inline-block;padding:10px 14px;border-radius:8px;background:#171c2c;color:#fff;font-weight:700;text-decoration:none">Parça görselini aç</a></p>` : ""}
       <p><a href="https://printable.com.tr/admin" style="color:#ff6542;font-weight:700">Mesajı yönetim panelinde aç</a></p>
     </div>`
   });
@@ -6211,8 +6212,70 @@ app.post("/api/contact", async (req, res) => {
   res.status(201).json({ ok: true, notification_sent: ownerNotified });
 });
 
+const DESIGN_IMAGE_MARKER = /\n*\[\[design-image:([^\]\r\n]+)\]\]\s*$/;
+const designImageRef = (message) => String(message || "").match(DESIGN_IMAGE_MARKER)?.[1] || null;
+const cleanDesignMessage = (message) => String(message || "").replace(DESIGN_IMAGE_MARKER, "").trim();
+const validDesignImageKey = (value) => /^[a-z0-9][a-z0-9._-]{0,179}\.(?:png|jpe?g|webp|gif)$/i.test(value || "");
+const designImageUrl = async (reference, seconds = 3600) => {
+  if (!reference) return null;
+  if (reference.startsWith("/uploads/")) return reference;
+  return validDesignImageKey(reference) ? storage.signedModelUrl(reference, seconds) : null;
+};
+
+const designUploadMiddleware = (req, res, next) =>
+  (storage.enabled ? textFieldsOnly(req, res, next) : upload.single("image")(req, res, next));
+
+// Fotoğraf veya krokiden özel parça talebi. İletişim mesajlarıyla aynı panelde
+// görünür; yalnızca görsel özel model kovasında tutulur ve yöneticiye süreli bağ verilir.
+app.post("/api/design-requests", designUploadMiddleware, async (req, res) => {
+  const name = req.body.name?.trim();
+  const message = req.body.message?.trim();
+  const email = req.body.email?.trim() || null;
+  const phone = req.body.phone?.trim() || null;
+  if (!name || !message) return res.status(400).json({ error: "Parça açıklaması ve ad soyad alanları zorunludur." });
+  if (!email && !phone) return res.status(400).json({ error: "Telefon veya e-posta bilgilerinden birini yazın." });
+  if (name.length > 120 || message.length > 4000) return res.status(400).json({ error: "Talep metni çok uzun." });
+
+  const uploadedKey = typeof req.body.image_path === "string" ? req.body.image_path.trim() : "";
+  if (uploadedKey && !validDesignImageKey(uploadedKey)) {
+    return res.status(400).json({ error: "Görsel dosyası geçersiz." });
+  }
+  const imageReference = uploadedKey || (req.file ? `/uploads/${req.file.filename}` : null);
+  const storedMessage = imageReference ? `${message}\n\n[[design-image:${imageReference}]]` : message;
+  const contact = {
+    name,
+    email,
+    phone,
+    subject: "Özel parça tasarım talebi",
+    message,
+    imageUrl: await designImageUrl(imageReference, 7 * 24 * 60 * 60)
+  };
+
+  await db.prepare("INSERT INTO messages (name, email, phone, subject, message) VALUES (?,?,?,?,?)").run(
+    contact.name,
+    contact.email,
+    contact.phone,
+    contact.subject,
+    storedMessage
+  );
+  const ownerNotified = await notifyNewContactMessage(contact).catch((error) => {
+    console.error("Özel parça talebi bildirimi gönderilemedi:", error.message);
+    return false;
+  });
+  if (!ownerNotified) console.error("Özel parça talebi bildirimi gönderilemedi.");
+  res.status(201).json({ ok: true, notification_sent: ownerNotified });
+});
+
 app.get("/api/messages", requireAdmin, async (req, res) => {
-  res.json(await db.prepare("SELECT * FROM messages ORDER BY created_at DESC, id DESC").all());
+  const messages = await db.prepare("SELECT * FROM messages ORDER BY created_at DESC, id DESC").all();
+  res.json(await Promise.all(messages.map(async (message) => {
+    const imageReference = designImageRef(message.message);
+    return {
+      ...message,
+      message: cleanDesignMessage(message.message),
+      design_image_url: await designImageUrl(imageReference)
+    };
+  })));
 });
 
 app.patch("/api/messages/:id", requireAdmin, async (req, res) => {

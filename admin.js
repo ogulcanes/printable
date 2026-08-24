@@ -659,6 +659,7 @@ function renderMessages() {
           <span class="badge">${escapeHtml(m.phone) || "Telefon yok"}</span>
           <span class="badge">${formatDateTime(m.created_at)}</span>
         </div>
+        ${m.design_image_url ? `<a class="small-button" href="${escapeHtml(m.design_image_url)}" target="_blank" rel="noopener">Parça görselini aç</a>` : ""}
       </div>
       <div class="row-actions">
         <button data-toggle-message="${m.id}" data-read="${m.is_read ? 1 : 0}">${m.is_read ? "Okunmadı yap" : "Okundu yap"}</button>

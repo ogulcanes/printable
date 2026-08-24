@@ -12,10 +12,58 @@
     <!--header-->
 
     <main>
-      <section class="container page-hero">
+      <section class="container page-hero design-page-hero">
         <p class="section-kicker">Özel tasarım</p>
         <h1>Özel Parça Tasarımı: Parçanızı Biz Çizelim</h1>
+        <div class="design-hero-action">
+          <strong>Parça tasarlatmak mı istiyorsun?</strong>
+          <a class="btn-solid" href="#parca-talebi">Parçanı bize anlat</a>
+          <span>Fotoğrafını veya krokini ekle, ücretsiz ön değerlendirme yapalım.</span>
+        </div>
         <p class="page-lead">Elinizde 3D dosya olmak zorunda değil. Kırılan parçanın fotoğrafını, bir krokiyi ya da sadece ölçüleri gönderin; parçayı bilgisayarda biz çizelim, onayınızdan sonra 3D yazıcıda basıp gönderelim. Aşağıdaki parçaların tasarımını da baskısını da kendimiz yaptık.</p>
+      </section>
+
+      <section id="parca-talebi" class="container design-request-section" aria-labelledby="design-request-title">
+        <div class="design-request-card">
+          <div class="design-request-copy">
+            <p class="section-kicker">Dosyan olmasa da olur</p>
+            <h2 id="design-request-title">Parçanı bize anlat</h2>
+            <p>Kırılan parçanın ne işe yaradığını, nerede kullanılacağını ve bildiğin ölçüleri yaz. Varsa fotoğrafını veya el çizimi krokini de ekle.</p>
+            <ul>
+              <li>Fotoğraf, kroki veya ölçü paylaşabilirsin</li>
+              <li>Uygun malzeme ve üretim yöntemini biz öneririz</li>
+              <li>Onayın olmadan çizim ya da baskı başlamaz</li>
+            </ul>
+          </div>
+
+          <form id="design-request-form" class="design-request-form" enctype="multipart/form-data" novalidate>
+            <label>
+              Parçanı kısaca anlat *
+              <textarea name="message" rows="5" required placeholder="Örn. Kahve makinemin kırılan kapağı. Yaklaşık 8 × 4 cm, sıcak ortamda kullanılıyor."></textarea>
+            </label>
+
+            <label class="design-upload" id="design-upload">
+              <input class="visually-hidden" id="design-image" name="image" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+              <span class="design-upload__mark" aria-hidden="true">+</span>
+              <span class="design-upload__text">
+                <strong>Görsel veya kroki ekle</strong>
+                <small>PNG, JPG, WEBP veya GIF · En fazla 8 MB</small>
+              </span>
+              <img id="design-image-preview" class="design-upload__preview" alt="Seçilen parça görselinin önizlemesi" hidden>
+            </label>
+            <p class="design-upload__name" id="design-image-name" aria-live="polite"></p>
+
+            <div class="design-request-form__row">
+              <label>Ad soyad *<input name="name" required autocomplete="name"></label>
+              <label>Telefon<input name="phone" inputmode="tel" autocomplete="tel" placeholder="05xx xxx xx xx"></label>
+            </div>
+            <label>E-posta<input name="email" type="email" autocomplete="email" placeholder="ornek@eposta.com"></label>
+            <p class="design-request-form__hint">Size ulaşabilmemiz için telefon veya e-posta bilgilerinden en az birini yazın.</p>
+
+            <button type="submit" id="design-request-submit">Parçamı Tasarlat</button>
+            <p class="contact-status" id="design-request-status" role="status" hidden></p>
+          </form>
+        </div>
       </section>
 
       <section class="container design-section">
@@ -147,5 +195,6 @@
 
     <!--chat-->
     <script src="/script.js"></script>
+    <script src="/tasarim.js"></script>
   </body>
 </html>
