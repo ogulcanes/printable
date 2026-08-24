@@ -19,10 +19,14 @@ process.env.PAYTR_MERCHANT_SALT = "TESTSALT";
 process.env.PAYTR_TEST_MODE = "1";
 process.env.SESSION_SECRET = "email-test-session-secret-that-is-long";
 process.env.ADMIN_PASSWORD = "email-test-admin-password";
+process.env.GOOGLE_PLACES_API_KEY = "google-places-test-key";
+process.env.GOOGLE_PLACE_ID = "printable-test-place";
+process.env.GOOGLE_MAPS_REVIEW_URL = "https://www.google.com/maps/place/Printable/reviews";
 
 const realFetch = global.fetch;
 const resendRequests = [];
 let resendMode = "success";
+let googleReviewsMode = "success";
 
 global.fetch = async (url, options = {}) => {
   if (String(url) === "https://api.resend.com/emails") {
@@ -37,6 +41,31 @@ global.fetch = async (url, options = {}) => {
     return new Response(JSON.stringify({
       status: "success",
       token: `FAKE${form.get("merchant_oid")}`
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
+  if (String(url).startsWith("https://places.googleapis.com/v1/places/printable-test-place")) {
+    if (googleReviewsMode === "error") {
+      return new Response(JSON.stringify({ error: { message: "Geçici hata" } }), {
+        status: 503, headers: { "Content-Type": "application/json" }
+      });
+    }
+    return new Response(JSON.stringify({
+      displayName: { text: "Printable" },
+      rating: 4.9,
+      userRatingCount: 37,
+      googleMapsUri: "https://www.google.com/maps/place/Printable",
+      reviews: [{
+        rating: 5,
+        relativePublishTimeDescription: "2 hafta önce",
+        text: { text: "Baskı kalitesi çok güzel, iletişim de hızlıydı.", languageCode: "tr" },
+        originalText: { text: "Baskı kalitesi çok güzel, iletişim de hızlıydı.", languageCode: "tr" },
+        googleMapsUri: "https://www.google.com/maps/reviews/data=test-review",
+        authorAttribution: {
+          displayName: "Deniz K.",
+          uri: "https://www.google.com/maps/contrib/test-author",
+          photoUri: "https://lh3.googleusercontent.com/a/test-author"
+        }
+      }]
     }), { status: 200, headers: { "Content-Type": "application/json" } });
   }
   return realFetch(url, options);
@@ -242,6 +271,31 @@ test("Sizden Gelenler paylaşımları izin kontrolüyle yönetilir ve vitrinde g
     method: "DELETE", headers: { Cookie: cookie }
   });
   assert.equal(removed.status, 204);
+});
+
+test("Müşteri Yorumları sayfası Google değerlendirmelerini güvenli biçimde gösterir", async () => {
+  googleReviewsMode = "success";
+  const page = await realFetch(`${baseUrl}/musteri-yorumlari`);
+  const html = await page.text();
+
+  assert.equal(page.status, 200);
+  assert.match(html, /<h1>Müşteri<br>Yorumları<\/h1>/);
+  assert.match(html, /data-google-reviews-status="connected"/);
+  assert.match(html, /4,9/);
+  assert.match(html, /37 Google değerlendirmesi/);
+  assert.match(html, /Deniz K\./);
+  assert.match(html, /Baskı kalitesi çok güzel, iletişim de hızlıydı/);
+  assert.match(html, /Yorumu Google Maps'te görüntüle/);
+  assert.match(html, /href="\/musteri-yorumlari"[^>]*>Yorumlar</);
+  assert.doesNotMatch(html, /google-places-test-key/);
+
+  googleReviewsMode = "error";
+  const fallbackPage = await realFetch(`${baseUrl}/musteri-yorumlari`);
+  const fallbackHtml = await fallbackPage.text();
+  assert.equal(fallbackPage.status, 200);
+  assert.match(fallbackHtml, /data-google-reviews-status="configuration-required"/);
+  assert.match(fallbackHtml, /Güncel yorumlar Google Maps'te/);
+  googleReviewsMode = "success";
 });
 
 test("Toplu anahtarlık talebi adet kurallarını uygular, panele ve e-postaya düşer", async () => {

@@ -40,6 +40,9 @@ app.set("trust proxy", true);
 
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
+const GOOGLE_PLACES_API_KEY = String(process.env.GOOGLE_PLACES_API_KEY || "").trim();
+const GOOGLE_PLACE_ID = String(process.env.GOOGLE_PLACE_ID || "").trim();
+const GOOGLE_MAPS_REVIEW_URL = String(process.env.GOOGLE_MAPS_REVIEW_URL || "").trim();
 // Vercel'de proje klasörü salt-okunurdur; yazılabilen tek yer /tmp. Yalnızca
 // geçici dosyalar için kullanılır — kalıcı veri Turso'da, görseller Blob'da.
 const WRITABLE_ROOT = process.env.VERCEL ? "/tmp" : ROOT;
@@ -126,7 +129,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "37";
+const SCHEMA_VERSION = "38";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -1072,6 +1075,13 @@ const extraSeoPages = [
     description: "Printable müşterilerinin evlerinden, masalarından ve günlük kullanımından gerçek 3D baskı ürün fotoğrafları ve kısa yorumlar.",
     og_title: "Sizden Gelenler | Printable Müşteri Vitrini",
     og_description: "3D baskı ürünlerimizin müşterilerimizden gelen fotoğraflarını ve deneyim notlarını keşfedin."
+  },
+  {
+    slug: "musteri-yorumlari", label: "Google müşteri yorumları sayfası",
+    title: "Müşteri Yorumları | Google Değerlendirmeleri | Printable",
+    description: "Printable müşterilerinin Google'da paylaştığı puanları ve gerçek deneyim yorumlarını inceleyin; siz de değerlendirmenizi paylaşın.",
+    og_title: "Müşteri Yorumları | Printable",
+    og_description: "Printable hakkında Google'da paylaşılan gerçek müşteri değerlendirmelerini okuyun."
   }
 ];
 for (const page of extraSeoPages) await addSeoPage.run(page);
@@ -1806,6 +1816,7 @@ async function seoHead(req, slug) {
     katalog: "Katalog",
     "anahtarlik-katalogu": "Toptan Anahtarlık Kataloğu",
     "sizden-gelenler": "Sizden Gelenler",
+    "musteri-yorumlari": "Müşteri Yorumları",
     landing: "Ürün Seçkisi",
     iade: "İade ve Cayma Hakkı",
     gizlilik: "Gizlilik ve KVKK",
@@ -2132,6 +2143,7 @@ async function renderHeader(active, customer) {
           ${await link("/", "Ana Sayfa", "home")}
           ${await link("/urunler", "Ürünler", "urunler")}
           ${await link("/anahtarlik-katalogu", "Toptan Anahtarlık", "anahtarlik-katalogu")}
+          ${await link("/musteri-yorumlari", "Yorumlar", "musteri-yorumlari")}
           ${BLOG_DISCOVERABLE ? await link("/blog", "Blog", "blog") : ""}
           ${await link("/tasarim", "Özel Tasarım", "tasarim")}
           ${await link("/hakkinda", "Hakkımızda", "hakkinda")}
@@ -2333,7 +2345,7 @@ async function renderFooter() {
       </div>
       <div class="container footer__grid">
         <div><h3>Kategoriler</h3><a href="/urunler">Figürler</a><a href="/urunler">Anahtarlıklar</a><a href="/urunler">Fidget & Stres</a><a href="/urunler">Düdükler</a></div>
-        <div><h3>Kurumsal</h3><a href="/sizden-gelenler">Sizden Gelenler</a><a href="/katalog">Katalog</a><a href="/hakkinda">Hakkımızda</a><a href="/iletisim">İletişim</a><a href="/stl-teklif">Özel 3D baskı</a><a href="/tasarim">Özel tasarım</a><a href="/urunler">Tüm ürünler</a></div>
+        <div><h3>Kurumsal</h3><a href="/musteri-yorumlari">Müşteri Yorumları</a><a href="/sizden-gelenler">Sizden Gelenler</a><a href="/katalog">Katalog</a><a href="/hakkinda">Hakkımızda</a><a href="/iletisim">İletişim</a><a href="/stl-teklif">Özel 3D baskı</a><a href="/tasarim">Özel tasarım</a><a href="/urunler">Tüm ürünler</a></div>
         <div><h3>Müşteri Desteği</h3><a href="/iletisim">Bize ulaşın</a><a href="/iade">İade & Değişim</a><a href="/sss">Kargo</a><a href="/sss">S.S.S.</a></div>
         <div><h3>Yasal</h3><a href="/mesafeli-satis">Mesafeli Satış Sözleşmesi</a><a href="/iade">İade ve Cayma Hakkı</a><a href="/gizlilik">Gizlilik ve KVKK</a></div>
         <div class="footer-logo printable-wordmark">
@@ -2586,6 +2598,140 @@ async function renderCustomerShowcases(sayfa) {
     .replace("<!--customer-showcases-summary-->", summary);
 }
 
+function guvenliHttpsAdresi(value, fallback = "") {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "https:" ? url.href : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function googleYildizlari(rating) {
+  const rounded = Math.max(0, Math.min(5, Math.round(Number(rating) || 0)));
+  return `${"★".repeat(rounded)}${"☆".repeat(5 - rounded)}`;
+}
+
+async function googleYorumBaglantisi() {
+  const configured = guvenliHttpsAdresi(GOOGLE_MAPS_REVIEW_URL);
+  if (configured) return configured;
+  const site = await db.prepare("SELECT site_name, legal_address FROM site_settings WHERE id = 1").get() || {};
+  const query = [site.site_name || "Printable", "3D baskı", site.legal_address].filter(Boolean).join(" ");
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
+/* Places API anahtarı yalnızca sunucuda kalır. Google, yorum içeriğinin uzun süreli
+   saklanmasına izin vermediği için sonucu veritabanına yazmıyor veya uygulama
+   önbelleğine almıyoruz; sayfa her açıldığında güncel Place Details yanıtı kullanılır. */
+async function googleYorumVerisi() {
+  if (!GOOGLE_PLACES_API_KEY || !GOOGLE_PLACE_ID) return null;
+  const endpoint = new URL(`https://places.googleapis.com/v1/places/${encodeURIComponent(GOOGLE_PLACE_ID)}`);
+  endpoint.searchParams.set("languageCode", "tr");
+  endpoint.searchParams.set("regionCode", "TR");
+
+  try {
+    const response = await fetch(endpoint, {
+      headers: {
+        "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+        "X-Goog-FieldMask": "displayName,rating,userRatingCount,googleMapsUri,reviews"
+      },
+      cache: "no-store",
+      signal: AbortSignal.timeout(6000)
+    });
+    if (!response.ok) throw new Error(`Places API ${response.status}`);
+    return await response.json();
+  } catch (error) {
+    console.error(`Google yorumları alınamadı: ${error.message}`);
+    return null;
+  }
+}
+
+function googleYorumKarti(review, fallbackUrl) {
+  const author = review.authorAttribution || {};
+  const authorName = author.displayName || "Google kullanıcısı";
+  const authorUrl = guvenliHttpsAdresi(author.uri, fallbackUrl);
+  const photoUrl = guvenliHttpsAdresi(author.photoUri);
+  const reviewUrl = guvenliHttpsAdresi(review.googleMapsUri, fallbackUrl);
+  const rating = Math.max(0, Math.min(5, Number(review.rating) || 0));
+  const relativeDate = review.relativePublishTimeDescription || (review.publishTime
+    ? new Intl.DateTimeFormat("tr-TR", { month: "long", year: "numeric" }).format(new Date(review.publishTime))
+    : "");
+  const text = review.text?.text || review.originalText?.text || "Yalnızca puan verdi.";
+  const translated = Boolean(
+    review.text?.text && review.originalText?.text
+    && review.text.text !== review.originalText.text
+  );
+  const initials = authorName.trim().split(/\s+/).slice(0, 2)
+    .map((part) => part.charAt(0).toLocaleUpperCase("tr-TR")).join("") || "G";
+
+  return `
+    <article class="google-review-card">
+      <div class="google-review-card__head">
+        <a class="google-review-card__author" href="${escapeHtml(authorUrl)}" target="_blank" rel="noopener">
+          ${photoUrl
+            ? `<img src="${escapeHtml(photoUrl)}" alt="" width="44" height="44" loading="lazy" referrerpolicy="no-referrer">`
+            : `<span aria-hidden="true">${escapeHtml(initials)}</span>`}
+          <span><strong>${escapeHtml(authorName)}</strong>${relativeDate ? `<small>${escapeHtml(relativeDate)}</small>` : ""}</span>
+        </a>
+        <img class="google-review-card__source" src="https://maps.gstatic.com/mapfiles/api-3/images/google4.png" alt="Google" width="75" height="26" loading="lazy">
+      </div>
+      <div class="google-review-card__stars" aria-label="5 üzerinden ${rating.toFixed(1).replace(".", ",")} yıldız">
+        <span aria-hidden="true">${googleYildizlari(rating)}</span>
+      </div>
+      <blockquote><p>“${escapeHtml(text)}”</p></blockquote>
+      ${translated ? `<small class="google-review-card__translated">Google tarafından çevrildi.</small>` : ""}
+      <a class="google-review-card__link" href="${escapeHtml(reviewUrl)}" target="_blank" rel="noopener">Yorumu Google Maps'te görüntüle <span aria-hidden="true">↗</span></a>
+    </article>`;
+}
+
+async function renderGoogleReviews(sayfa) {
+  const fallbackUrl = await googleYorumBaglantisi();
+  const place = await googleYorumVerisi();
+  const mapsUrl = guvenliHttpsAdresi(place?.googleMapsUri, fallbackUrl);
+  const reviews = Array.isArray(place?.reviews) ? place.reviews.slice(0, 5) : [];
+  const rating = Number(place?.rating) || 0;
+  const count = Math.max(0, Number(place?.userRatingCount) || 0);
+
+  const summary = place ? `
+    <aside class="google-reviews-summary" data-google-reviews-status="connected" aria-label="Google değerlendirme özeti">
+      <img src="https://maps.gstatic.com/mapfiles/api-3/images/google4.png" alt="Google" width="75" height="26">
+      <div><strong>${rating.toFixed(1).replace(".", ",")}</strong><span class="google-reviews-summary__stars" aria-label="5 üzerinden ${rating.toFixed(1).replace(".", ",")} yıldız">${googleYildizlari(rating)}</span></div>
+      <p>${count.toLocaleString("tr-TR")} Google değerlendirmesi</p>
+      <a href="${escapeHtml(mapsUrl)}" target="_blank" rel="noopener">Tüm yorumları Google'da gör <span aria-hidden="true">↗</span></a>
+    </aside>` : `
+    <aside class="google-reviews-summary google-reviews-summary--fallback" data-google-reviews-status="configuration-required" aria-label="Google yorumları bağlantısı">
+      <img src="https://maps.gstatic.com/mapfiles/api-3/images/google4.png" alt="Google" width="75" height="26">
+      <strong>Google'da bize göz atın</strong>
+      <p>İşletme profilimizdeki güncel puan ve yorumları doğrudan Google Maps'te görüntüleyebilirsiniz.</p>
+      <a href="${escapeHtml(mapsUrl)}" target="_blank" rel="noopener">Google Maps'i aç <span aria-hidden="true">↗</span></a>
+    </aside>`;
+
+  const list = reviews.length
+    ? reviews.map((review) => googleYorumKarti(review, mapsUrl)).join("")
+    : `<div class="google-reviews-empty">
+        <img src="https://maps.gstatic.com/mapfiles/api-3/images/google4.png" alt="Google" width="75" height="26">
+        <strong>Güncel yorumlar Google Maps'te</strong>
+        <p>Google işletme bağlantısını açarak tüm müşteri değerlendirmelerini görebilir ve kendi deneyiminizi paylaşabilirsiniz.</p>
+        <a href="${escapeHtml(mapsUrl)}" target="_blank" rel="noopener">Yorumları görüntüle</a>
+      </div>`;
+
+  const disclosure = place ? `
+    <p class="google-reviews-disclosure">Google yorumları doğrulamaz; sahte içerik tespit edildiğinde kontrol eder ve kaldırır. <a href="https://support.google.com/contributionpolicy/answer/7400114?hl=tr" target="_blank" rel="noopener">Google yorum politikası</a></p>` : "";
+  const cta = `
+    <section class="google-reviews-cta">
+      <div class="container">
+        <div><p class="section-kicker">Deneyiminizi paylaşın</p><h2>Siz de bizi değerlendirin.</h2><p>Yorumunuz küçük atölyemizi geliştirmemize ve yeni müşterilerin daha güvenli karar vermesine yardımcı olur.</p></div>
+        <a href="${escapeHtml(mapsUrl)}" target="_blank" rel="noopener">Google'da yorum yap <span aria-hidden="true">↗</span></a>
+      </div>
+    </section>`;
+
+  return sayfa
+    .replace("<!--google-reviews-summary-->", summary)
+    .replace("<!--google-reviews-list-->", list)
+    .replace("<!--google-reviews-disclosure-->", disclosure)
+    .replace("<!--google-reviews-cta-->", cta);
+}
+
 /* Ana sayfa vitrinleri. Seçim mantığı script.js'teki ile BİREBİR aynı olmalı —
    JS aynı kutuları yeniden bastığında kartlar yer değiştirmesin. Eskiden ana
    sayfanın 1602 kelimesinin 1000'i yalnızca JS ile geliyordu; tarayıcı için
@@ -2695,6 +2841,7 @@ async function sendPage(req, res, file, slug) {
   if (sayfa.includes("<!--urun-izgarasi-->")) sayfa = sayfa.replace("<!--urun-izgarasi-->", await renderProductGrid(req.query));
   if (sayfa.includes("<!--landing-vitrin-->")) sayfa = sayfa.replace("<!--landing-vitrin-->", await renderLandingStage());
   if (sayfa.includes("<!--customer-showcases-")) sayfa = await renderCustomerShowcases(sayfa);
+  if (sayfa.includes("<!--google-reviews-")) sayfa = await renderGoogleReviews(sayfa);
   if (sayfa.includes("<!--hero-slaytlari-->")) sayfa = await renderHero(sayfa);
   if (sayfa.includes("<!--vitrin-yeni-->")) sayfa = await renderHomeGrids(sayfa);
   res.type("html").send(await injectShell(sayfa, slug, await pageCustomer(req, res)));
@@ -2718,6 +2865,7 @@ app.get("/urunler", async (req, res) => await sendPage(req, res, "urunler.html",
 app.get("/stl-teklif", async (req, res) => await sendPage(req, res, "stl-teklif.html", "stl-teklif"));
 app.get("/tasarim", async (req, res) => await sendPage(req, res, "tasarim.html", "tasarim"));
 app.get("/sizden-gelenler", async (req, res) => await sendPage(req, res, "sizden-gelenler.html", "sizden-gelenler"));
+app.get("/musteri-yorumlari", async (req, res) => await sendPage(req, res, "musteri-yorumlari.html", "musteri-yorumlari"));
 app.get("/hakkinda", async (req, res) => await sendPage(req, res, "hakkinda.html", "hakkinda"));
 app.get("/iletisim", async (req, res) => await sendPage(req, res, "iletisim.html", "iletisim"));
 app.get("/hesap", async (req, res) => await sendPage(req, res, "hesap.html", "hesap"));
@@ -2864,6 +3012,7 @@ app.get("/sitemap.xml", async (req, res) => {
     { loc: "/stl-teklif", priority: "0.8" },
     { loc: "/tasarim", priority: "0.7" },
     { loc: "/sizden-gelenler", priority: "0.7" },
+    { loc: "/musteri-yorumlari", priority: "0.7" },
     { loc: "/hakkinda", priority: "0.5" },
     { loc: "/iletisim", priority: "0.5" },
     { loc: "/katalog", priority: "0.8" },
