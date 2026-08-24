@@ -2005,6 +2005,16 @@ async function contactInfo() {
   };
 }
 
+async function renderDesignWhatsappCTA() {
+  const { wa } = await contactInfo();
+  if (!wa) return "";
+  const message = encodeURIComponent("Merhaba, özel bir parça tasarlatmak istiyorum. Fotoğrafını ve ölçülerini paylaşacağım.");
+  return `<a class="design-whatsapp-cta" href="https://wa.me/${escapeHtml(wa)}?text=${message}" target="_blank" rel="noopener">
+    <svg viewBox="0 0 24 24" aria-hidden="true">${SOCIAL_ICONS.whatsapp}</svg>
+    <span>WhatsApp'tan İletişime Geç</span>
+  </a>`;
+}
+
 const CONTACT_CARD_ICONS = {
   phone: `<path d="M6.8 3h3l1.5 3.7-1.9 1.4a12 12 0 0 0 5.5 5.5l1.4-1.9L20 13.2v3a1.8 1.8 0 0 1-2 1.8A15.2 15.2 0 0 1 5 5a1.8 1.8 0 0 1 1.8-2Z"/>`,
   email: `<path d="M3.5 6.5h17v11h-17z"/><path d="m3.5 7 8.5 6 8.5-6"/>`,
@@ -2401,6 +2411,7 @@ async function sendPage(req, res, file, slug) {
   if (sayfa.includes("<!--iade-adresi-->")) sayfa = sayfa.replace("<!--iade-adresi-->", await renderReturnAddress());
   if (sayfa.includes("<!--guncelleme-->")) sayfa = sayfa.replace("<!--guncelleme-->", guncellemeSatiri());
   if (sayfa.includes("<!--contact-details-->")) sayfa = sayfa.replace("<!--contact-details-->", await renderContactDetails());
+  if (sayfa.includes("<!--design-whatsapp-->")) sayfa = sayfa.replace("<!--design-whatsapp-->", await renderDesignWhatsappCTA());
   if (sayfa.includes("<!--filtre-kategoriler-->")) sayfa = await renderProductFilters(sayfa, req.query);
   if (sayfa.includes("<!--urun-izgarasi-->")) sayfa = sayfa.replace("<!--urun-izgarasi-->", await renderProductGrid(req.query));
   if (sayfa.includes("<!--landing-vitrin-->")) sayfa = sayfa.replace("<!--landing-vitrin-->", await renderLandingStage());

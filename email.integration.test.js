@@ -132,6 +132,16 @@ test("İletişim sayfası taslak metin göstermeden sunucuda hazırlanır", asyn
   assert.match(html, /WhatsApp'tan mesaj gönderin/);
 });
 
+test("Özel tasarım sayfası WhatsApp iletişimini açılışta vurgular", async () => {
+  const response = await realFetch(`${baseUrl}/tasarim`);
+  const html = await response.text();
+  assert.equal(response.status, 200);
+  assert.match(html, /class="design-whatsapp-cta"/);
+  assert.match(html, /WhatsApp'tan İletişime Geç/);
+  assert.match(html, /https:\/\/wa\.me\/\d+\?text=/);
+  assert.doesNotMatch(html, /<!--design-whatsapp-->/);
+});
+
 test("Ana sayfa Spinball ve Katlaç için 10, 50, 100 adetlik sepet alanını içerir", async () => {
   const homeResponse = await realFetch(`${baseUrl}/`);
   const home = await homeResponse.text();
