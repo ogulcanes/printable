@@ -40,9 +40,11 @@ app.set("trust proxy", true);
 
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
+const PRINTABLE_GOOGLE_PLACE_ID = "ChIJW2fEbgS3yhQRCOXPdRDDGJk";
+const PRINTABLE_GOOGLE_MAPS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("Printable 3D Baskı Atölyesi")}&query_place_id=${encodeURIComponent(PRINTABLE_GOOGLE_PLACE_ID)}`;
 const GOOGLE_PLACES_API_KEY = String(process.env.GOOGLE_PLACES_API_KEY || "").trim();
-const GOOGLE_PLACE_ID = String(process.env.GOOGLE_PLACE_ID || "").trim();
-const GOOGLE_MAPS_REVIEW_URL = String(process.env.GOOGLE_MAPS_REVIEW_URL || "").trim();
+const GOOGLE_PLACE_ID = String(process.env.GOOGLE_PLACE_ID || PRINTABLE_GOOGLE_PLACE_ID).trim();
+const GOOGLE_MAPS_REVIEW_URL = String(process.env.GOOGLE_MAPS_REVIEW_URL || PRINTABLE_GOOGLE_MAPS_URL).trim();
 // Vercel'de proje klasörü salt-okunurdur; yazılabilen tek yer /tmp. Yalnızca
 // geçici dosyalar için kullanılır — kalıcı veri Turso'da, görseller Blob'da.
 const WRITABLE_ROOT = process.env.VERCEL ? "/tmp" : ROOT;
