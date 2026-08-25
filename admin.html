@@ -376,6 +376,15 @@
             <label>Ürün adı<input name="name" required></label>
             <label>SKU<input name="sku"></label>
             <label>Açıklama<textarea name="description" rows="4"></textarea></label>
+            <label>Kişiselleştirme türü
+              <select name="customization_type">
+                <option value="">Standart ürün</option>
+                <option value="name_keychain">İsme özel anahtarlık</option>
+                <option value="car_model">İstenilen araba modeli</option>
+                <option value="photo_3d_print">Fotoğraftan özel 3D baskı</option>
+              </select>
+              <small class="field-note">Bir tür seçildiğinde ürün yayına alınınca gerekli müşteri alanları ürün sayfasında otomatik açılır.</small>
+            </label>
             <div class="form-grid">
               <label>Renk açıklaması<input name="color" placeholder="Örn. CMYK, Tam renk"></label>
               <label>Stok<input name="stock" type="number" min="0" value="0"></label>
@@ -386,6 +395,13 @@
               <label>Derinlik<input name="depth" type="number" min="0" step="0.01"></label>
               <label>Ağırlık<input name="weight" type="number" min="0" step="0.01"></label>
             </div>
+            <label class="setting-check">
+              <input type="checkbox" name="is_made_to_order" value="1">
+              <span>
+                <strong>Siparişe özel üretim · stok takibi yok</strong>
+                <small>Bu ürün stok adedi göstermeden satılır; mağazanın stok takibi açık olsa bile siparişte stoktan düşülmez.</small>
+              </span>
+            </label>
             <fieldset class="color-picker-field">
               <legend>Kategoriler</legend>
               <div id="product-categories" class="color-options"></div>

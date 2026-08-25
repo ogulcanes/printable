@@ -151,6 +151,7 @@
         <div class="checkout-item__info">
           <h3>${item.name}</h3>
           ${item.scale ? `<span class="cart-item__scale">${escapeHtml(item.scale)}</span>` : ""}
+          ${typeof cartCustomizationHTML === "function" ? cartCustomizationHTML(item) : ""}
           <p>${money(item.price)}</p>
           <div class="cart-qty">
             <button type="button" data-co-dec="${lineKey(item)}" aria-label="Azalt">−</button>
@@ -181,7 +182,8 @@
     const ucretsizKargo = total >= freeShippingThreshold;
     qs("#summary-items").innerHTML = cart.map((i) =>
       `<div class="summary-item"><span>${i.quantity} × ${i.name}${
-        i.scale ? ` <em>(${escapeHtml(i.scale)})</em>` : ""}</span><span>${money(i.price * i.quantity)}</span></div>`
+        i.scale ? ` <em>(${escapeHtml(i.scale)})</em>` : ""}${
+        i.customization ? ` <em>(kişiye özel)</em>` : ""}</span><span>${money(i.price * i.quantity)}</span></div>`
     ).join("") || `<p class="summary-empty">Sepet boş</p>`;
 
     const rows = [
@@ -225,7 +227,12 @@
              siparişte. */
           email: qs("#delivery-form")?.elements.email?.value || "",
           phone: qs("#delivery-form")?.elements.phone?.value || "",
-          items: cart.map((i) => ({ product_id: i.id, scale_id: i.scale_id || null, quantity: i.quantity }))
+          items: cart.map((i) => ({
+            product_id: i.id,
+            scale_id: i.scale_id || null,
+            quantity: i.quantity,
+            customization: i.customization || null
+          }))
         })
       });
       campaigns = await res.json();
@@ -369,7 +376,12 @@
       payment_method: "kart",
       // Only the code travels — the server prices the campaign itself.
       coupon_code: qs("#coupon-code")?.value.trim() || "",
-      items: cart.map((i) => ({ product_id: i.id, scale_id: i.scale_id || null, quantity: i.quantity }))
+      items: cart.map((i) => ({
+        product_id: i.id,
+        scale_id: i.scale_id || null,
+        quantity: i.quantity,
+        customization: i.customization || null
+      }))
     };
 
     const button = qs("#co-submit");

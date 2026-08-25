@@ -67,7 +67,9 @@
             : `<span class="order-product__placeholder" aria-hidden="true">3D</span>`;
           const productId = Number(item.product_id);
           const visual = productId > 0 ? `<a href="/urun/${productId}" class="order-product__image">${image}</a>` : `<span class="order-product__image">${image}</span>`;
-          return compact ? visual : `${visual}<span class="order-product__info"><strong>${escapeHtml(item.product_name)}</strong>${item.scale ? `<small>Ölçek: ${escapeHtml(item.scale)}</small>` : ""}</span>`;
+          const customization = (item.customization?.summary || [])
+            .map((row) => `<small>${escapeHtml(row.label)}: ${escapeHtml(row.value)}</small>`).join("");
+          return compact ? visual : `${visual}<span class="order-product__info"><strong>${escapeHtml(item.product_name)}</strong>${item.scale ? `<small>Ölçek: ${escapeHtml(item.scale)}</small>` : ""}${customization}</span>`;
         };
         const orderItems = order.items || [];
         const items = orderItems.map((item) => `

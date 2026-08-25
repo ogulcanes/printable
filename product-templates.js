@@ -20,6 +20,95 @@
 
   const money = (value) => `${Number(value || 0).toFixed(2)} TL`;
 
+  /* Kişiselleştirilebilir ürün türleri tek kaynaktan okunur. Bu dosya hem Node'da
+     hem tarayıcıda çalıştığı için ürün sayfasındaki alanlar, sepet özeti ve
+     sunucudaki doğrulama aynı ad/etiketleri kullanır. */
+  const PRODUCT_CUSTOMIZATION_SCHEMAS = Object.freeze({
+    name_keychain: Object.freeze({
+      label: "İsme özel anahtarlık",
+      intro: "Anahtarlıkta yer alacak ismi yazın. Türkçe karakter kullanabilirsiniz.",
+      paintKitIncluded: true,
+      fields: Object.freeze([
+        Object.freeze({ name: "custom_name", label: "Yazılacak isim", type: "text", required: true, maxLength: 30, placeholder: "Örn. Zeynep" }),
+        Object.freeze({ name: "customer_note", label: "Ek not", type: "textarea", required: false, maxLength: 300, placeholder: "Varsa tasarımla ilgili kısa notunuzu yazın." })
+      ])
+    }),
+    car_model: Object.freeze({
+      label: "İstediğiniz araba modeli",
+      intro: "İstediğiniz aracın marka ve modelini yazın; varsa referans fotoğrafını ekleyin.",
+      paintKitIncluded: true,
+      fields: Object.freeze([
+        Object.freeze({ name: "car_model", label: "Araba marka ve modeli", type: "text", required: true, maxLength: 100, placeholder: "Örn. Honda Civic EK9" }),
+        Object.freeze({ name: "reference_image", label: "Referans fotoğrafı", type: "file", required: false, accept: "image/png,image/jpeg,image/webp,image/gif" }),
+        Object.freeze({ name: "customer_note", label: "Ek not", type: "textarea", required: false, maxLength: 500, placeholder: "Renk, jant veya özel detay gibi isteklerinizi yazın." })
+      ])
+    }),
+    photo_3d_print: Object.freeze({
+      label: "Size özel 3 boyutlu baskı",
+      intro: "Tatlı bir 3D modele dönüştürmemiz için net bir referans fotoğrafı yükleyin.",
+      paintKitIncluded: true,
+      fields: Object.freeze([
+        Object.freeze({ name: "reference_image", label: "Dönüştürülecek fotoğraf", type: "file", required: true, accept: "image/png,image/jpeg,image/webp,image/gif" }),
+        Object.freeze({ name: "customer_note", label: "Nasıl görünmesini istersiniz?", type: "textarea", required: false, maxLength: 700, placeholder: "Poz, ifade, eklenecek yazı veya korunmasını istediğiniz ayrıntıları yazın." })
+      ])
+    })
+  });
+
+  const productCustomizationSchema = (typeOrProduct) => {
+    const type = typeof typeOrProduct === "object" ? typeOrProduct?.customization_type : typeOrProduct;
+    return PRODUCT_CUSTOMIZATION_SCHEMAS[type] || null;
+  };
+
+  const productIsMadeToOrder = (product) => Number(product?.is_made_to_order) === 1;
+  const productIsAvailable = (product) => productIsMadeToOrder(product) || Number(product?.stock) > 0;
+
+  function customizationSummary(customization) {
+    const schema = productCustomizationSchema(customization?.type);
+    if (!schema) return [];
+    const values = customization.values || {};
+    const files = customization.files || {};
+    const rows = schema.fields.flatMap((field) => {
+      const value = field.type === "file" ? files[field.name]?.name : values[field.name];
+      return String(value || "").trim() ? [{ label: field.label, value: String(value).trim() }] : [];
+    });
+    if (customization.paint_kit_included !== false && schema.paintKitIncluded) {
+      rows.push({ label: "Paket", value: "Akrilik boya ve mini fırça seti dahil" });
+    }
+    return rows;
+  }
+
+  const customizationFieldHTML = (field) => {
+    const id = `custom-${field.name}`;
+    const ortak = `id="${id}" name="${field.name}" data-custom-field="${field.name}"${field.required ? " data-required=\"1\"" : ""}`;
+    if (field.type === "textarea") {
+      return `<label for="${id}">${escapeHtml(field.label)}${field.required ? " *" : ""}
+        <textarea ${ortak} rows="3" maxlength="${field.maxLength}" placeholder="${escapeHtml(field.placeholder || "")}"></textarea>
+      </label>`;
+    }
+    if (field.type === "file") {
+      return `<label for="${id}" class="product-customization__file">${escapeHtml(field.label)}${field.required ? " *" : ""}
+        <input ${ortak} type="file" accept="${escapeHtml(field.accept || "image/*")}">
+        <small data-custom-file-name="${field.name}">PNG, JPG, WEBP veya GIF · En fazla 8 MB</small>
+      </label>`;
+    }
+    return `<label for="${id}">${escapeHtml(field.label)}${field.required ? " *" : ""}
+      <input ${ortak} type="${field.type || "text"}" maxlength="${field.maxLength || 200}"
+             ${field.pattern ? `pattern="${escapeHtml(field.pattern)}"` : ""} placeholder="${escapeHtml(field.placeholder || "")}">
+    </label>`;
+  };
+
+  function productCustomizationHTML(product) {
+    const schema = productCustomizationSchema(product);
+    if (!schema) return "";
+    return `<fieldset class="product-customization" id="product-customization-form">
+      <legend>${escapeHtml(schema.label)}</legend>
+      <p class="product-customization__intro">${escapeHtml(schema.intro)}</p>
+      <div class="product-customization__fields">${schema.fields.map(customizationFieldHTML).join("")}</div>
+      ${schema.paintKitIncluded ? `<p class="product-customization__kit"><strong>Boyama seti dahil</strong><span>Akrilik boyalar ve mini fırça ürünle birlikte gönderilir.</span></p>` : ""}
+      <p class="product-customization__status" id="product-customization-status" role="status" hidden></p>
+    </fieldset>`;
+  }
+
   /* Görseli gösterileceği boyutta ister.
    *
    * Supabase Storage'ın dönüştürme uç noktası hem küçültüyor hem tarayıcı
@@ -104,7 +193,7 @@
        <button>: .product-card button'un stili dört ayrı katmanda tanımlı,
        yeni bir sınıf onların hepsini yeniden yazmayı gerektirirdi. */
     const action = `<button data-add-product="${product.id}">${
-      scales.length > 1 ? "Ölçek seçin" : "Sepete ekle"}</button>`;
+      productCustomizationSchema(product) ? "Kişiselleştir" : scales.length > 1 ? "Ölçek seçin" : "Sepete ekle"}</button>`;
     /* Alanlar kaçışlanıyor. Ürün verisi admin panelinden geliyor, yani halka
        açık girdi değil — ama adında & ya da < geçen tek bir ürün işaretlemeyi
        bozmaya yeter, ve bu metin artık sunucunun bastığı ilk HTML'de de var.
@@ -175,7 +264,8 @@
     const olcekler = olceklerOf(product);
     const olcek = seciliOlcek(product, seciliOlcekId);
     const price = olcek ? olcek.price : (product.sale_price || product.price);
-    const inStock = product.stock > 0;
+    const madeToOrder = productIsMadeToOrder(product);
+    const inStock = productIsAvailable(product);
     const onSale = !olcekler.length && product.sale_price && product.price > product.sale_price;
     const badgeHTML = onSale ? promotionBadgeHTML(product) : "";
     const cats = (product.categories || [])
@@ -247,16 +337,19 @@
           ${olcekSecici}
           ${swatches ? `<div class="product-detail__colors"><span>Renkler</span><div class="swatches">${swatches}</div></div>` : ""}
           ${product.description ? `<p class="product-detail__desc">${escapeHtml(product.description)}</p>` : ""}
+          ${productCustomizationHTML(product)}
           <ul class="product-detail__specs">
             ${product.color ? `<li><span>Malzeme</span><strong>${escapeHtml(product.color)}</strong></li>` : ""}
             ${product.sku ? `<li><span>Ürün kodu</span><strong>${escapeHtml(product.sku)}</strong></li>` : ""}
-            ${stokGoster || !inStock
+            ${madeToOrder
+              ? `<li><span>Üretim</span><strong class="spec-in">Siparişe özel hazırlanır</strong></li>`
+              : stokGoster || !inStock
               ? `<li><span>Stok</span><strong class="${inStock ? "spec-in" : "spec-out"}">${inStock ? product.stock + " adet" : "Tükendi"}</strong></li>`
               : ""}
           </ul>
           <div class="product-detail__actions">
             <label class="qty-field">Adet
-              <input type="number" id="detail-qty" min="1" max="${Math.max(1, product.stock || 99)}" value="1" ${inStock ? "" : "disabled"}>
+              <input type="number" id="detail-qty" min="1" max="${madeToOrder ? 99 : Math.max(1, product.stock || 1)}" value="1" ${inStock ? "" : "disabled"}>
             </label>
             <button type="button" id="detail-add" ${inStock ? "" : "disabled"}>${inStock ? "Sepete ekle" : "Tükendi"}</button>
             <a class="btn-outline" href="/stl-teklif">Kendi modelinizi bastırın</a>
@@ -284,7 +377,7 @@ function preferredProductList(active, ids, limit, excluded = new Set()) {
 
 function commerceStageCardHTML(product, index) {
   const scales = productScales(product);
-  const inStock = Number(product.stock) > 0;
+  const inStock = productIsAvailable(product);
   return `
     <article class="commerce-product${index === 0 ? " commerce-product--lead" : ""}">
       ${!scales.length ? promotionBadgeHTML(product, "commerce-product__discount") : ""}
@@ -295,7 +388,7 @@ function commerceStageCardHTML(product, index) {
         ${index === 0 ? "<span>Vitrin ürünü</span>" : ""}
         <h2>${product.name}</h2>
         <strong>${money(displayPrice(product))}${scales.length > 1 ? "'den başlayan" : ""}</strong>
-        <button type="button" data-add-product="${product.id}" ${inStock ? "" : "disabled"}>${inStock ? (scales.length > 1 ? "Boyunu seç" : "Sepete ekle") : "Tükendi"}</button>
+        <button type="button" data-add-product="${product.id}" ${inStock ? "" : "disabled"}>${inStock ? (productCustomizationSchema(product) ? "Kişiselleştir" : scales.length > 1 ? "Boyunu seç" : "Sepete ekle") : "Tükendi"}</button>
       </div>
     </article>`;
 }
@@ -303,7 +396,9 @@ function commerceStageCardHTML(product, index) {
   const disaAktar = {
     escapeHtml, money, stars, productScales, displayPrice, discountPercent, promotionBadge, promotionBadgeHTML, ratingHTML,
     productCardHTML, productDetailHTML, commerceStageCardHTML, preferredProductList, gorselAdresi,
-    olceklerOf, seciliOlcek, galeriKareleri, anaMedyaHTML, galeriMedyaTuru
+    olceklerOf, seciliOlcek, galeriKareleri, anaMedyaHTML, galeriMedyaTuru,
+    PRODUCT_CUSTOMIZATION_SCHEMAS, productCustomizationSchema, productCustomizationHTML, customizationSummary,
+    productIsMadeToOrder, productIsAvailable
   };
 
   /* Node'da require, tarayıcıda global. Derleme adımı yok; tarayıcı bu dosyayı

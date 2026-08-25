@@ -131,7 +131,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "38";
+const SCHEMA_VERSION = "40";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -172,6 +172,8 @@ async function initDb() {
     shopier_sync_status TEXT NOT NULL DEFAULT 'pending',
     shopier_sync_error TEXT,
     shopier_synced_at TIMESTAMPTZ,
+    customization_type TEXT,
+    is_made_to_order INTEGER NOT NULL DEFAULT 0,
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -663,6 +665,9 @@ async function initDb() {
     -- Sipariş edilen ölçek ADI, kopyalanarak. Ölçek sonradan silinse ya da adı
     -- değişse bile atölye ne bastığını sipariş kaleminden okuyabilsin.
     scale TEXT,
+    -- Kişiselleştirme alanlarının sipariş anındaki güvenli JSON görüntüsü.
+    -- Ürün türü sonradan değişse bile atölyenin üretim bilgisi kaybolmaz.
+    customization_data TEXT,
     quantity INTEGER NOT NULL DEFAULT 1,
     unit_price REAL NOT NULL DEFAULT 0,
     line_total REAL NOT NULL DEFAULT 0,
@@ -706,6 +711,9 @@ for (const [table, column, type] of [
   ["products", "shopier_sync_status", "TEXT NOT NULL DEFAULT 'pending'"],
   ["products", "shopier_sync_error", "TEXT"],
   ["products", "shopier_synced_at", "TIMESTAMPTZ"],
+  ["products", "customization_type", "TEXT"],
+  ["products", "is_made_to_order", "INTEGER NOT NULL DEFAULT 0"],
+  ["order_items", "customization_data", "TEXT"],
   ["product_images", "media_type", "TEXT NOT NULL DEFAULT 'image'"],
   ["hero_slides", "image_alt", "TEXT"],
   ["site_settings", "default_og_image", "TEXT"],
@@ -1216,6 +1224,59 @@ if (!existingProducts) {
   }
 }
 
+/* Hazırlık aşamasındaki kişiselleştirilebilir ürünler. Ana katalog seed'inden
+   farklı olarak bu blok dolu veritabanlarına da iner; SKU ile korunduğu için
+   yalnızca bir kez eklenir. Fiyat, stok ve görsel bilerek boş; is_active=0 ile
+   public API, vitrin, arama ve ürün adreslerinin tamamından gizli kalırlar. */
+const seedHiddenCustomProduct = db.prepare(`
+  INSERT INTO products
+    (id, name, sku, description, color, price, stock, image_path, image_alt,
+     meta_title, meta_description, meta_keywords, customization_type, is_made_to_order, is_active)
+  OVERRIDING SYSTEM VALUE
+  SELECT
+    @id, @name, @sku, @description, @color, 0, 0, NULL, @image_alt,
+    @meta_title, @meta_description, @meta_keywords, @customization_type, 1, 0
+  WHERE NOT EXISTS (SELECT 1 FROM products WHERE sku = @sku OR id = @id)
+`);
+for (const product of [
+  {
+    id: 900001,
+    name: "İsme Özel Anahtarlık",
+    sku: "PR-CUSTOM-001",
+    description: "İstediğiniz isimle hazırlanan boyanabilir 3D baskı anahtarlık. Akrilik boya ve mini fırça setiyle birlikte gönderilir.",
+    color: "Boyanabilir PLA · Akrilik boya seti dahil",
+    image_alt: "İsme özel boyanabilir 3D baskı anahtarlık seti",
+    meta_title: "İsme Özel 3D Baskı Anahtarlık | Printable",
+    meta_description: "İsminize özel hazırlanan boyanabilir 3D baskı anahtarlık ve akrilik boya seti.",
+    meta_keywords: "isme özel anahtarlık, kişiye özel anahtarlık, boyama seti, 3d baskı anahtarlık",
+    customization_type: "name_keychain"
+  },
+  {
+    id: 900002,
+    name: "İstediğiniz Araba Modeli",
+    sku: "PR-CUSTOM-002",
+    description: "İstediğiniz marka ve modelden hazırlanan boyanabilir 3D araba baskısı. Akrilik boya ve mini fırça setiyle birlikte gönderilir.",
+    color: "Boyanabilir PLA · Akrilik boya seti dahil",
+    image_alt: "İstenilen araba modelinden boyanabilir 3D baskı seti",
+    meta_title: "İstediğiniz Araba Modeli 3D Baskı | Printable",
+    meta_description: "İstediğiniz araba modeline göre hazırlanan boyanabilir 3D baskı ve akrilik boya seti.",
+    meta_keywords: "kişiye özel araba modeli, 3d baskı araba, minyatür araba, araba boyama seti",
+    customization_type: "car_model"
+  },
+  {
+    id: 900003,
+    name: "Size Özel 3 Boyutlu Baskı",
+    sku: "PR-CUSTOM-003",
+    description: "Gönderdiğiniz fotoğraftan tatlı ve boyanabilir bir 3D model hazırlanır. Akrilik boya ve mini fırça setiyle birlikte gönderilir.",
+    color: "Boyanabilir PLA · Akrilik boya seti dahil",
+    image_alt: "Fotoğraftan hazırlanan kişiye özel boyanabilir 3D baskı seti",
+    meta_title: "Fotoğraftan Size Özel 3D Baskı | Printable",
+    meta_description: "Fotoğrafınızdan hazırlanan tatlı, boyanabilir 3D model ve akrilik boya seti.",
+    meta_keywords: "fotoğraftan 3d baskı, kişiye özel figür, özel 3d model, boyama seti",
+    customization_type: "photo_3d_print"
+  }
+]) await seedHiddenCustomProduct.run(product);
+
 // These five records belong to the standalone wholesale keychain catalogue,
 // not the storefront product inventory. Remove the misplaced previous release
 // on every database migration; the SKU scope is explicit and safe.
@@ -1387,6 +1448,55 @@ if (urunFiyatSonuRevizyonu?.value !== URUN_FIYAT_SONU_REVIZYONU) {
           updated_at = NOW()
       FROM revised
       WHERE products.id = revised.id
+    `).run();
+  });
+}
+
+/* Hazırlık ürünlerinin kesin fiyatı, kapak görseli ve stoksuz üretim modu.
+   Genel fiyat revizyonlarından SONRA çalışır; böylece bu üç rakam kampanya
+   matematiğiyle değişmez. Ayrı anahtar sayesinde yalnızca bir kez uygulanır,
+   sonrasında yönetim panelinde yapılan düzenlemeler korunur. */
+const KISIYE_OZEL_URUN_REVIZYONU = "2026-08-kisiye-ozel-fiyat-gorsel-stoksuz-v1";
+const kisiyeOzelUrunRevizyonu = await db.prepare("SELECT value FROM app_meta WHERE key = 'custom_products_rev'").get();
+if (kisiyeOzelUrunRevizyonu?.value !== KISIYE_OZEL_URUN_REVIZYONU) {
+  await db.transaction(async (tx) => {
+    const claim = await tx.prepare(`
+      INSERT INTO app_meta (key, value) VALUES ('custom_products_rev', ?)
+      ON CONFLICT (key) DO UPDATE SET value = excluded.value
+      WHERE app_meta.value <> excluded.value
+    `).run(KISIYE_OZEL_URUN_REVIZYONU);
+    if (!claim.changes) return;
+
+    await tx.prepare(`
+      INSERT INTO price_history (product_id, price, sale_price)
+      SELECT id,
+             CASE sku
+               WHEN 'PR-CUSTOM-001' THEN 119
+               WHEN 'PR-CUSTOM-002' THEN 500
+               WHEN 'PR-CUSTOM-003' THEN 589
+             END,
+             NULL
+      FROM products
+      WHERE sku IN ('PR-CUSTOM-001', 'PR-CUSTOM-002', 'PR-CUSTOM-003')
+    `).run();
+
+    await tx.prepare(`
+      UPDATE products
+      SET price = CASE sku
+            WHEN 'PR-CUSTOM-001' THEN 119
+            WHEN 'PR-CUSTOM-002' THEN 500
+            WHEN 'PR-CUSTOM-003' THEN 589
+          END,
+          sale_price = NULL,
+          stock = 0,
+          is_made_to_order = 1,
+          image_path = CASE sku
+            WHEN 'PR-CUSTOM-001' THEN '/assets/products/custom/isme-ozel-anahtarlik.jpg'
+            WHEN 'PR-CUSTOM-002' THEN '/assets/products/custom/istediginiz-araba-modeli.jpg'
+            WHEN 'PR-CUSTOM-003' THEN '/assets/products/custom/size-ozel-3d-baski.jpg'
+          END,
+          updated_at = NOW()
+      WHERE sku IN ('PR-CUSTOM-001', 'PR-CUSTOM-002', 'PR-CUSTOM-003')
     `).run();
   });
 }
@@ -1598,6 +1708,19 @@ app.post("/api/uploads/sign", async (req, res) => {
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
+});
+
+/* Supabase Storage yapılandırılmamış yerel geliştirmede kişiselleştirme
+   fotoğrafını diske alır. Canlıda istemci /api/uploads/sign ile doğrudan özel
+   kovaya yükler; bu uç o ortamda dosya kabul etmez. */
+app.post("/api/customization-uploads", (req, res, next) => {
+  if (storage.enabled) {
+    return res.status(400).json({ error: "Canlı ortamda fotoğrafı güvenli yükleme adresiyle gönderin." });
+  }
+  return upload.single("image")(req, res, next);
+}, async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "Geçerli bir referans fotoğrafı seçin." });
+  res.status(201).json({ path: `/uploads/${req.file.filename}` });
 });
 app.use("/assets", express.static(path.join(ROOT, "assets")));
 // Tarayicinin otomatik istegi 404 uretmesin.
@@ -3323,6 +3446,39 @@ app.get("/api/customer/session", async (req, res) => {
   });
 });
 
+function parseStoredCustomization(value) {
+  if (!value) return null;
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    return sablonlar.productCustomizationSchema(parsed?.type) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function decorateOrderItemCustomization(item, includeFileUrl = false, signedSeconds = 3600) {
+  const customization = parseStoredCustomization(item.customization_data);
+  const { customization_data, ...cleanItem } = item;
+  if (!customization) return { ...cleanItem, customization: null };
+  const firstFile = Object.values(customization.files || {})[0] || null;
+  const fileUrl = includeFileUrl && firstFile
+    ? (String(firstFile.key || "").startsWith("/uploads/")
+      ? firstFile.key
+      : await storage.signedModelUrl(firstFile.key, signedSeconds))
+    : null;
+  return {
+    ...cleanItem,
+    customization: {
+      type: customization.type,
+      values: customization.values || {},
+      paint_kit_included: customization.paint_kit_included !== false,
+      summary: sablonlar.customizationSummary(customization),
+      file_name: firstFile?.name || null,
+      ...(fileUrl ? { file_url: fileUrl } : {})
+    }
+  };
+}
+
 app.get("/api/customer/orders", requireCustomer, async (req, res) => {
   const orders = await db.prepare(`
     SELECT o.id, o.order_number, o.status, o.payment_status, o.subtotal, o.discount,
@@ -3336,7 +3492,7 @@ app.get("/api/customer/orders", requireCustomer, async (req, res) => {
   `).all(req.customer.email);
   if (!orders.length) return res.json([]);
   const items = await db.prepare(`
-    SELECT oi.order_id, oi.product_id, oi.product_name, oi.scale, oi.quantity, oi.unit_price, oi.line_total,
+    SELECT oi.order_id, oi.product_id, oi.product_name, oi.scale, oi.customization_data, oi.quantity, oi.unit_price, oi.line_total,
            p.image_path AS product_image
     FROM order_items oi
     JOIN orders o ON o.id = oi.order_id
@@ -3346,7 +3502,8 @@ app.get("/api/customer/orders", requireCustomer, async (req, res) => {
     ORDER BY o.created_at DESC, oi.id ASC
   `).all(req.customer.email);
   const itemsByOrder = new Map();
-  for (const item of items) {
+  for (const rawItem of items) {
+    const item = await decorateOrderItemCustomization(rawItem);
     const current = itemsByOrder.get(item.order_id) || [];
     current.push(item);
     itemsByOrder.set(item.order_id, current);
@@ -3402,7 +3559,10 @@ async function sendPasswordResetEmail({ to, name, resetUrl }) {
 }
 
 async function sendOrderReceivedEmail({ to, name, orderNumber, items, total }) {
-  const lines = items.map((item) => `<li style="padding:7px 0;border-bottom:1px solid #eee"><strong>${escapeHtml(item.product_name)}</strong> · ${Number(item.quantity)} adet · ${emailMoney(item.line_total)}</li>`).join("");
+  const lines = items.map((item) => {
+    const custom = (item.customization?.summary || []).map((row) => `${escapeHtml(row.label)}: ${escapeHtml(row.value)}`).join(" · ");
+    return `<li style="padding:7px 0;border-bottom:1px solid #eee"><strong>${escapeHtml(item.product_name)}</strong> · ${Number(item.quantity)} adet · ${emailMoney(item.line_total)}${custom ? `<br><small style="color:#6c7180">${custom}</small>` : ""}</li>`;
+  }).join("");
   return sendTransactionalEmail({
     to,
     subject: `Siparişiniz alındı · ${orderNumber}`,
@@ -3451,7 +3611,13 @@ async function notifyNewCustomerAccount({ name, email, phone }) {
 }
 
 async function notifyNewOrder({ name, email, phone, orderNumber, items, total }) {
-  const lines = items.map((item) => `<li>${escapeHtml(item.product_name)} · ${Number(item.quantity)} adet · ${emailMoney(item.line_total)}</li>`).join("");
+  const lines = items.map((item) => {
+    const custom = (item.customization?.summary || []).map((row) => `${escapeHtml(row.label)}: ${escapeHtml(row.value)}`).join(" · ");
+    const file = item.customization?.file_url
+      ? `<br><a href="${escapeHtml(item.customization.file_url)}">Referans fotoğrafını aç</a>`
+      : "";
+    return `<li>${escapeHtml(item.product_name)} · ${Number(item.quantity)} adet · ${emailMoney(item.line_total)}${custom ? `<br><small>${custom}</small>` : ""}${file}</li>`;
+  }).join("");
   return sendStoreNotification({
     subject: `Yeni sipariş · ${orderNumber}`,
     html: `<div style="font-family:Arial,sans-serif;color:#171c2c;line-height:1.6">
@@ -4000,6 +4166,10 @@ app.delete("/api/admin-users/:id", requireAdmin, async (req, res) => {
 const money = (value) => Number(value || 0);
 const nullableMoney = (value) => value === "" || value == null ? null : Number(value);
 const toInt = (value) => Number.parseInt(value || "0", 10);
+const customizationType = (value) => {
+  const type = String(value || "").trim();
+  return sablonlar.productCustomizationSchema(type) ? type : null;
+};
 
 /* Bir görselin kaynağı üç yerden gelebilir:
      1) image_key   — tarayıcı doğrudan Supabase Storage'a yükledi, elimizde anahtar var
@@ -4081,6 +4251,8 @@ function productPayload(body, file) {
     meta_title: seo.meta_title,
     meta_description: seo.meta_description,
     meta_keywords: seo.meta_keywords,
+    customization_type: customizationType(body.customization_type),
+    is_made_to_order: body.is_made_to_order === true || body.is_made_to_order === "1" || body.is_made_to_order === 1 ? 1 : 0,
     is_active: body.is_active === "0" ? 0 : 1
   };
 }
@@ -4371,16 +4543,23 @@ const maliyetiGizle = (urun) => {
 app.get("/api/products", async (req, res) => {
   // id breaks the tie: the seed inserts every product in the same second, so
   // created_at alone leaves "en yeni" in arbitrary order.
-  const products = await db.prepare("SELECT * FROM products ORDER BY created_at DESC, id DESC").all();
+  const admin = await isAuthed(req);
+  const products = await db.prepare(`
+    SELECT * FROM products ${admin ? "" : "WHERE is_active = 1"}
+    ORDER BY created_at DESC, id DESC
+  `).all();
   const suslu = await decorateProducts(products);
-  res.json(await isAuthed(req) ? suslu : suslu.map(maliyetiGizle));
+  res.json(admin ? suslu : suslu.map(maliyetiGizle));
 });
 
 app.get("/api/products/:id", async (req, res) => {
-  const product = await db.prepare("SELECT * FROM products WHERE id = ?").get(req.params.id);
+  const admin = await isAuthed(req);
+  const product = await db.prepare(`
+    SELECT * FROM products WHERE id = ? ${admin ? "" : "AND is_active = 1"}
+  `).get(req.params.id);
   if (!product) return res.status(404).json({ error: "Ürün bulunamadı." });
   const suslu = await withColors(product);
-  res.json(await isAuthed(req) ? suslu : maliyetiGizle(suslu));
+  res.json(admin ? suslu : maliyetiGizle(suslu));
 });
 
 /* ---------- blog ---------- */
@@ -4534,8 +4713,8 @@ app.post("/api/products", requireAdmin, upload.single("image"), async (req, res)
   if (!product.name) return res.status(400).json({ error: "Ürün adı zorunludur." });
 
   const result = await db.prepare(`
-    INSERT INTO products (name, sku, category, description, color, price, sale_price, width, height, depth, weight, stock, image_path, image_alt, meta_title, meta_description, meta_keywords, is_active)
-    VALUES (@name, @sku, @category, @description, @color, @price, @sale_price, @width, @height, @depth, @weight, @stock, @image_path, @image_alt, @meta_title, @meta_description, @meta_keywords, @is_active)
+    INSERT INTO products (name, sku, category, description, color, price, sale_price, width, height, depth, weight, stock, image_path, image_alt, meta_title, meta_description, meta_keywords, customization_type, is_made_to_order, is_active)
+    VALUES (@name, @sku, @category, @description, @color, @price, @sale_price, @width, @height, @depth, @weight, @stock, @image_path, @image_alt, @meta_title, @meta_description, @meta_keywords, @customization_type, @is_made_to_order, @is_active)
   `).run(product);
 
   // await şart: beklenmezse renk/kategori bağlantıları yanıt gönderildikten
@@ -4588,7 +4767,7 @@ app.put("/api/products/:id", requireAdmin, upload.single("image"), async (req, r
   const gonderilen = { ...req.body };
   const KORUNACAK = ["name", "sku", "category", "description", "color", "price", "sale_price",
     "width", "height", "depth", "weight", "stock", "image_alt", "meta_title",
-    "meta_description", "meta_keywords", "is_active"];
+    "meta_description", "meta_keywords", "customization_type", "is_made_to_order", "is_active"];
   for (const alan of KORUNACAK) {
     if (gonderilen[alan] === undefined && current[alan] !== undefined && current[alan] !== null) {
       gonderilen[alan] = alan === "is_active" ? String(current[alan]) : current[alan];
@@ -4603,7 +4782,8 @@ app.put("/api/products/:id", requireAdmin, upload.single("image"), async (req, r
       name=@name, sku=@sku, category=@category, description=@description, color=@color,
       price=@price, sale_price=@sale_price, width=@width, height=@height, depth=@depth,
       weight=@weight, stock=@stock, image_path=@image_path, image_alt=@image_alt,
-      meta_title=@meta_title, meta_description=@meta_description, meta_keywords=@meta_keywords, is_active=@is_active,
+      meta_title=@meta_title, meta_description=@meta_description, meta_keywords=@meta_keywords,
+      customization_type=@customization_type, is_made_to_order=@is_made_to_order, is_active=@is_active,
       updated_at=CURRENT_TIMESTAMP
     WHERE id=@id
   `).run(product);
@@ -5476,9 +5656,10 @@ app.get("/api/orders", requireAdmin, async (req, res) => {
   `).all();
 
   const items = db.prepare("SELECT * FROM order_items WHERE order_id = ?");
-  res.json(await Promise.all(
-    orders.map(async (order) => ({ ...order, items: await items.all(order.id) }))
-  ));
+  res.json(await Promise.all(orders.map(async (order) => ({
+    ...order,
+    items: await Promise.all((await items.all(order.id)).map((item) => decorateOrderItemCustomization(item, true)))
+  }))));
 });
 
 /* Panelden elle sipariş açma. Vitrin bu rotayı kullanmaz — o /api/checkout'a gider.
@@ -5782,6 +5963,58 @@ async function evaluateCampaigns(items, code, identity = null) {
   return { discount: round2(Math.min(discount, subtotal)), gifts, applied, error };
 }
 
+const validCustomizationImageKey = (value) => /^[a-z0-9][a-z0-9._-]{0,179}\.(?:png|jpe?g|webp|gif)$/i.test(value || "");
+const validCustomizationImageRef = (value) =>
+  /^\/uploads\/[a-z0-9][a-z0-9._-]{0,179}\.(?:png|jpe?g|webp|gif)$/i.test(value || "")
+  || validCustomizationImageKey(value);
+
+/* İstemciden gelen kişiselleştirme alanlarını ürünün sunucudaki türüne göre
+   yeniden kurar. Bilinmeyen alanlar atılır, zorunlu alanlar ve dosya anahtarları
+   doğrulanır; boya seti bilgisi istemciden değil ürün şemasından gelir. */
+function normalizeProductCustomization(product, input) {
+  const schema = sablonlar.productCustomizationSchema(product);
+  if (!schema) return { data: null, error: null };
+  if (!input || typeof input !== "object" || input.type !== product.customization_type) {
+    return { data: null, error: `${product.name} için kişiselleştirme bilgilerini tamamlayın.` };
+  }
+
+  const rawValues = input.values && typeof input.values === "object" ? input.values : {};
+  const rawFiles = input.files && typeof input.files === "object" ? input.files : {};
+  const values = {};
+  const files = {};
+
+  for (const field of schema.fields) {
+    if (field.type === "file") {
+      const raw = rawFiles[field.name];
+      if (!raw && field.required) return { data: null, error: `${field.label} zorunludur.` };
+      if (!raw) continue;
+      const key = String(raw.key || "").trim();
+      const name = String(raw.name || "referans görseli").replace(/[\r\n]/g, " ").trim().slice(0, 180);
+      if (!validCustomizationImageRef(key)) return { data: null, error: `${field.label} dosyası geçersiz.` };
+      files[field.name] = { key, name: name || "referans görseli" };
+      continue;
+    }
+
+    const value = String(rawValues[field.name] || "").replace(/\s+/g, " ").trim();
+    if (!value && field.required) return { data: null, error: `${field.label} zorunludur.` };
+    if (value.length > field.maxLength) return { data: null, error: `${field.label} en fazla ${field.maxLength} karakter olabilir.` };
+    if (value && field.pattern && !(new RegExp(`^(?:${field.pattern})$`)).test(value)) {
+      return { data: null, error: `${field.label} geçerli biçimde değil.` };
+    }
+    if (value) values[field.name] = value;
+  }
+
+  return {
+    data: {
+      type: product.customization_type,
+      values,
+      files,
+      paint_kit_included: Boolean(schema.paintKitIncluded)
+    },
+    error: null
+  };
+}
+
 // Sepet satırlarını ürün tablosundan yeniden fiyatlar — istemciden gelen fiyat yok sayılır.
 /* Sepet kalemlerini katalogdan yeniden kurar. Tarayıcıdan SADECE ürün kimliği ve
    adet okunur; isim ve fiyat her zaman veritabanından gelir.
@@ -5815,23 +6048,34 @@ async function normalizeCartItems(items) {
     const unitPrice = olcek
       ? Math.max(0, money(olcek.price))
       : Math.max(0, money(product.sale_price || product.price));
-    return {
+    const customization = normalizeProductCustomization(product, item.customization);
+    if (customization.error) return { error: customization.error };
+    return { item: {
       product_id: product.id,
       product_name: product.name,
       scale: olcek ? olcek.scale : null,
       scale_id: olcek ? olcek.id : null,
+      customization: customization.data,
+      customization_data: customization.data ? JSON.stringify(customization.data) : null,
       quantity,
       unit_price: unitPrice,
       line_total: money(quantity * unitPrice)
-    };
+    } };
   }));
-  return rows.filter(Boolean);
+  return {
+    items: rows.filter((row) => row?.item).map((row) => row.item),
+    customization_error: rows.find((row) => row?.error)?.error || null
+  };
 }
 
 // Ödeme sayfasının önizlemesi. Burada dönen tutar bilgilendirmedir; sipariş
 // oluşturulurken /api/checkout aynı motoru yeniden çalıştırır.
 app.post("/api/campaigns/preview", async (req, res) => {
-  const items = await normalizeCartItems(req.body.items);
+  const normalized = await normalizeCartItems(req.body.items);
+  const items = normalized.items;
+  if (normalized.customization_error) {
+    return res.json({ discount: 0, gifts: [], applied: [], error: normalized.customization_error, incentives: [] });
+  }
   if (!items.length) return res.json({ discount: 0, gifts: [], applied: [], error: null, incentives: [] });
   // Kimlik (e-posta/telefon) formda doluysa gelir; kişi başı hakkı bitmiş kodu
   // müşteri siparişi göndermeden önce öğrensin.
@@ -6234,7 +6478,7 @@ async function releaseOrderReservations(tx, order) {
       GROUP BY product_id
     `).all(order.id);
     for (const item of quantities) {
-      await tx.prepare("UPDATE products SET stock = stock + ? WHERE id = ?").run(item.quantity, item.product_id);
+      await tx.prepare("UPDATE products SET stock = stock + ? WHERE id = ? AND is_made_to_order = 0").run(item.quantity, item.product_id);
     }
   }
 }
@@ -6259,7 +6503,10 @@ async function notifyPaidOrder(orderId) {
     FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.id = ?
   `).get(orderId);
   if (!order) return;
-  const items = await db.prepare("SELECT * FROM order_items WHERE order_id = ? ORDER BY id").all(order.id);
+  const items = await Promise.all(
+    (await db.prepare("SELECT * FROM order_items WHERE order_id = ? ORDER BY id").all(order.id))
+      .map((item) => decorateOrderItemCustomization(item, true, 7 * 24 * 60 * 60))
+  );
   const tasks = [];
   if (process.env.RESEND_API_KEY && order.customer_email) {
     tasks.push(sendOrderReceivedEmail({
@@ -6315,7 +6562,11 @@ app.post("/api/checkout", async (req, res) => {
 
   // Fiyatlama ve kampanya hesabı transaction'dan ÖNCE: bunlar salt-okunur
   // sorgular, yazma kilidini gereksiz yere tutmasınlar.
-  const normalized = await normalizeCartItems(items);
+  const normalizedCart = await normalizeCartItems(items);
+  if (normalizedCart.customization_error) {
+    return res.status(400).json({ error: normalizedCart.customization_error });
+  }
+  const normalized = normalizedCart.items;
   // Katalogda karşılığı kalmayan kalemler yukarıda düşürülür; hepsi düştüyse sipariş açma.
   if (!normalized.length) return res.status(400).json({ error: "Sepetinizdeki ürünler artık satışta değil. Sepetinizi güncelleyip tekrar deneyin." });
   const subtotal = round2(normalized.reduce((sum, item) => sum + item.line_total, 0));
@@ -6338,8 +6589,8 @@ app.post("/api/checkout", async (req, res) => {
   if (stokTakibi) {
     const yetersiz = [];
     for (const item of normalized) {
-      const urun = await db.prepare("SELECT name, stock FROM products WHERE id = ?").get(item.product_id);
-      if (!urun || urun.stock < item.quantity) {
+      const urun = await db.prepare("SELECT name, stock, is_made_to_order FROM products WHERE id = ?").get(item.product_id);
+      if (!urun || (!urun.is_made_to_order && urun.stock < item.quantity)) {
         yetersiz.push(`${urun?.name || "Ürün"} (kalan: ${urun?.stock ?? 0})`);
       }
     }
@@ -6454,8 +6705,8 @@ app.post("/api/checkout", async (req, res) => {
     });
 
     const insertItem = tx.prepare(`
-      INSERT INTO order_items (order_id, product_id, product_name, scale, quantity, unit_price, line_total)
-      VALUES (@order_id, @product_id, @product_name, @scale, @quantity, @unit_price, @line_total)
+      INSERT INTO order_items (order_id, product_id, product_name, scale, customization_data, quantity, unit_price, line_total)
+      VALUES (@order_id, @product_id, @product_name, @scale, @customization_data, @quantity, @unit_price, @line_total)
     `);
     for (const item of normalized) {
       await insertItem.run({ ...item, order_id: order.lastInsertRowid });
@@ -6469,6 +6720,7 @@ app.post("/api/checkout", async (req, res) => {
         product_id: gift.product_id,
         product_name: `${gift.product_name} (Hediye)`,
         scale: null,
+        customization_data: null,
         quantity: gift.quantity,
         unit_price: 0,
         line_total: 0
@@ -6497,7 +6749,7 @@ app.post("/api/checkout", async (req, res) => {
     // Stok takibi açıksa satılan adet düşülür. Kapalıyken (varsayılan) stok
     // yalnızca bilgi amaçlı bir sayı olarak kalır.
     if (stokTakibi) {
-      const dus = tx.prepare("UPDATE products SET stock = GREATEST(0, stock - ?) WHERE id = ?");
+      const dus = tx.prepare("UPDATE products SET stock = GREATEST(0, stock - ?) WHERE id = ? AND is_made_to_order = 0");
       for (const item of normalized.filter((row) => Number(row.line_total) > 0)) {
         await dus.run(item.quantity, item.product_id);
       }
