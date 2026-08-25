@@ -55,7 +55,14 @@ let freeShippingThreshold = 599;
    diğerinin adedine eklenir ve müşteri yanlış boydan sipariş verirdi.
    Ölçeksiz ürünlerde (ve ölçekler eklenmeden önce doldurulmuş eski
    sepetlerde) anahtar "12:" olur — eski satırlar bozulmadan çalışır. */
-const lineKey = (item) => `${item.id}:${item.scale_id || ""}`;
+const lineKey = (item) => item.line_id || `${item.id}:${item.scale_id || ""}`;
+
+function cartCustomizationHTML(item) {
+  const rows = typeof customizationSummary === "function" ? customizationSummary(item.customization) : [];
+  return rows.map((row) =>
+    `<span class="cart-item__scale"><strong>${escapeHtml(row.label)}:</strong> ${escapeHtml(row.value)}</span>`
+  ).join("");
+}
 
 const storeProducts = document.querySelector("#store-products");
 const cartPanel = document.querySelector("#cart-panel");
@@ -109,6 +116,7 @@ function renderCart() {
       <div class="cart-item__info">
         <h3>${item.name}</h3>
         ${item.scale ? `<span class="cart-item__scale">${item.scale}</span>` : ""}
+        ${cartCustomizationHTML(item)}
         <p>${money(item.price)}</p>
         <div class="cart-qty">
           <button type="button" data-dec="${lineKey(item)}" aria-label="Azalt">−</button>
@@ -221,7 +229,7 @@ function renderFeaturePanel(product) {
           ? `<span class="price-from">'den itibaren</span>`
           : (!scales.length && product.sale_price ? ` <s>${money(product.price)}</s>` : "")}
       </p>
-      <button type="button" data-add-product="${product.id}">${scales.length > 1 ? "Ölçek seçin" : "Sepete ekle"}</button>
+      <button type="button" data-add-product="${product.id}">${productCustomizationSchema(product) ? "Kişiselleştir" : scales.length > 1 ? "Ölçek seçin" : "Sepete ekle"}</button>
     </div>`;
   panel.hidden = false;
 }
@@ -232,7 +240,7 @@ function renderFeaturePanel(product) {
 function landingShelfCardHTML(product) {
   const off = discountPercent(product);
   const scales = productScales(product);
-  const inStock = Number(product.stock) > 0;
+  const inStock = productIsAvailable(product);
   return `
     <article class="landing-shelf-product">
       <a class="landing-shelf-product__media" href="/urun/${product.id}">
@@ -243,7 +251,7 @@ function landingShelfCardHTML(product) {
         <h3><a href="/urun/${product.id}">${product.name}</a></h3>
         <div class="landing-shelf-product__buy">
           <p><strong>${money(displayPrice(product))}</strong>${scales.length > 1 ? "<small>'den başlayan</small>" : (off ? `<s>${money(product.price)}</s>` : "")}</p>
-          <button type="button" data-add-product="${product.id}" ${inStock ? "" : "disabled"} aria-label="${product.name}: ${inStock ? "sepete ekle" : "tükendi"}">${inStock ? (scales.length > 1 ? "Seç" : "+") : "—"}</button>
+          <button type="button" data-add-product="${product.id}" ${inStock ? "" : "disabled"} aria-label="${product.name}: ${inStock ? (productCustomizationSchema(product) ? "kişiselleştir" : "sepete ekle") : "tükendi"}">${inStock ? (productCustomizationSchema(product) || scales.length > 1 ? "Seç" : "+") : "—"}</button>
         </div>
       </div>
     </article>`;
@@ -286,7 +294,7 @@ function renderFidgetSpotlight(active) {
     );
     const off = discountPercent(spinball);
     const currentPrice = displayPrice(spinball);
-    const inStock = Number(spinball.stock) > 0;
+  const inStock = productIsAvailable(spinball);
     spinballPanel.innerHTML = `
       <div class="spinball-spotlight__media">
         ${video
@@ -557,17 +565,21 @@ async function loadProducts() {
    ürünün TEK ölçeği varsa o kullanılır — tek seçenekli bir listeden seçim
    istemek gereksiz. Birden fazlaysa çağıran taraf (ürün sayfası) seçtirmek
    zorunda; kartlar bu durumda zaten sepete ekleme butonu göstermiyor. */
-function addToCart(product, quantity = 1, scale = null) {
+function addToCart(product, quantity = 1, scale = null, customization = null) {
   const scales = productScales(product);
   const secili = scale || (scales.length === 1 ? scales[0] : null);
   const satir = {
     id: product.id,
+    line_id: customization
+      ? (globalThis.crypto?.randomUUID?.() || `custom-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+      : null,
     scale_id: secili ? secili.id : null,
     scale: secili ? secili.scale : null,
     name: product.name,
     price: secili ? secili.price : (product.sale_price || product.price),
     image: product.image_path || null,
-    quantity
+    quantity,
+    customization
   };
   const existing = cart.find((item) => lineKey(item) === lineKey(satir));
   if (existing) existing.quantity += quantity;
@@ -591,7 +603,7 @@ document.addEventListener("click", (event) => {
     const product = (window.printableProducts || []).find((item) => item.id === Number(addId));
     if (!product) return;
     // Ölçek seçilmeden sepete atılamaz: müşteriyi ürün sayfasına gönder.
-    if (productScales(product).length > 1) {
+    if (productCustomizationSchema(product) || productScales(product).length > 1) {
       location.href = `/urun/${product.id}`;
       return;
     }
@@ -602,6 +614,10 @@ document.addEventListener("click", (event) => {
     const bulkCard = event.target.closest("[data-bulk-product-id]");
     const product = (window.printableProducts || []).find((item) => item.id === Number(bulkCard?.dataset.bulkProductId));
     if (!product) return;
+    if (productCustomizationSchema(product)) {
+      location.href = `/urun/${product.id}`;
+      return;
+    }
     const scaleId = Number(bulkCard.querySelector("[data-bulk-scale-select]")?.value || 0);
     const scale = productScales(product).find((item) => item.id === scaleId) || null;
     addToCart(product, bulkQuantity, scale);

@@ -44,7 +44,140 @@
      satır da değişir. Varsayılan en ucuzu — kartta gördüğü fiyat bu, sayfa
      açılınca aynı rakamı görmeli. Ölçeksiz ürünlerde null kalır. */
   let seciliOlcekId = null;
+  const customizationDraft = {};
+  const customizationFiles = {};
+  const uploadedCustomizationFiles = new WeakMap();
+  const allowedCustomizationImageTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+  const maxCustomizationImageBytes = 8 * 1024 * 1024;
   // olceklerOf / seciliOlcek / galeriKareleri / anaMedyaHTML: product-templates.js
+
+  function setCustomizationStatus(message, state = "") {
+    const status = detail.querySelector("#product-customization-status");
+    if (!status) return;
+    status.textContent = message;
+    status.hidden = !message;
+    status.classList.toggle("is-error", state === "error");
+    status.classList.toggle("is-ok", state === "ok");
+  }
+
+  function validateCustomizationFile(file, required, input) {
+    let error = "";
+    if (!file && required) error = "Lütfen bir referans fotoğrafı seçin.";
+    else if (file && !allowedCustomizationImageTypes.has(file.type)) error = "Yalnızca PNG, JPG, WEBP veya GIF görselleri yüklenebilir.";
+    else if (file && file.size > maxCustomizationImageBytes) error = "Görsel en fazla 8 MB olabilir.";
+    input?.setCustomValidity(error);
+    if (error) input?.reportValidity();
+    return !error;
+  }
+
+  function bindCustomizationForm(product) {
+    const schema = productCustomizationSchema(product);
+    const form = detail.querySelector("#product-customization-form");
+    if (!schema || !form) return;
+
+    schema.fields.forEach((field) => {
+      const input = form.querySelector(`[data-custom-field="${field.name}"]`);
+      if (!input) return;
+      if (field.type === "file") {
+        const stored = customizationFiles[field.name];
+        const label = form.querySelector(`[data-custom-file-name="${field.name}"]`);
+        if (stored && label) label.textContent = `${stored.name} · ${(stored.size / 1024 / 1024).toFixed(1)} MB`;
+        input.addEventListener("change", () => {
+          const file = input.files?.[0] || null;
+          if (!validateCustomizationFile(file, field.required, input)) {
+            input.value = "";
+            delete customizationFiles[field.name];
+            if (label) label.textContent = "PNG, JPG, WEBP veya GIF · En fazla 8 MB";
+            return;
+          }
+          if (file) customizationFiles[field.name] = file;
+          else delete customizationFiles[field.name];
+          if (label) label.textContent = file
+            ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB`
+            : "PNG, JPG, WEBP veya GIF · En fazla 8 MB";
+          setCustomizationStatus("");
+        });
+        return;
+      }
+      input.value = customizationDraft[field.name] || "";
+      input.addEventListener("input", () => {
+        customizationDraft[field.name] = input.value;
+        input.setCustomValidity("");
+        setCustomizationStatus("");
+      });
+    });
+  }
+
+  async function uploadCustomizationFile(file) {
+    if (uploadedCustomizationFiles.has(file)) return uploadedCustomizationFiles.get(file);
+
+    const signResponse = await fetch("/api/uploads/sign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "design", filename: file.name })
+    });
+
+    let stored;
+    if (signResponse.status === 503) {
+      const data = new FormData();
+      data.set("image", file);
+      const localResponse = await fetch("/api/customization-uploads", { method: "POST", body: data });
+      const local = await localResponse.json().catch(() => ({}));
+      if (!localResponse.ok) throw new Error(local.error || "Referans fotoğrafı yüklenemedi.");
+      stored = { key: local.path, name: file.name };
+    } else {
+      const signed = await signResponse.json().catch(() => ({}));
+      if (!signResponse.ok) throw new Error(signed.error || "Fotoğraf için yükleme adresi alınamadı.");
+      const uploadResponse = await fetch(signed.signedUrl, {
+        method: "PUT",
+        headers: file.type ? { "Content-Type": file.type } : undefined,
+        body: file
+      });
+      if (!uploadResponse.ok) throw new Error("Referans fotoğrafı yüklenemedi. Lütfen tekrar deneyin.");
+      stored = { key: signed.path, name: file.name };
+    }
+
+    uploadedCustomizationFiles.set(file, stored);
+    return stored;
+  }
+
+  async function collectCustomization(product) {
+    const schema = productCustomizationSchema(product);
+    const form = detail.querySelector("#product-customization-form");
+    if (!schema || !form) return null;
+
+    const values = {};
+    const files = {};
+    for (const field of schema.fields) {
+      const input = form.querySelector(`[data-custom-field="${field.name}"]`);
+      if (!input) continue;
+      if (field.type === "file") {
+        const file = customizationFiles[field.name] || input.files?.[0] || null;
+        if (!validateCustomizationFile(file, field.required, input)) return false;
+        if (file) files[field.name] = await uploadCustomizationFile(file);
+        continue;
+      }
+
+      const value = String(input.value || "").trim();
+      let error = "";
+      if (field.required && !value) error = `${field.label} alanını doldurun.`;
+      else if (value.length > field.maxLength) error = `${field.label} en fazla ${field.maxLength} karakter olabilir.`;
+      else if (value && field.pattern && !(new RegExp(`^(?:${field.pattern})$`)).test(value)) error = `${field.label} geçerli biçimde değil.`;
+      input.setCustomValidity(error);
+      if (error) { input.reportValidity(); return false; }
+      if (value) {
+        values[field.name] = value;
+        customizationDraft[field.name] = value;
+      }
+    }
+
+    return {
+      type: product.customization_type,
+      values,
+      files,
+      paint_kit_included: Boolean(schema.paintKitIncluded)
+    };
+  }
 
   function galeriyiBagla(product) {
     const thumbs = document.querySelector("#gallery-thumbs");
@@ -68,6 +201,7 @@
     detail.innerHTML = productDetailHTML(product, { seciliOlcekId, seciliRenkId, stokGoster });
 
     galeriyiBagla(product);
+    bindCustomizationForm(product);
 
     /* Renk noktasına basınca galeri o rengin fotoğraflarına geçer. Aynı renge
        tekrar basmak seçimi kaldırır — kullanıcı "hepsini göster"e dönebilsin. */
@@ -87,10 +221,22 @@
       });
     });
 
-    document.querySelector("#detail-add")?.addEventListener("click", () => {
+    document.querySelector("#detail-add")?.addEventListener("click", async (event) => {
+      const button = event.currentTarget;
       const qty = Math.max(1, parseInt(document.querySelector("#detail-qty").value, 10) || 1);
-      addToCart(product, qty, seciliOlcek(product, seciliOlcekId));
-      if (typeof cartPanel !== "undefined" && cartPanel) cartPanel.classList.add("open");
+      button.disabled = true;
+      try {
+        const customization = await collectCustomization(product);
+        if (customization === false) return;
+        if (customization) setCustomizationStatus("Bilgileriniz hazırlanıyor…");
+        addToCart(product, qty, seciliOlcek(product, seciliOlcekId), customization);
+        if (customization) setCustomizationStatus("Kişiselleştirme bilgileriniz sepete eklendi.", "ok");
+        if (typeof cartPanel !== "undefined" && cartPanel) cartPanel.classList.add("open");
+      } catch (error) {
+        setCustomizationStatus(error.message || "Bilgileriniz hazırlanamadı. Lütfen tekrar deneyin.", "error");
+      } finally {
+        button.disabled = false;
+      }
     });
   }
 

@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "preview:custom": "node scripts/preview-custom-products.js",
     "test": "node --test paytr.integration.test.js shopier.integration.test.js email.integration.test.js"
   },
   "dependencies": {

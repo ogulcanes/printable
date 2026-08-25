@@ -55,6 +55,11 @@ const paymentMethodLabels = {
   kapida: "Kapıda ödeme",
   kart: "Kredi / banka kartı"
 };
+const customizationTypeLabels = {
+  name_keychain: "İsme özel",
+  car_model: "Araba modeli",
+  photo_3d_print: "Fotoğraftan 3D"
+};
 
 /* Paneldeki form ve buton dinleyicilerinin çoğu async ve try/catch'siz: api()
    hata fırlattığında sözü kimse yakalamıyordu, yani "Kaydet"e basınca hiçbir şey
@@ -134,7 +139,7 @@ function filteredProducts() {
     if (productFilters.state === "active" && !p.is_active) return false;
     if (productFilters.state === "passive" && p.is_active) return false;
     if (productFilters.state === "sale" && !(p.sale_price && p.price > p.sale_price)) return false;
-    if (productFilters.state === "nostock" && p.stock > 0) return false;
+    if (productFilters.state === "nostock" && (p.stock > 0 || p.is_made_to_order)) return false;
     return true;
   });
 
@@ -213,7 +218,9 @@ function renderProducts() {
         <div class="meta-line">
           ${(product.categories || []).map((category) => `<span class="badge">${escapeHtml(category.name)}</span>`).join("") || '<span class="badge">Kategori yok</span>'}
           <span class="badge">${escapeHtml(product.color) || "Renk yok"}</span>
-          <span class="badge ${product.stock > 0 ? "green" : "orange"}">Stok ${product.stock}</span>
+          ${product.is_made_to_order
+            ? '<span class="badge blue">Siparişe özel · stok takibi yok</span>'
+            : `<span class="badge ${product.stock > 0 ? "green" : "orange"}">Stok ${product.stock}</span>`}
           ${(product.scales || []).length
             ? /* Ölçekli üründe fiyatı ölçek belirliyor; ürün formuna elle
                  yazılan fiyat mağazada kullanılmaz. Rozet bunu söylüyor. */
@@ -223,6 +230,7 @@ function renderProducts() {
             : `<span class="badge blue">${money(product.sale_price || product.price)}${product.sale_price ? ` / <s>${money(product.price)}</s>` : ""}</span>
                ${product.sale_price && product.price > 0 ? `<span class="badge orange">%${Math.round((1 - product.sale_price / product.price) * 100)} indirim</span>` : ""}`}
           ${product.rating?.count ? `<span class="badge">${product.rating.average} ★ (${product.rating.count} yorum)</span>` : ""}
+          ${product.customization_type ? `<span class="badge blue">${escapeHtml(customizationTypeLabels[product.customization_type] || "Kişiselleştirilebilir")}</span>` : ""}
           ${maliyetRozeti(product)}
           ${satilabilir ? "" : '<span class="badge orange">Ölçek/fiyat eksik</span>'}
           ${product.shopier_sync_status === "synced"
@@ -617,6 +625,12 @@ function renderOrders() {
         <h3>${escapeHtml(order.order_number)} - ${escapeHtml(order.customer_name)}</h3>
         <p>${order.items.map((item) => `${item.quantity} adet ${escapeHtml(item.product_name)}${
           item.scale ? ` <em>(${escapeHtml(item.scale)})</em>` : ""}`).join(", ")}</p>
+        ${order.items.filter((item) => item.customization).map((item) => `
+          <div class="meta-line">
+            <span class="badge blue">${escapeHtml(item.product_name)} · Kişiye özel</span>
+            ${(item.customization.summary || []).map((row) => `<span class="badge">${escapeHtml(row.label)}: ${escapeHtml(row.value)}</span>`).join("")}
+            ${item.customization.file_url ? `<a class="badge blue" href="${escapeHtml(item.customization.file_url)}" target="_blank" rel="noopener">Referans fotoğrafı</a>` : ""}
+          </div>`).join("")}
         <div class="meta-line">
           <span class="badge ${statusClass[order.status] || ""}">${statusLabels[order.status] || order.status}</span>
           <span class="badge blue">${money(order.total)}</span>
@@ -2122,6 +2136,7 @@ qs("#product-form").addEventListener("submit", async (event) => {
   const form = event.currentTarget;
   const formData = new FormData(form);
   formData.set("is_active", form.is_active.checked ? "1" : "0");
+  formData.set("is_made_to_order", form.is_made_to_order.checked ? "1" : "0");
   await hoistImageUpload(formData);
   const id = formData.get("id");
   await api(id ? `/api/products/${id}` : "/api/products", {
@@ -2168,6 +2183,7 @@ qs("#product-list").addEventListener("click", async (event) => {
       if (form.elements[key] && key !== "image") form.elements[key].value = value ?? "";
     });
     form.is_active.checked = Boolean(product.is_active);
+    form.is_made_to_order.checked = Boolean(product.is_made_to_order);
     renderProductColorOptions((product.colors || []).map((color) => color.id));
     renderProductCategoryOptions((product.categories || []).map((category) => category.id));
     renderGallery(product);
