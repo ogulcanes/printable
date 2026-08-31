@@ -9,6 +9,10 @@ for (let index = KEYCHAIN_PRODUCTS.length - 1; index >= 0; index -= 1) {
 // Newly added catalogue records. Preview images can be supplied later without
 // changing the selection/export structure; cards use a clean placeholder until then.
 KEYCHAIN_PRODUCTS.push(
+  { id: "2953751", name: "Eklemli Sosis Köpek Mini Flexi", tag: "Esnek / Eklemli", note: "Kuyruklu veya kuyruksuz, mini esnek köpek anahtarlık", img: "/assets/anahtarlik-katalog/2953751.jpg", url: "https://makerworld.com/tr/models/2953751-dachshund-dog-with-or-without-tail-mini-flexi#profileId-3309859" },
+  { id: "1880738", name: "Mickey ve Minnie Mouse Anahtarlık", tag: "Karakter", note: "Mickey ve Minnie figürlü ikili anahtarlık", img: "/assets/anahtarlik-katalog/1880738.jpg", url: "https://makerworld.com/tr/models/1880738-disney-mickey-minnie-mouse-keychain?from=search#profileId-2013797" },
+  { id: "2520272", name: "Eklemli Su Samuru Anahtarlık", tag: "Esnek / Eklemli", note: "Hareketli gövdeli sevimli su samuru anahtarlık", img: "/assets/anahtarlik-katalog/2520272.jpg", url: "https://makerworld.com/tr/models/2520272-articulated-otter-toy-keychain?from=search#profileId-2772512" },
+  { id: "1441896", name: "Kafatası ve Beyin Klavye Clicker Anahtarlık", tag: "Oyun / Fidget", note: "Mekanik klavye switch'i ile tıklamalı fidget anahtarlık", img: "/assets/anahtarlik-katalog/1441896.png", url: "https://makerworld.com/tr/models/1441896-skull-brain-keyboard-clicker-keychain-no-suppo?from=search#profileId-1500899" },
   { id: "1087902", name: "Sevimli Mini Kapibara", tag: "Anahtarlık", note: "Kompakt, sevimli mini kapibara", img: "", url: "https://makerworld.com/tr/models/1087902-cute-mini-capybara" },
   { id: "1675119", name: "Sevimli Mini Kedi Yavrusu", tag: "Anahtarlık", note: "Mini kedi yavrusu figürü", img: "", url: "https://makerworld.com/tr/models/1675119-cute-mini-cat-kitten" },
   { id: "3100409", name: "Eklemli Mirket", tag: "Esnek / Eklemli", note: "Güçlü eklemli gövde", img: "", url: "https://makerworld.com/tr/models/3100409-articulated-meerkat-strong-joints" },
