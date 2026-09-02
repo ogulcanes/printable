@@ -16,6 +16,8 @@ data/pgdata/
 # Yerelde diske yazılan yüklemeler (üretimde Supabase Storage kullanılır).
 uploads/*
 !uploads/.gitkeep
+private_uploads/*
+!private_uploads/.gitkeep
 
 npm-debug.log*
 .vercel

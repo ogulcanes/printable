@@ -49,7 +49,12 @@ const GOOGLE_MAPS_REVIEW_URL = String(process.env.GOOGLE_MAPS_REVIEW_URL || PRIN
 // geçici dosyalar için kullanılır — kalıcı veri Turso'da, görseller Blob'da.
 const WRITABLE_ROOT = process.env.VERCEL ? "/tmp" : ROOT;
 const DATA_DIR = path.join(WRITABLE_ROOT, "data");
-const UPLOAD_DIR = path.join(WRITABLE_ROOT, "uploads");
+// Alastyr'da bu iki dizin kalıcı diskte durur. Yalnızca PUBLIC_UPLOAD_DIR
+// Express üzerinden açıkça sunulur; müşteri STL/3MF ve referans görselleri
+// tahmin edilebilir bir URL ile internete açılmaz.
+const UPLOAD_DIR = path.resolve(process.env.PUBLIC_UPLOAD_DIR || path.join(WRITABLE_ROOT, "uploads"));
+const PRIVATE_UPLOAD_DIR = path.resolve(process.env.PRIVATE_UPLOAD_DIR || path.join(WRITABLE_ROOT, "private_uploads"));
+const LOCAL_PRIVATE_PREFIX = "local-private:";
 const ADMIN_USER = process.env.ADMIN_USER || "admin";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "printable-admin";
 const SESSION_SECRET = process.env.SESSION_SECRET || "local-printable-session-secret";
@@ -124,6 +129,7 @@ function verifyPassword(plain, stored) {
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+fs.mkdirSync(PRIVATE_UPLOAD_DIR, { recursive: true });
 
 /* Şema, migration ve seed artık asenkron. Modül yüklenirken bir kez başlar;
    `dbReady` sözü tutulana kadar hiçbir istek veritabanına dokunamaz (aşağıdaki
@@ -687,9 +693,9 @@ const existingColumns = new Set(
   (await db.prepare(`
     SELECT table_name, column_name FROM information_schema.columns
     WHERE table_schema = 'public'
-  `).all()).map((r) => `${r.table_name}.${r.column_name}`)
+  `).all()).map((r) => `${r.table_name || r.TABLE_NAME}.${r.column_name || r.COLUMN_NAME}`.toLowerCase())
 );
-const hasColumn = async (table, column) => existingColumns.has(`${table}.${column}`);
+const hasColumn = async (table, column) => existingColumns.has(`${table}.${column}`.toLowerCase());
 
 for (const [table, column, type] of [
   /* Ürün başına maliyet. unit_cost hızlı gösterim için (liste, kâr marjı),
@@ -1360,7 +1366,10 @@ if (urunKampanyaRevizyonu?.value !== URUN_KAMPANYA_REVIZYONU) {
     `).run(URUN_KAMPANYA_REVIZYONU);
     if (!claim.changes) return;
 
-    await tx.prepare(`
+    await tx.prepare(db.usingMysql ? `
+      INSERT INTO price_history (product_id, price, sale_price)
+      SELECT id, new_price, new_sale_price FROM (${revisedProductsSql}) revised
+    ` : `
       WITH revised AS (${revisedProductsSql})
       INSERT INTO price_history (product_id, price, sale_price)
       SELECT id, new_price, new_sale_price FROM revised
@@ -1379,7 +1388,13 @@ if (urunKampanyaRevizyonu?.value !== URUN_KAMPANYA_REVIZYONU) {
       WHERE price IS NOT NULL AND price > 0
     `).run();
 
-    await tx.prepare(`
+    await tx.prepare(db.usingMysql ? `
+      UPDATE products
+      JOIN (${revisedProductsSql}) revised ON products.id = revised.id
+      SET products.price = revised.new_price,
+          products.sale_price = revised.new_sale_price,
+          products.updated_at = NOW()
+    ` : `
       WITH revised AS (${revisedProductsSql})
       UPDATE products
       SET price = revised.new_price,
@@ -1427,7 +1442,10 @@ if (urunFiyatSonuRevizyonu?.value !== URUN_FIYAT_SONU_REVIZYONU) {
     `).run(URUN_FIYAT_SONU_REVIZYONU);
     if (!claim.changes) return;
 
-    await tx.prepare(`
+    await tx.prepare(db.usingMysql ? `
+      INSERT INTO price_history (product_id, price, sale_price)
+      ${roundedProductsSql}
+    ` : `
       WITH revised AS (${roundedProductsSql})
       INSERT INTO price_history (product_id, price, sale_price)
       SELECT id, new_price, new_sale_price FROM revised
@@ -1440,7 +1458,13 @@ if (urunFiyatSonuRevizyonu?.value !== URUN_FIYAT_SONU_REVIZYONU) {
       WHERE price IS NOT NULL AND price > 0
     `).run();
 
-    await tx.prepare(`
+    await tx.prepare(db.usingMysql ? `
+      UPDATE products
+      JOIN (${roundedProductsSql}) revised ON products.id = revised.id
+      SET products.price = revised.new_price,
+          products.sale_price = revised.new_sale_price,
+          products.updated_at = NOW()
+    ` : `
       WITH revised AS (${roundedProductsSql})
       UPDATE products
       SET price = revised.new_price,
@@ -1653,12 +1677,53 @@ const localUploadStorage = multer.diskStorage({
   }
 });
 
+const localPrivateStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, PRIVATE_UPLOAD_DIR),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const safe = path.basename(file.originalname, ext).replace(/[^a-z0-9]+/gi, "-").slice(0, 40) || "dosya";
+    cb(null, `${Date.now()}-${crypto.randomBytes(4).toString("hex")}-${safe}${ext}`);
+  }
+});
+
+const localPrivateReference = (file) => file ? `${LOCAL_PRIVATE_PREFIX}${file.filename}` : null;
+const localPrivateFilename = (reference) => {
+  const value = String(reference || "");
+  if (!value.startsWith(LOCAL_PRIVATE_PREFIX)) return null;
+  const filename = value.slice(LOCAL_PRIVATE_PREFIX.length);
+  return filename && path.basename(filename) === filename ? filename : null;
+};
+const localPrivateUrl = (reference) => {
+  const filename = localPrivateFilename(reference);
+  return filename ? `/api/private-files/${encodeURIComponent(filename)}` : null;
+};
+const removeLocalPrivate = async (reference) => {
+  const filename = localPrivateFilename(reference);
+  if (!filename) return false;
+  await fs.promises.unlink(path.join(PRIVATE_UPLOAD_DIR, filename)).catch((error) => {
+    if (error.code !== "ENOENT") throw error;
+  });
+  return true;
+};
+
 const upload = multer({
   storage: localUploadStorage,
   fileFilter: (req, file, cb) => {
     cb(null, /^image\/(png|jpe?g|webp|gif)$/i.test(file.mimetype));
   },
   limits: { fileSize: 8 * 1024 * 1024 }
+});
+
+const privateImageUpload = multer({
+  storage: localPrivateStorage,
+  fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g|webp|gif)$/i.test(file.mimetype)),
+  limits: { fileSize: 8 * 1024 * 1024 }
+});
+
+const privateModelUpload = multer({
+  storage: localPrivateStorage,
+  fileFilter: (req, file, cb) => cb(null, /\.(stl|3mf)$/i.test(file.originalname)),
+  limits: { fileSize: 80 * 1024 * 1024 }
 });
 
 // Ürün galerisi fotoğrafın yanında kısa MP4/WEBM ürün videoları da kabul eder.
@@ -1717,10 +1782,10 @@ app.post("/api/customization-uploads", (req, res, next) => {
   if (storage.enabled) {
     return res.status(400).json({ error: "Canlı ortamda fotoğrafı güvenli yükleme adresiyle gönderin." });
   }
-  return upload.single("image")(req, res, next);
+  return privateImageUpload.single("image")(req, res, next);
 }, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "Geçerli bir referans fotoğrafı seçin." });
-  res.status(201).json({ path: `/uploads/${req.file.filename}` });
+  res.status(201).json({ path: localPrivateReference(req.file) });
 });
 app.use("/assets", express.static(path.join(ROOT, "assets")));
 // Tarayicinin otomatik istegi 404 uretmesin.
@@ -3310,6 +3375,22 @@ async function requireAdmin(req, res, next) {
   return res.redirect("/login");
 }
 
+// Alastyr yerel diskindeki özel dosyalar yalnızca geçerli admin oturumuyla
+// okunabilir. Express static'e bağlanmadıkları için URL tahmini dosyayı açmaz.
+app.get("/api/private-files/:filename", requireAdmin, async (req, res) => {
+  const filename = String(req.params.filename || "");
+  if (!filename || path.basename(filename) !== filename) return res.status(400).json({ error: "Geçersiz dosya adı." });
+  res.sendFile(filename, { root: PRIVATE_UPLOAD_DIR, dotfiles: "deny" }, (error) => {
+    if (error && !res.headersSent) res.status(error.statusCode || 404).json({ error: "Dosya bulunamadı." });
+  });
+});
+
+// Katlaç panelinin Supabase kapalıyken kullandığı özel model yükleme ucu.
+app.post("/api/private-uploads", requireAdmin, privateModelUpload.single("file"), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "Geçerli bir STL veya 3MF dosyası seçin." });
+  res.status(201).json({ path: localPrivateReference(req.file) });
+});
+
 function setSessionCookie(res, admin) {
   const expires = Date.now() + 1000 * 60 * 60 * 12;
   const value = `${admin.username}.${admin.password_version}.${expires}`;
@@ -4030,6 +4111,10 @@ app.put("/api/katlac/:id", requireAdmin, async (req, res) => {
   const modelAnahtari = req.body.model_key === undefined ? row.model_key
     : (req.body.model_key?.trim() || null);
 
+  if (req.body.model_key !== undefined && row.model_key && row.model_key !== modelAnahtari) {
+    if (!(await removeLocalPrivate(row.model_key))) await storage.remove("model", row.model_key);
+  }
+
   await db.prepare(`
     UPDATE katlac_items SET name = @name, price = @price, note = @note,
       source_url = @source_url, model_key = @model_key, model_name = @model_name,
@@ -4054,7 +4139,7 @@ app.put("/api/katlac/:id", requireAdmin, async (req, res) => {
 app.get("/api/katlac/:id/model", requireAdmin, async (req, res) => {
   const row = await db.prepare("SELECT model_key, model_name FROM katlac_items WHERE id = ?").get(req.params.id);
   if (!row || !row.model_key) return res.status(404).json({ error: "Bu katlaç için yüklü model dosyası yok." });
-  const url = await storage.signedModelUrl(row.model_key);
+  const url = localPrivateUrl(row.model_key) || await storage.signedModelUrl(row.model_key);
   if (!url) return res.status(503).json({ error: "İndirme adresi üretilemedi." });
   res.json({ url, name: row.model_name });
 });
@@ -4063,7 +4148,7 @@ app.delete("/api/katlac/:id", requireAdmin, async (req, res) => {
   const row = await db.prepare("SELECT id, model_key FROM katlac_items WHERE id = ?").get(req.params.id);
   if (!row) return res.status(404).json({ error: "Katlaç bulunamadı." });
   // Kaydı silerken yüklü model dosyasını da depodan temizle.
-  if (row.model_key) await storage.remove("model", row.model_key);
+  if (row.model_key && !(await removeLocalPrivate(row.model_key))) await storage.remove("model", row.model_key);
   await db.prepare("DELETE FROM katlac_items WHERE id = ?").run(row.id);
   res.status(204).end();
 });
@@ -5035,15 +5120,7 @@ app.delete("/api/customer-showcases/:id", requireAdmin, async (req, res) => {
 // "model" is what the customer uploaded (.stl or .3mf); "part_files" are the
 // per-part STLs the wizard generates, one per coloured piece, ready for a slicer.
 const uploadModel = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase();
-      const safe = path.basename(file.originalname, ext)
-        .replace(/[^a-z0-9]+/gi, "-").slice(0, 40);
-      cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${safe}${ext}`);
-    }
-  }),
+  storage: localPrivateStorage,
   fileFilter: (req, file, cb) => cb(null, /\.(stl|3mf)$/i.test(file.originalname)),
   limits: { fileSize: 80 * 1024 * 1024, files: 65 }
 }).fields([
@@ -5352,8 +5429,9 @@ app.post("/api/quotes", modelUploadMiddleware, async (req, res) => {
     phone: body.phone?.trim() || null,
     note: body.note?.trim() || null,
     file_name: modelFile?.originalname || body.model_name?.trim() || null,
-    // Supabase'de: gizli kovadaki anahtar. Yerelde: /uploads/... yolu.
-    file_path: uploadedModel || (modelFile ? `/uploads/${modelFile.filename}` : null),
+    // Supabase'de gizli kova anahtarı; Alastyr'da yalnızca admin rotasından
+    // okunabilen kalıcı özel dosya referansı.
+    file_path: uploadedModel || localPrivateReference(modelFile),
     width: nullableMoney(body.width),
     height: nullableMoney(body.height),
     depth: nullableMoney(body.depth),
@@ -5392,7 +5470,7 @@ app.post("/api/quotes", modelUploadMiddleware, async (req, res) => {
         color_id: partColor?.id || null,
         color_name: partColor?.name || null,
         color_hex: partColor?.hex || null,
-        file_path: uploadedParts[index] || (file ? `/uploads/${file.filename}` : null)
+        file_path: uploadedParts[index] || localPrivateReference(file)
       });
     }
   });
@@ -5430,16 +5508,22 @@ const partsOfQuote = db.prepare("SELECT * FROM quote_parts WHERE quote_id = ? OR
    Admin listesine süreli imzalı indirme adresleri eklenir. Yerel geliştirmede
    yollar zaten /uploads/... olduğu için olduğu gibi bırakılır. */
 const isStorageKey = (value) => Boolean(value) && !String(value).startsWith("/uploads/");
+const privateDownloadUrl = async (value) => {
+  if (!value) return null;
+  const localUrl = localPrivateUrl(value);
+  if (localUrl) return localUrl;
+  if (!isStorageKey(value)) return value;
+  return storage.enabled ? storage.signedModelUrl(value) : null;
+};
 
 const withParts = async (quote) => {
   const parts = await partsOfQuote.all(quote.id);
-  if (!storage.enabled) return { ...quote, parts };
   return {
     ...quote,
-    download_url: isStorageKey(quote.file_path) ? await storage.signedModelUrl(quote.file_path) : quote.file_path,
+    download_url: await privateDownloadUrl(quote.file_path),
     parts: await Promise.all(parts.map(async (part) => ({
       ...part,
-      download_url: isStorageKey(part.file_path) ? await storage.signedModelUrl(part.file_path) : part.file_path
+      download_url: await privateDownloadUrl(part.file_path)
     })))
   };
 };
@@ -7104,12 +7188,14 @@ const cleanDesignMessage = (message) => String(message || "").replace(DESIGN_IMA
 const validDesignImageKey = (value) => /^[a-z0-9][a-z0-9._-]{0,179}\.(?:png|jpe?g|webp|gif)$/i.test(value || "");
 const designImageUrl = async (reference, seconds = 3600) => {
   if (!reference) return null;
+  const localUrl = localPrivateUrl(reference);
+  if (localUrl) return localUrl;
   if (reference.startsWith("/uploads/")) return reference;
   return validDesignImageKey(reference) ? storage.signedModelUrl(reference, seconds) : null;
 };
 
 const designUploadMiddleware = (req, res, next) =>
-  (storage.enabled ? textFieldsOnly(req, res, next) : upload.single("image")(req, res, next));
+  (storage.enabled ? textFieldsOnly(req, res, next) : privateImageUpload.single("image")(req, res, next));
 
 // Fotoğraf veya krokiden özel parça talebi. İletişim mesajlarıyla aynı panelde
 // görünür; yalnızca görsel özel model kovasında tutulur ve yöneticiye süreli bağ verilir.
@@ -7123,10 +7209,10 @@ app.post("/api/design-requests", designUploadMiddleware, async (req, res) => {
   if (name.length > 120 || message.length > 4000) return res.status(400).json({ error: "Talep metni çok uzun." });
 
   const uploadedKey = typeof req.body.image_path === "string" ? req.body.image_path.trim() : "";
-  if (uploadedKey && !validDesignImageKey(uploadedKey)) {
+  if (uploadedKey && !validDesignImageKey(uploadedKey) && !localPrivateFilename(uploadedKey)) {
     return res.status(400).json({ error: "Görsel dosyası geçersiz." });
   }
-  const imageReference = uploadedKey || (req.file ? `/uploads/${req.file.filename}` : null);
+  const imageReference = uploadedKey || localPrivateReference(req.file);
   const storedMessage = imageReference ? `${message}\n\n[[design-image:${imageReference}]]` : message;
   const contact = {
     name,

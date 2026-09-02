@@ -6,6 +6,10 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "migrate:db:check": "node scripts/migrate-postgres-to-mysql.js",
+    "migrate:db": "node scripts/migrate-postgres-to-mysql.js --apply",
+    "migrate:storage:check": "node scripts/migrate-supabase-storage.js",
+    "migrate:storage": "node scripts/migrate-supabase-storage.js --apply",
     "preview:custom": "node scripts/preview-custom-products.js",
     "test": "node --test paytr.integration.test.js shopier.integration.test.js email.integration.test.js"
   },
@@ -15,6 +19,7 @@
     "dotenv": "^17.4.2",
     "express": "^4.19.2",
     "multer": "^2.2.0",
+    "mysql2": "3.24.2",
     "pg": "^8.22.0"
   },
   "devDependencies": {

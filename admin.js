@@ -1670,16 +1670,23 @@ qs("#katlac-grid").addEventListener("change", async (event) => {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ kind: "model", filename: dosya.name })
     });
-    if (signRes.status === 503) throw new Error("Dosya depolama yapılandırılmamış.");
-    const signed = await signRes.json();
-    if (!signRes.ok) throw new Error(signed.error || "Yükleme adresi alınamadı.");
+    let modelKey;
+    if (signRes.status === 503) {
+      const form = new FormData();
+      form.set("file", dosya);
+      modelKey = (await api("/api/private-uploads", { method: "POST", body: form })).path;
+    } else {
+      const signed = await signRes.json();
+      if (!signRes.ok) throw new Error(signed.error || "Yükleme adresi alınamadı.");
 
-    const put = await fetch(signed.signedUrl, { method: "PUT", body: dosya });
-    if (!put.ok) throw new Error("Dosya yüklenemedi.");
+      const put = await fetch(signed.signedUrl, { method: "PUT", body: dosya });
+      if (!put.ok) throw new Error("Dosya yüklenemedi.");
+      modelKey = signed.path;
+    }
 
     await api(`/api/katlac/${id}`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model_key: signed.path, model_name: dosya.name })
+      body: JSON.stringify({ model_key: modelKey, model_name: dosya.name })
     });
     durum.textContent = "";
     await refresh();
