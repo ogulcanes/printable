@@ -6,27 +6,14 @@ const fs = require("fs");
 const path = require("path");
 const { createClient } = require("@supabase/supabase-js");
 const mysql = require("mysql2/promise");
+const { mysqlConfigured, mysqlConfig } = require("../mysql-config");
 
 const APPLY = process.argv.includes("--apply");
 const SUPABASE_URL = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const MYSQL_URL = process.env.MYSQL_URL || "";
 const PUBLIC_DIR = path.resolve(process.env.PUBLIC_UPLOAD_DIR || path.join(__dirname, "..", "uploads"));
 const PRIVATE_DIR = path.resolve(process.env.PRIVATE_UPLOAD_DIR || path.join(__dirname, "..", "private_uploads"));
 const PRIVATE_PREFIX = "local-private:";
-
-function mysqlConfig(connection) {
-  const url = new URL(connection);
-  return {
-    host: url.hostname,
-    port: Number(url.port || 3306),
-    user: decodeURIComponent(url.username),
-    password: decodeURIComponent(url.password),
-    database: decodeURIComponent(url.pathname.replace(/^\//, "")),
-    charset: "utf8mb4",
-    timezone: "Z"
-  };
-}
 
 const safePublicPath = (key) => {
   const normalized = path.posix.normalize(String(key || "")).replace(/^\/+/, "");
@@ -74,8 +61,8 @@ async function downloadOne(client, bucket, object, destination) {
 }
 
 async function rewriteDatabase(imageObjects, modelObjects) {
-  if (!MYSQL_URL) throw new Error("Dosya yollarını çevirmek için MYSQL_URL tanımlı değil.");
-  const db = await mysql.createConnection(mysqlConfig(MYSQL_URL));
+  if (!mysqlConfigured()) throw new Error("Dosya yollarını çevirmek için MySQL bağlantısı tanımlı değil.");
+  const db = await mysql.createConnection(mysqlConfig());
   const q = (name) => `\`${String(name).replace(/`/g, "``")}\``;
   const publicPrefix = `${SUPABASE_URL}/storage/v1/object/public/images/`;
 

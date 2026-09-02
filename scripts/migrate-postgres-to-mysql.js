@@ -4,10 +4,10 @@
 require("dotenv").config();
 const pg = require("pg");
 const mysql = require("mysql2/promise");
+const { mysqlConfigured, mysqlConfig } = require("../mysql-config");
 
 const APPLY = process.argv.includes("--apply");
 const SOURCE_URL = process.env.SOURCE_DATABASE_URL || process.env.DATABASE_URL || "";
-const TARGET_URL = process.env.MYSQL_URL || "";
 
 // Ebeveynler çocuklardan önce kopyalanır; temizleme bunun tersidir.
 const TABLES = [
@@ -22,20 +22,6 @@ const TABLES = [
 
 const pgId = (name) => `"${String(name).replace(/"/g, '""')}"`;
 const mysqlId = (name) => `\`${String(name).replace(/`/g, "``")}\``;
-
-function mysqlConfig(connection) {
-  const url = new URL(connection);
-  return {
-    host: url.hostname,
-    port: Number(url.port || 3306),
-    user: decodeURIComponent(url.username),
-    password: decodeURIComponent(url.password),
-    database: decodeURIComponent(url.pathname.replace(/^\//, "")),
-    charset: "utf8mb4",
-    timezone: "Z",
-    decimalNumbers: true
-  };
-}
 
 async function columnsByTable(source, target) {
   const sourceResult = await source.query(`
@@ -89,14 +75,14 @@ async function insertRows(target, table, columns, rows) {
 
 async function main() {
   if (!SOURCE_URL) throw new Error("SOURCE_DATABASE_URL (veya DATABASE_URL) tanımlı değil.");
-  if (!TARGET_URL) throw new Error("MYSQL_URL tanımlı değil.");
+  if (!mysqlConfigured()) throw new Error("MySQL bağlantı değişkenleri tanımlı değil.");
 
   const source = new pg.Client({
     connectionString: SOURCE_URL,
     ssl: { rejectUnauthorized: false },
     connectionTimeoutMillis: 15_000
   });
-  const target = await mysql.createConnection(mysqlConfig(TARGET_URL));
+  const target = await mysql.createConnection(mysqlConfig());
 
   try {
     await source.connect();

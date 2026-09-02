@@ -49,6 +49,10 @@ PUBLIC_UPLOAD_DIR=/home/kullanici/printable/uploads
 PRIVATE_UPLOAD_DIR=/home/kullanici/printable/private_uploads
 ```
 
+cPanel ortam değişkenlerinde parolayı URL içine gömmek istemiyorsanız
+`MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD` ve `MYSQL_DATABASE`
+alanlarını ayrı ayrı tanımlayabilirsiniz. `MYSQL_URL` doluysa öncelik ondadır.
+
 `ADMIN_PASSWORD` ve `SESSION_SECRET` ayrıca zorunludur. Supabase'ten geçiş
 tamamlandıktan sonra `DATABASE_URL`, `SUPABASE_URL` ve
 `SUPABASE_SERVICE_ROLE_KEY` canlı uygulamada kaldırılır.

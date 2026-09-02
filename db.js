@@ -16,10 +16,10 @@
 // Tek fark ortam değişkeni; SQL aynı.
 
 const path = require("path");
+const { mysqlConfigured, mysqlConfig } = require("./mysql-config");
 
 const POSTGRES_CONNECTION = process.env.DATABASE_URL || "";
-const MYSQL_CONNECTION = process.env.MYSQL_URL || "";
-const dialect = MYSQL_CONNECTION ? "mysql" : POSTGRES_CONNECTION ? "postgres" : "pglite";
+const dialect = mysqlConfigured() ? "mysql" : POSTGRES_CONNECTION ? "postgres" : "pglite";
 const usingSupabase = dialect === "postgres";
 const usingMysql = dialect === "mysql";
 
@@ -158,26 +158,6 @@ function mysqlSql(sql) {
   return quoteMysqlKey(out);
 }
 
-function mysqlConfig(connection) {
-  const url = new URL(connection);
-  return {
-    host: url.hostname,
-    port: Number(url.port || 3306),
-    user: decodeURIComponent(url.username),
-    password: decodeURIComponent(url.password),
-    database: decodeURIComponent(url.pathname.replace(/^\//, "")),
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0,
-    charset: "utf8mb4",
-    timezone: "Z",
-    decimalNumbers: true,
-    supportBigNumbers: true,
-    bigNumberStrings: false,
-    multipleStatements: true
-  };
-}
-
 function splitMysqlStatements(sql) {
   const statements = [];
   let current = "";
@@ -262,7 +242,14 @@ async function mysqlQuery(target, sql, params) {
 async function connect() {
   if (usingMysql) {
     const mysql = require("mysql2/promise");
-    const pool = mysql.createPool(mysqlConfig(MYSQL_CONNECTION));
+    const pool = mysql.createPool(mysqlConfig(process.env, {
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0,
+      supportBigNumbers: true,
+      bigNumberStrings: false,
+      multipleStatements: true
+    }));
     await pool.query("SELECT 1");
     client = {
       query: (sql, params) => mysqlQuery(pool, sql, params),
