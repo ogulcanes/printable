@@ -124,6 +124,15 @@
        yani animasyonlu ürün önizlemesi donuyor. Boyut kazancından çok
        görünüm önemli. */
     if (/\.gif(\?|$)/i.test(u)) return u;
+    /* Yerel yüklemeler CDN dönüşümünden geçmiyordu; 250px'lik kartta 1-2 MB
+       PNG/JPEG indiriliyordu. Sunucudaki /image ucu güvenli biçimde yalnızca
+       uploads/assets altını okuyup istenen genişlikte WebP döndürür. */
+    if (/^\/(?:uploads|assets)\/.*\.(?:png|jpe?g|webp)(?:\?|$)/i.test(u)) {
+      return `/image?src=${encodeURIComponent(u)}&w=${Number(genislik) || 900}`;
+    }
+    if (/^https:\/\/makerworld\.bblmw\.com\//i.test(u)) {
+      return u.replace(/(image\/resize,w_)\d+/i, `$1${Number(genislik) || 900}`);
+    }
     if (!u.includes("/storage/v1/object/public/")) return u;
     const [yol, sorgu] = u.split("?");
     /* resize=contain ŞART. Uç noktanın varsayılanı "cover" ve yalnızca width

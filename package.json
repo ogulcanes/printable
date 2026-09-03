@@ -15,7 +15,8 @@
     "dotenv": "^17.4.2",
     "express": "^4.19.2",
     "multer": "^2.2.0",
-    "pg": "^8.22.0"
+    "pg": "^8.22.0",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.4"
