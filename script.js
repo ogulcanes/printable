@@ -73,12 +73,10 @@ const searchPopover = document.querySelector(".search-popover");
 const customerAccountLink = document.querySelector('a[href="/hesap"].icon-button');
 const customerAccountLabel = customerAccountLink?.querySelector(".account-link__label");
 
-/* Adı artık sunucu ilk baytta basıyor (renderHeader), bu istek yalnızca
-   mutabakat için: başka bir sekmede çıkış yapıldıysa ya da sayfa geri/ileri
-   önbelleğinden geldiyse başlıktaki ad bayatlamış olabilir. Bu yüzden yalnız
-   giriş durumunu değil, çıkış durumunu da uygulaması gerekiyor — eskiden
-   `if (!authed) return;` diyordu ve bayat ad ekranda kalırdı. */
-if (customerAccountLink) {
+/* Normal gezinmede adı sunucu ilk baytta basar; aynı bilgiyi hemen tekrar
+   istemeyiz. Yalnızca geri/ileri önbelleğinden dönen sayfada oturumu uzlaştır. */
+function reconcileCustomerSession() {
+  if (!customerAccountLink) return;
   fetch("/api/customer/session")
     .then((response) => response.json())
     .then(({ authed, customer }) => {
@@ -97,6 +95,9 @@ if (customerAccountLink) {
     })
     .catch(() => {});
 }
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) reconcileCustomerSession();
+});
 
 function fillProductGrid(target, products) {
   const grid = typeof target === "string" ? document.querySelector(target) : target;
@@ -151,6 +152,16 @@ const categoryGrid = document.querySelector("#category-grid");
 async function loadCategories() {
   if (!categoryGrid) return;
   try {
+    const embeddedData = document.querySelector("#home-categories-data");
+    if (embeddedData) {
+      const categories = JSON.parse(embeddedData.textContent);
+      if (Array.isArray(categories) && categories.length) {
+        window.printableCategories = categories;
+        fillCategoryCounts();
+        return;
+      }
+    }
+
     const categories = await fetch("/api/categories").then((response) => response.json());
     if (!Array.isArray(categories) || !categories.length) return;
     window.printableCategories = categories;
@@ -509,10 +520,26 @@ function renderBulkCommerce(spinball, katlaclar) {
 // The homepage rows are curated slices of the same catalogue; /urunler owns real filtering.
 async function loadProducts() {
   try {
-    const [products, catalog] = await Promise.all([
-      fetch("/api/products").then((response) => response.json()),
-      fetch("/api/catalog").then((response) => response.json()).catch(() => ({ products: [] }))
-    ]);
+    let products = null;
+    let catalog = { products: [] };
+    let embedded = false;
+    const embeddedData = document.querySelector("#home-products-data");
+    if (embeddedData) {
+      try {
+        const data = JSON.parse(embeddedData.textContent);
+        if (Array.isArray(data)) {
+          products = data;
+          embedded = true;
+        }
+      } catch { /* Statik fallback aşağıdaki API'leri kullanır. */ }
+    }
+
+    if (!products) {
+      [products, catalog] = await Promise.all([
+        fetch("/api/products").then((response) => response.json()),
+        fetch("/api/catalog").then((response) => response.json()).catch(() => ({ products: [] }))
+      ]);
+    }
     const catalogProducts = new Map((catalog.products || []).map((product) => [product.id, product]));
     products.forEach((product) => {
       product.tiers = catalogProducts.get(product.id)?.tiers || [];
@@ -529,7 +556,7 @@ async function loadProducts() {
     fillProductGrid(".js-popular", active.slice(0, 5));
     fillProductGrid(".js-recommended", [...active].reverse().slice(0, 4));
     renderProductLanding(active);
-    renderFidgetSpotlight(active);
+    if (!embedded) renderFidgetSpotlight(active);
 
     // Discounted products get their own section — hidden entirely when nothing is on sale.
     const onSale = active.filter((product) => product.sale_price && product.price > product.sale_price);
@@ -555,6 +582,24 @@ async function loadProducts() {
     renderLiveStats(active);
     fillCategoryCounts();
     observeCards();
+
+    /* Kampanya kademeleri ilk ekran için gerekli değil. Sunucunun HTML'e gömdüğü
+       ürünler hemen kullanılır; daha ağır katalog isteği tarayıcı boş kaldığında
+       yalnızca toplu satış alanını zenginleştirir. */
+    if (embedded && document.querySelector("#fidget-spotlight")) {
+      const hydrateTiers = async () => {
+        try {
+          const deferredCatalog = await fetch("/api/catalog").then((response) => response.json());
+          const deferredProducts = new Map((deferredCatalog.products || []).map((product) => [product.id, product]));
+          products.forEach((product) => {
+            product.tiers = deferredProducts.get(product.id)?.tiers || [];
+          });
+        } catch { /* Ürün vitrini kademeler olmadan da kullanılabilir. */ }
+        renderFidgetSpotlight(active);
+      };
+      if ("requestIdleCallback" in window) requestIdleCallback(hydrateTiers, { timeout: 2500 });
+      else setTimeout(hydrateTiers, 1200);
+    }
   } catch {
     window.printableProducts = [];
   }
@@ -812,7 +857,17 @@ function applyHeroSlides(slides) {
     img.className = i === 0 ? "hero__slide is-active" : "hero__slide";
     // Sunucu da aynı boyutu istiyor (renderHero); farklı istesek tarayıcı
     // aynı görseli ikinci kez indirirdi.
-    img.src = gorselAdresi(slide.image_path, 1600);
+    const source = gorselAdresi(slide.image_path, 900);
+    const sourceSet = `${source} 900w, ${gorselAdresi(slide.image_path, 1600)} 1600w`;
+    if (i === 0) {
+      img.src = source;
+      img.srcset = sourceSet;
+      img.sizes = "100vw";
+    } else {
+      img.dataset.src = source;
+      img.dataset.srcset = sourceSet;
+      img.dataset.sizes = "100vw";
+    }
     img.alt = slide.image_alt || slide.title || "Printable banner görseli";
     if (i === 0) img.fetchPriority = "high";
     else img.loading = "lazy";
@@ -856,8 +911,8 @@ function setupHeroSlider(slides) {
     return dot;
   });
 
-  function show(next) {
-    index = (next + images.length) % images.length;
+  function activate(next) {
+    index = next;
     images.forEach((image, i) => image.classList.toggle("is-active", i === index));
     dots.forEach((dot, i) => dot.setAttribute("aria-current", String(i === index)));
     if (!slides?.length) return;
@@ -870,6 +925,33 @@ function setupHeroSlider(slides) {
       renderHeroCopy(slides[index]);
       heroCopy.classList.remove("is-swapping");
     }, 250);
+  }
+
+  function show(next) {
+    const nextIndex = (next + images.length) % images.length;
+    const target = images[nextIndex];
+    if (!target.dataset.src) return activate(nextIndex);
+
+    const source = target.dataset.src;
+    delete target.dataset.src;
+    let revealed = false;
+    const reveal = () => {
+      if (revealed) return;
+      revealed = true;
+      activate(nextIndex);
+    };
+    target.addEventListener("load", reveal, { once: true });
+    target.addEventListener("error", reveal, { once: true });
+    if (target.dataset.srcset) {
+      target.srcset = target.dataset.srcset;
+      delete target.dataset.srcset;
+    }
+    if (target.dataset.sizes) {
+      target.sizes = target.dataset.sizes;
+      delete target.dataset.sizes;
+    }
+    target.src = source;
+    if (target.complete) reveal();
   }
 
   function stop() {
@@ -904,30 +986,58 @@ function setupHeroSlider(slides) {
 async function loadHeroSlides() {
   if (!heroSlider) return;
   let slides = null;
-  try {
-    const data = await fetch("/api/hero-slides").then((response) => response.json());
-    if (Array.isArray(data) && data.length) slides = data;
-  } catch {
-    slides = null;
+  let embedded = false;
+  const embeddedData = document.querySelector("#hero-slides-data");
+  if (embeddedData) {
+    try {
+      const data = JSON.parse(embeddedData.textContent);
+      if (Array.isArray(data) && data.length) {
+        slides = data;
+        embedded = true;
+      }
+    } catch { /* Statik fallback aşağıdaki API'yi kullanır. */ }
   }
-  if (slides) {
+  if (!slides) {
+    try {
+      const data = await fetch("/api/hero-slides").then((response) => response.json());
+      if (Array.isArray(data) && data.length) slides = data;
+    } catch {
+      slides = null;
+    }
+  }
+  if (slides && !embedded) {
     applyHeroSlides(slides);
     renderHeroCopy(slides[0]);
   }
   setupHeroSlider(slides);
 }
 
+function hydrateGoogleReviews() {
+  const section = document.querySelector(".google-reviews-home");
+  if (!section) return;
+  fetch("/api/google-reviews")
+    .then((response) => response.json())
+    .then((data) => {
+      if (!data.connected) return;
+      const summary = section.querySelector(".google-reviews-summary");
+      const list = section.querySelector(".google-reviews-grid");
+      const footer = section.querySelector(".google-reviews-home__footer");
+      if (summary && data.summary) summary.outerHTML = data.summary;
+      if (list && data.list) list.innerHTML = data.list;
+      if (footer) footer.innerHTML = `${data.disclosure || ""}${data.homeCta || ""}`;
+    })
+    .catch(() => {});
+}
+
 loadProducts();
 loadCategories();
 loadHeroSlides();
 renderCart();
-fetch("/api/site-info").then((response) => response.json()).then((info) => {
-  if (Number.isFinite(Number(info.free_shipping_threshold))) {
-    freeShippingThreshold = Number(info.free_shipping_threshold);
-  }
-  renderCart();
-}).catch(() => {});
 observeCards();
+if (document.querySelector(".google-reviews-home")) {
+  if ("requestIdleCallback" in window) requestIdleCallback(hydrateGoogleReviews, { timeout: 2500 });
+  else setTimeout(hydrateGoogleReviews, 1200);
+}
 
 /* Ana sayfa keşif kartı: ilk saniyelerde kullanıcıyı bölmez; biraz gezinince
    veya sayfada yeterince kalınca görünür. Kapatma yalnızca o sayfa içindir. */

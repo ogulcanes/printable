@@ -5,6 +5,7 @@ const fs = require("fs");
 const express = require("express");
 const multer = require("multer");
 const crypto = require("crypto");
+const sharp = require("sharp");
 const db = require("./db.js");
 // Ürün kartı/detayı işaretlemesi. Tarayıcı da AYNI dosyayı yüklüyor.
 const sablonlar = require("./product-templates.js");
@@ -130,6 +131,40 @@ function verifyPassword(plain, stored) {
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 fs.mkdirSync(PRIVATE_UPLOAD_DIR, { recursive: true });
+const IMAGE_CACHE_DIR = path.join(DATA_DIR, "image-cache");
+fs.mkdirSync(IMAGE_CACHE_DIR, { recursive: true });
+
+const PUBLIC_STATIC_FILES = [
+  "styles.css", "script.js", "product-templates.js", "stl-viewer.js", "admin.css",
+  "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js", "tasarim.js",
+  "katalog.js", "hesap.js", "anahtarlik-katalog.js"
+];
+const PUBLIC_ASSET_VERSION = crypto.createHash("sha1")
+  .update(PUBLIC_STATIC_FILES.map((file) => {
+    const stat = fs.statSync(path.join(ROOT, file));
+    return `${file}:${stat.size}:${stat.mtimeMs}`;
+  }).join("|"))
+  .digest("hex")
+  .slice(0, 12);
+const IMAGE_WIDTHS = [320, 500, 900, 1200, 1600];
+const activeImageTransforms = new Map();
+
+function localImageFile(source) {
+  const clean = String(source || "").split("?")[0];
+  const match = /^\/(uploads|assets)\/(.+)$/i.exec(clean);
+  if (!match || !/\.(?:png|jpe?g|webp)$/i.test(match[2])) return null;
+
+  const base = match[1].toLowerCase() === "uploads" ? UPLOAD_DIR : path.join(ROOT, "assets");
+  const resolvedBase = path.resolve(base);
+  const resolvedFile = path.resolve(base, match[2]);
+  if (!resolvedFile.startsWith(`${resolvedBase}${path.sep}`)) return null;
+  return resolvedFile;
+}
+
+function normalizedImageWidth(value) {
+  const requested = Math.max(1, Math.min(1600, Number.parseInt(value, 10) || 900));
+  return IMAGE_WIDTHS.find((width) => width >= requested) || IMAGE_WIDTHS.at(-1);
+}
 
 /* Şema, migration ve seed artık asenkron. Modül yüklenirken bir kez başlar;
    `dbReady` sözü tutulana kadar hiçbir istek veritabanına dokunamaz (aşağıdaki
@@ -1739,8 +1774,85 @@ const galleryUpload = multer({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+/* Statik dosyalar veritabanından bağımsızdır. Bunları hazırlık kapısından önce
+   sunmak iki şeyi düzeltir: soğuk başlangıçta CSS/görsel DB bağlantısını beklemez
+   ve tarayıcı sürümlenmiş dosyaları tekrar tekrar doğrulamaz. */
+app.use("/uploads", express.static(UPLOAD_DIR, {
+  maxAge: "1y",
+  immutable: true
+}));
+app.use("/assets", express.static(path.join(ROOT, "assets"), {
+  maxAge: "30d"
+}));
+
+/* Yerel PNG/JPEG yüklemeleri daha önce kartta ve bannerda orijinal boyutuyla
+   gidiyordu. İstenen genişlikte WebP üretip diskte saklıyoruz; sonraki istekler
+   doğrudan küçük dosyayı alıyor. Yalnızca uploads/assets altı kabul edildiği için
+   bu uç genel amaçlı bir dosya okuyucuya dönüşemez. */
+app.get("/image", async (req, res) => {
+  const sourceFile = localImageFile(req.query.src);
+  if (!sourceFile) return res.status(400).json({ error: "Geçersiz görsel adresi." });
+
+  let stat;
+  try {
+    stat = await fs.promises.stat(sourceFile);
+  } catch (error) {
+    if (error.code === "ENOENT") return res.status(404).end();
+    throw error;
+  }
+  if (!stat.isFile()) return res.status(404).end();
+
+  const width = normalizedImageWidth(req.query.w);
+  const cacheKey = crypto.createHash("sha256")
+    .update(`${sourceFile}:${stat.size}:${stat.mtimeMs}:${width}:webp-78`)
+    .digest("hex");
+  const cachedFile = path.join(IMAGE_CACHE_DIR, `${cacheKey}.webp`);
+  const uploaded = String(req.query.src || "").startsWith("/uploads/");
+  const headers = {
+    "Cache-Control": uploaded
+      ? "public, max-age=31536000, immutable"
+      : "public, max-age=2592000"
+  };
+
+  try {
+    await fs.promises.access(cachedFile, fs.constants.R_OK);
+    return res.sendFile(cachedFile, { headers });
+  } catch { /* İlk istek aşağıda dönüştürür. */ }
+
+  let transform = activeImageTransforms.get(cacheKey);
+  if (!transform) {
+    transform = sharp(sourceFile)
+      .rotate()
+      .resize({ width, fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 78, effort: 4 })
+      .toBuffer()
+      .then(async (buffer) => {
+        try {
+          await fs.promises.writeFile(cachedFile, buffer, { flag: "wx" });
+        } catch (error) {
+          if (error.code !== "EEXIST") throw error;
+        }
+        return buffer;
+      })
+      .finally(() => activeImageTransforms.delete(cacheKey));
+    activeImageTransforms.set(cacheKey, transform);
+  }
+
+  const buffer = await transform;
+  res.set(headers);
+  res.type("webp");
+  return res.send(buffer);
+});
+
+PUBLIC_STATIC_FILES.forEach((file) => {
+  app.get(`/${file}`, async (req, res) => res.sendFile(path.join(ROOT, file), {
+    maxAge: req.query.v ? "1y" : "1h",
+    immutable: Boolean(req.query.v)
+  }));
+});
+
 // Hazırlık kapısı: şema/seed bitmeden hiçbir route veritabanına dokunamaz.
-// Statik dosyalardan önce durmasın diye onları aşağıda tanımlıyoruz.
+// Statik dosya ve görsel route'ları özellikle bunun üstünde tanımlıdır.
 app.use(async (req, res, next) => {
   try {
     await ensureDbReady();
@@ -1751,8 +1863,6 @@ app.use(async (req, res, next) => {
     res.status(503).json({ error: "Veritabanı şu anda hazır değil, birazdan tekrar deneyin." });
   }
 });
-
-app.use("/uploads", express.static(UPLOAD_DIR));
 
 /* Tarayıcının dosyayı doğrudan Supabase Storage'a yüklemesi için imzalı adres.
    Dosya sunucudan geçmez — Vercel'in ~4.5 MB istek sınırı böylece aşılır.
@@ -1787,7 +1897,6 @@ app.post("/api/customization-uploads", (req, res, next) => {
   if (!req.file) return res.status(400).json({ error: "Geçerli bir referans fotoğrafı seçin." });
   res.status(201).json({ path: localPrivateReference(req.file) });
 });
-app.use("/assets", express.static(path.join(ROOT, "assets")));
 // Tarayicinin otomatik istegi 404 uretmesin.
 app.get("/favicon.ico", async (req, res) => res.redirect(301, "/assets/favicon-32.png"));
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
@@ -1903,8 +2012,15 @@ const FAVICON_TAGS = [
 ].join("\n");
 
 async function seoHead(req, slug) {
-  const page = await db.prepare("SELECT * FROM seo_pages WHERE slug = ?").get(slug) || {};
-  const site = await db.prepare("SELECT * FROM site_settings WHERE id = 1").get() || {};
+  const [pageRow, siteRow, homeKeywordRows] = await Promise.all([
+    db.prepare("SELECT * FROM seo_pages WHERE slug = ?").get(slug),
+    db.prepare("SELECT * FROM site_settings WHERE id = 1").get(),
+    slug === "home"
+      ? db.prepare("SELECT meta_keywords FROM products WHERE is_active = 1 AND meta_keywords IS NOT NULL AND meta_keywords <> ''").all()
+      : Promise.resolve([])
+  ]);
+  const page = pageRow || {};
+  const site = siteRow || {};
 
   const title = page.title || site.site_name || "Printable";
   const description = page.description || site.description || "";
@@ -1938,9 +2054,8 @@ async function seoHead(req, slug) {
   // Meta keywords are a weak ranking signal, but this is the correct place for it:
   // server-rendered, where crawlers see it (the product grid itself is JS-rendered).
   if (slug === "home") {
-    const rows = await db.prepare("SELECT meta_keywords FROM products WHERE is_active = 1 AND meta_keywords IS NOT NULL AND meta_keywords <> ''").all();
     const keywords = [...new Set(
-      rows.flatMap((row) => row.meta_keywords.split(",")).map((word) => word.trim().toLowerCase()).filter(Boolean)
+      homeKeywordRows.flatMap((row) => row.meta_keywords.split(",")).map((word) => word.trim().toLowerCase()).filter(Boolean)
     )].slice(0, 40).join(", ");
     if (keywords) tags.push(`<meta name="keywords" content="${escapeHtml(keywords)}">`);
   }
@@ -2501,8 +2616,8 @@ async function renderContactDetails() {
 }
 
 // Shared footer, injected server-side so links stay consistent across every page.
-async function renderFooter() {
-  const { phone, email, wa, accounts } = await contactInfo();
+async function renderFooter(contact = null) {
+  const { phone, email, wa, accounts } = contact || await contactInfo();
   const socialRow = accounts.length
     ? `<div class="footer-social">${accounts.map((a) =>
         `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" aria-label="${escapeHtml(a.label)}"><svg viewBox="0 0 24 24" aria-hidden="true">${SOCIAL_ICONS[a.key]}</svg></a>`
@@ -2547,8 +2662,8 @@ async function renderFooter() {
 }
 
 // Floating WhatsApp button — replaces the old inert "?" bubble on every page.
-async function renderChatButton() {
-  const { wa } = await contactInfo();
+async function renderChatButton(contact = null) {
+  const { wa } = contact || await contactInfo();
   const whatsapp = wa ? `
       <a class="chat" href="https://wa.me/${wa}" target="_blank" rel="noopener" aria-label="WhatsApp'tan yazın">
         <svg viewBox="0 0 24 24" aria-hidden="true">${SOCIAL_ICONS.whatsapp}</svg>
@@ -2561,7 +2676,18 @@ async function renderChatButton() {
 }
 
 async function injectShell(html, headActive, customer) {
-  return html
+  const [promoBar, header, promoPopup, contact] = await Promise.all([
+    renderPromoBar(),
+    renderHeader(headActive, customer),
+    renderPromoPopup(),
+    contactInfo()
+  ]);
+  const [footer, chat] = await Promise.all([
+    renderFooter(contact),
+    renderChatButton(contact)
+  ]);
+
+  const page = html
     /* Ürün şablonları script.js'ten ÖNCE yüklenmeli — script.js oradaki
        isimleri (money, productCardHTML…) kullanıyor. Her sayfanın HTML'ine tek
        tek yazmak yerine buradan enjekte ediliyor: yeni bir sayfa eklendiğinde
@@ -2569,10 +2695,14 @@ async function injectShell(html, headActive, customer) {
     .replace(/<script src="\/?script\.js"><\/script>/,
       '<script src="/product-templates.js"></script>\n    <script src="/script.js"></script>')
     .replace("</head>", `${googleAnalyticsTag}\n  </head>`)
-    .replace("<!--header-->", `${await renderPromoBar()}${await renderHeader(headActive, customer)}${await renderPromoPopup()}`)
+    .replace("<!--header-->", `${promoBar}${header}${promoPopup}`)
     .replace("<!--cart-->", renderCartPanel())
-    .replace("<!--footer-->", await renderFooter())
-    .replace("<!--chat-->", await renderChatButton());
+    .replace("<!--footer-->", footer)
+    .replace("<!--chat-->", chat);
+
+  return PUBLIC_STATIC_FILES.reduce((output, file) => output
+    .replaceAll(`"${file}"`, `"/${file}?v=${PUBLIC_ASSET_VERSION}"`)
+    .replaceAll(`"/${file}"`, `"/${file}?v=${PUBLIC_ASSET_VERSION}"`), page);
 }
 
 /* Satıcı kimliği yasal sayfalarda TEK yerden gelir: /admin → Ayarlar. Metni
@@ -2698,10 +2828,15 @@ async function renderHero(sayfa) {
 
   const gorseller = slaytlar.map((s, i) => {
     const alt = s.image_alt || s.title || "Printable banner görseli";
-    const oncelik = i === 0 ? ' fetchpriority="high"' : ' loading="lazy"';
+    const adres = escapeHtml(sablonlar.gorselAdresi(s.image_path, 1600));
+    const kucukAdres = escapeHtml(sablonlar.gorselAdresi(s.image_path, 900));
+    const kaynak = i === 0
+      ? `src="${kucukAdres}" srcset="${kucukAdres} 900w, ${adres} 1600w" sizes="100vw" fetchpriority="high"`
+      : `data-src="${kucukAdres}" data-srcset="${kucukAdres} 900w, ${adres} 1600w" data-sizes="100vw" loading="lazy"`;
     // Banner tam genişlikte; 1600px 2172px'lik orijinali gereksiz kılıyor.
-    return `<img class="hero__slide${i === 0 ? " is-active" : ""}" src="${escapeHtml(sablonlar.gorselAdresi(s.image_path, 1600))}" alt="${escapeHtml(alt)}"${oncelik}>`;
+    return `<img class="hero__slide${i === 0 ? " is-active" : ""}" ${kaynak} alt="${escapeHtml(alt)}">`;
   }).join("\n              ");
+  const embeddedData = `<script type="application/json" id="hero-slides-data">${JSON.stringify(slaytlar).replace(/</g, "\\u003c")}</script>`;
 
   const ilk = slaytlar[0] || {};
   const buton = (sinif, etiket, adres) =>
@@ -2715,7 +2850,7 @@ async function renderHero(sayfa) {
               </div>`;
 
   return sayfa
-    .replace("<!--hero-slaytlari-->", gorseller)
+    .replace("<!--hero-slaytlari-->", `${gorseller}\n              ${embeddedData}`)
     .replace("<!--hero-metni-->", metin);
 }
 
@@ -2802,8 +2937,9 @@ async function googleYorumBaglantisi() {
 }
 
 /* Places API anahtarı yalnızca sunucuda kalır. Google, yorum içeriğinin uzun süreli
-   saklanmasına izin vermediği için sonucu veritabanına yazmıyor veya uygulama
-   önbelleğine almıyoruz; sayfa her açıldığında güncel Place Details yanıtı kullanılır. */
+   saklanmasına izin vermediği için sonucu veritabanına veya kalıcı uygulama
+   önbelleğine almıyoruz. İstek ilk HTML'i artık bekletmez; tarayıcı bölümü daha
+   sonra bu güncel yanıtla zenginleştirir. */
 async function googleYorumVerisi() {
   if (!GOOGLE_PLACES_API_KEY || !GOOGLE_PLACE_ID) return null;
   const endpoint = new URL(`https://places.googleapis.com/v1/places/${encodeURIComponent(GOOGLE_PLACE_ID)}`);
@@ -2865,9 +3001,9 @@ function googleYorumKarti(review, fallbackUrl) {
     </article>`;
 }
 
-async function renderGoogleReviews(sayfa) {
+async function renderGoogleReviews(sayfa, { live = false } = {}) {
   const fallbackUrl = await googleYorumBaglantisi();
-  const place = await googleYorumVerisi();
+  const place = live ? await googleYorumVerisi() : null;
   const mapsUrl = guvenliHttpsAdresi(place?.googleMapsUri, fallbackUrl);
   const reviews = Array.isArray(place?.reviews) ? place.reviews.slice(0, 5) : [];
   const rating = Number(place?.rating) || 0;
@@ -2875,13 +3011,13 @@ async function renderGoogleReviews(sayfa) {
 
   const summary = place ? `
     <aside class="google-reviews-summary" data-google-reviews-status="connected" aria-label="Google değerlendirme özeti">
-      <img src="https://maps.gstatic.com/mapfiles/api-3/images/google4.png" alt="Google" width="75" height="26">
+      <img src="https://maps.gstatic.com/mapfiles/api-3/images/google4.png" alt="Google" width="75" height="26" loading="lazy">
       <div><strong>${rating.toFixed(1).replace(".", ",")}</strong><span class="google-reviews-summary__stars" aria-label="5 üzerinden ${rating.toFixed(1).replace(".", ",")} yıldız">${googleYildizlari(rating)}</span></div>
       <p>${count.toLocaleString("tr-TR")} Google değerlendirmesi</p>
       <a href="${escapeHtml(mapsUrl)}" target="_blank" rel="noopener">Tüm yorumları Google'da gör <span aria-hidden="true">↗</span></a>
     </aside>` : `
     <aside class="google-reviews-summary google-reviews-summary--fallback" data-google-reviews-status="configuration-required" aria-label="Google yorumları bağlantısı">
-      <img src="https://maps.gstatic.com/mapfiles/api-3/images/google4.png" alt="Google" width="75" height="26">
+      <img src="https://maps.gstatic.com/mapfiles/api-3/images/google4.png" alt="Google" width="75" height="26" loading="lazy">
       <strong>Google'da bize göz atın</strong>
       <p>İşletme profilimizdeki güncel puan ve yorumları doğrudan Google Maps'te görüntüleyebilirsiniz.</p>
       <a href="${escapeHtml(mapsUrl)}" target="_blank" rel="noopener">Google Maps'i aç <span aria-hidden="true">↗</span></a>
@@ -2890,7 +3026,7 @@ async function renderGoogleReviews(sayfa) {
   const list = reviews.length
     ? reviews.map((review) => googleYorumKarti(review, mapsUrl)).join("")
     : `<div class="google-reviews-empty">
-        <img src="https://maps.gstatic.com/mapfiles/api-3/images/google4.png" alt="Google" width="75" height="26">
+        <img src="https://maps.gstatic.com/mapfiles/api-3/images/google4.png" alt="Google" width="75" height="26" loading="lazy">
         <strong>Güncel yorumlar Google Maps'te</strong>
         <p>Google işletme bağlantısını açarak tüm müşteri değerlendirmelerini görebilir ve kendi deneyiminizi paylaşabilirsiniz.</p>
         <a href="${escapeHtml(mapsUrl)}" target="_blank" rel="noopener">Yorumları görüntüle</a>
@@ -2907,6 +3043,9 @@ async function renderGoogleReviews(sayfa) {
     </section>`;
   const homeCta = `<a class="google-reviews-home__cta" href="${escapeHtml(mapsUrl)}" target="_blank" rel="noopener">Google'da yorum yap <span aria-hidden="true">↗</span></a>`;
 
+  const fragments = { connected: Boolean(place), summary, list, disclosure, cta, homeCta };
+  if (!sayfa) return fragments;
+
   return sayfa
     .replace("<!--google-reviews-summary-->", summary)
     .replace("<!--google-reviews-list-->", list)
@@ -2914,6 +3053,11 @@ async function renderGoogleReviews(sayfa) {
     .replace("<!--google-reviews-cta-->", cta)
     .replace("<!--google-reviews-home-cta-->", homeCta);
 }
+
+app.get("/api/google-reviews", async (req, res) => {
+  res.set("Cache-Control", "private, no-store");
+  res.json(await renderGoogleReviews(null, { live: true }));
+});
 
 /* Ana sayfa vitrinleri. Seçim mantığı script.js'teki ile BİREBİR aynı olmalı —
    JS aynı kutuları yeniden bastığında kartlar yer değiştirmesin. Eskiden ana
@@ -2939,7 +3083,7 @@ async function renderHomeGrids(sayfa) {
     ? `${indirimli.length} ürün indirimde · en yüksek indirim %${enIyi} · stoklarla sınırlı`
     : "";
 
-  return sayfa
+  const rendered = sayfa
     .replace("<!--vitrin-yeni-->", izgara(aktif))
     .replace("<!--vitrin-secki-->", izgara(secki.slice(1, 5)))
     .replace("<!--vitrin-cok-satan-->", izgara(aktif.slice(0, 5)))
@@ -2947,6 +3091,32 @@ async function renderHomeGrids(sayfa) {
     .replace("<!--vitrin-indirim-->", indirimli.length ? izgara(indirimli.slice(0, 5)) : "")
     .replace("<!--indirim-gizli-->", indirimli.length ? "" : " hidden")
     .replace("<!--indirim-ozet-->", escapeHtml(ozet));
+
+  const embeddedData = `<script type="application/json" id="home-products-data">${JSON.stringify(aktif).replace(/</g, "\\u003c")}</script>`;
+  return rendered.replace("</main>", `${embeddedData}\n    </main>`);
+}
+
+async function renderHomeCategories(sayfa) {
+  const categories = await db.prepare(`
+    SELECT * FROM categories WHERE is_active = 1 ORDER BY sort_order ASC, id ASC
+  `).all();
+  if (!categories.length) return sayfa;
+
+  const cards = categories.map((category) => `
+      <a class="category-card" href="/urunler?kategori=${category.id}">
+        <span class="category-card__media">
+          <img src="${escapeHtml(sablonlar.gorselAdresi(category.image_path, 500) || "/assets/printable-logo.svg")}" alt="${escapeHtml(category.image_alt || "")}" loading="lazy">
+        </span>
+        <span class="category-card__body">
+          <strong>${escapeHtml(category.name)}</strong>
+          <small data-category-count="${category.id}"></small>
+        </span>
+      </a>`).join("");
+  const embeddedData = `<script type="application/json" id="home-categories-data">${JSON.stringify(categories).replace(/</g, "\\u003c")}</script>`;
+  return sayfa.replace(
+    '<div class="category-grid" id="category-grid"></div>',
+    `<div class="category-grid" id="category-grid">${cards}</div>\n        ${embeddedData}`
+  );
 }
 
 /* /landing vitrini. Seçim script.js'teki renderProductLanding ile aynı: sabit
@@ -3026,6 +3196,7 @@ async function sendPage(req, res, file, slug) {
   if (sayfa.includes("<!--customer-showcases-")) sayfa = await renderCustomerShowcases(sayfa);
   if (sayfa.includes("<!--google-reviews-")) sayfa = await renderGoogleReviews(sayfa);
   if (sayfa.includes("<!--hero-slaytlari-->")) sayfa = await renderHero(sayfa);
+  if (sayfa.includes('id="category-grid"')) sayfa = await renderHomeCategories(sayfa);
   if (sayfa.includes("<!--vitrin-yeni-->")) sayfa = await renderHomeGrids(sayfa);
   res.type("html").send(await injectShell(sayfa, slug, await pageCustomer(req, res)));
 }
@@ -3324,10 +3495,6 @@ app.get("/blog/:slug", async (req, res) => {
     .replace("<!--blog-cover-->", cover)
     .replace("<!--blog-media-->", blogMediaHTML(post))
     .replace("<!--blog-content-->", post.content || ""), "blog", await pageCustomer(req, res)));
-});
-
-["styles.css", "script.js", "product-templates.js", "stl-viewer.js", "admin.css", "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js", "tasarim.js", "katalog.js", "hesap.js", "anahtarlik-katalog.js"].forEach((file) => {
-  app.get(`/${file}`, async (req, res) => res.sendFile(path.join(ROOT, file)));
 });
 
 function signSession(value) {

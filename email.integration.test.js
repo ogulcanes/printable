@@ -151,6 +151,35 @@ test("Yüzde 20 ve yüzde 10 indirimleri ayrı etiketlenir, yüzde 5 etiketsiz k
   assert.match(specialHTML, /Özel İndirim · %10/);
   assert.match(generalHTML, /<s>/);
   assert.doesNotMatch(generalHTML, /campaign-badge|Fırsat|Özel İndirim/);
+  assert.equal(
+    productTemplates.gorselAdresi("/assets/shopier/21.jpg", 500),
+    "/image?src=%2Fassets%2Fshopier%2F21.jpg&w=500"
+  );
+  assert.equal(
+    productTemplates.gorselAdresi("/uploads/animated.gif", 500),
+    "/uploads/animated.gif"
+  );
+  assert.equal(
+    productTemplates.gorselAdresi(
+      "https://makerworld.bblmw.com/example.png?x-oss-process=image/resize,w_1200/ignore-error,1",
+      500
+    ),
+    "https://makerworld.bblmw.com/example.png?x-oss-process=image/resize,w_500/ignore-error,1"
+  );
+});
+
+test("Yerel ürün görseli küçük ve uzun süre önbelleklenen WebP olarak sunulur", async () => {
+  const source = "/assets/products/zarif-kirmizi-fiyonk-anahtarlik.png";
+  const response = await realFetch(
+    `${baseUrl}/image?src=${encodeURIComponent(source)}&w=320`
+  );
+  const optimized = Buffer.from(await response.arrayBuffer());
+  const originalSize = fs.statSync(path.join(__dirname, source.slice(1))).size;
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /^image\/webp/);
+  assert.match(response.headers.get("cache-control"), /max-age=2592000/);
+  assert.ok(optimized.length < originalSize / 4);
 });
 
 test.after(async () => {
@@ -281,22 +310,31 @@ test("Ana sayfa Google değerlendirmelerini fotoğraflı gösterir ve eski yorum
   assert.equal(page.status, 200);
   assert.match(html, /id="musteri-yorumlari"/);
   assert.match(html, /Bizi müşterilerimizden dinleyin/);
-  assert.match(html, /data-google-reviews-status="connected"/);
-  assert.match(html, /4,9/);
-  assert.match(html, /37 Google değerlendirmesi/);
-  assert.match(html, /Deniz K\./);
-  assert.match(html, /src="https:\/\/lh3\.googleusercontent\.com\/a\/test-author"/);
-  assert.match(html, /Baskı kalitesi çok güzel, iletişim de hızlıydı/);
-  assert.match(html, /Yorumu Google Maps'te görüntüle/);
+  assert.match(html, /data-google-reviews-status="configuration-required"/);
+  assert.doesNotMatch(html, /data-google-reviews-status="connected"/);
   assert.doesNotMatch(html, /href="\/musteri-yorumlari"[^>]*>Yorumlar</);
   assert.doesNotMatch(html, /google-places-test-key/);
 
+  const reviewsResponse = await realFetch(`${baseUrl}/api/google-reviews`);
+  const reviews = await reviewsResponse.json();
+  assert.equal(reviewsResponse.status, 200);
+  assert.equal(reviews.connected, true);
+  assert.match(reviews.summary, /data-google-reviews-status="connected"/);
+  assert.match(reviews.summary, /4,9/);
+  assert.match(reviews.summary, /37 Google değerlendirmesi/);
+  assert.match(reviews.list, /Deniz K\./);
+  assert.match(reviews.list, /src="https:\/\/lh3\.googleusercontent\.com\/a\/test-author"/);
+  assert.match(reviews.list, /Baskı kalitesi çok güzel, iletişim de hızlıydı/);
+  assert.match(reviews.list, /Yorumu Google Maps'te görüntüle/);
+  assert.doesNotMatch(JSON.stringify(reviews), /google-places-test-key/);
+
   googleReviewsMode = "error";
-  const fallbackPage = await realFetch(`${baseUrl}/`);
-  const fallbackHtml = await fallbackPage.text();
-  assert.equal(fallbackPage.status, 200);
-  assert.match(fallbackHtml, /data-google-reviews-status="configuration-required"/);
-  assert.match(fallbackHtml, /Güncel yorumlar Google Maps'te/);
+  const fallbackResponse = await realFetch(`${baseUrl}/api/google-reviews`);
+  const fallback = await fallbackResponse.json();
+  assert.equal(fallbackResponse.status, 200);
+  assert.equal(fallback.connected, false);
+  assert.match(fallback.summary, /data-google-reviews-status="configuration-required"/);
+  assert.match(fallback.list, /Güncel yorumlar Google Maps'te/);
 
   const oldPage = await realFetch(`${baseUrl}/musteri-yorumlari`, { redirect: "manual" });
   assert.equal(oldPage.status, 301);
@@ -410,13 +448,9 @@ test("Genel landing sayfası tüm mağazayı anlatır ve Katlaç ile Spinball'u 
   assert.match(html, /id="category-grid"/);
   assert.match(html, /id="sale-section"/);
   assert.match(html, /Katlaç[\s\S]*Spinball/);
-  assert.match(html, /\/assets\/shopier\/21\.jpg/);
-  assert.match(html, /\/assets\/shopier\/22\.jpg/);
-  assert.match(html, /\/assets\/shopier\/35\.jpg/);
-  assert.match(html, /\/assets\/shopier\/53\.jpg/);
-  assert.match(html, /\/assets\/shopier\/39\.jpg/);
-  assert.match(html, /href="\/urun\/53"/);
-  assert.match(html, /href="\/urun\/39"/);
+  assert.equal([...html.matchAll(/<article class="commerce-product/g)].length, 5);
+  assert.match(html, /commerce-product--lead/);
+  assert.match(html, /href="\/urun\/\d+"/);
   assert.match(html, /id="bulk-commerce"/);
   assert.match(html, /10, 50 ve 100 adet/);
 });

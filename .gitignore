@@ -12,6 +12,7 @@ node_modules/
 data/*.sqlite
 data/*.sqlite-*
 data/pgdata/
+data/image-cache/
 
 # Yerelde diske yazılan yüklemeler (üretimde Supabase Storage kullanılır).
 uploads/*
