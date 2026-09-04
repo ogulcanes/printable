@@ -1,0 +1,16 @@
+---
+# cPanel > Git Version Control > "Deploy HEAD Commit" bu dosyayı çalıştırır.
+#
+# Asıl iş scripts/cpanel-deploy.sh içinde: klondaki dosyaları çalışan Node
+# uygulamasının klasörüne kopyalar ve uygulamayı yeniden başlatır. Mantık ayrı
+# bir betikte, çünkü .cpanel.yml'nin tek satırlık görevleri okunaklı koşul ve
+# güvenlik kontrolü yazmaya elverişli değil.
+#
+# PRINTABLE_APP_DIR = cPanel > Setup Node.js App > "Application root".
+# Betik bu değer verilmezse klasörü kendi arar, ama sabit olması hem daha hızlı
+# hem de ileride ev dizinine ikinci bir Node uygulaması eklenirse belirsizliğe
+# düşmez. Uygulama taşınırsa burayı güncelle.
+deployment:
+  tasks:
+    - export PRINTABLE_APP_DIR="$HOME/printable-app"
+    - /bin/bash scripts/cpanel-deploy.sh

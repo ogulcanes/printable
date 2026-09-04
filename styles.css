@@ -9502,3 +9502,228 @@ body.promo-modal-open .discovery-popup { display: none; }
   .google-review-card { transition: none; }
   .google-review-card:hover { transform: none; }
 }
+
+/* ---- İsme özel evcil hayvan ürünü: ana sayfa, /urunler ve /landing ---- */
+.pet-promo {
+  --pet-ink: #142437;
+  --pet-blue: #2e6799;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 72px 0;
+  color: var(--pet-ink);
+  background:
+    radial-gradient(circle at 92% 8%, rgba(255,255,255,.88) 0 7%, transparent 7.2%),
+    linear-gradient(135deg, #edf5f8 0%, #e5eff5 52%, #f8f2eb 100%);
+}
+
+.pet-promo::before,
+.pet-promo::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.pet-promo::before {
+  width: 380px;
+  height: 380px;
+  right: -170px;
+  bottom: -210px;
+  border: 58px solid rgba(46,103,153,.08);
+}
+
+.pet-promo::after {
+  width: 170px;
+  height: 170px;
+  top: -100px;
+  left: 7%;
+  background: rgba(255,101,66,.08);
+}
+
+.pet-promo__layout {
+  display: grid;
+  grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr);
+  align-items: center;
+  gap: clamp(42px, 7vw, 96px);
+}
+
+.pet-promo__media {
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+  aspect-ratio: 1 / 1;
+  border-radius: 2px 52px 2px 52px;
+  background: #ded7d0;
+  box-shadow: 0 28px 70px rgba(28,54,77,.18);
+}
+
+.pet-promo__media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.6);
+  pointer-events: none;
+}
+
+.pet-promo__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform .5s ease;
+}
+
+.pet-promo:hover .pet-promo__media img { transform: scale(1.018); }
+
+.pet-promo__badge {
+  position: absolute;
+  z-index: 1;
+  top: 18px;
+  left: 18px;
+  padding: 9px 13px;
+  border: 1px solid rgba(255,255,255,.68);
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(20,36,55,.82);
+  box-shadow: 0 8px 24px rgba(20,36,55,.16);
+  backdrop-filter: blur(9px);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.pet-promo__copy { max-width: 650px; }
+.pet-promo__copy .section-kicker { color: var(--pet-blue); }
+
+.pet-promo__copy h2 {
+  margin: 8px 0 20px;
+  color: var(--pet-ink);
+  font-size: clamp(48px, 6vw, 82px);
+  line-height: .92;
+  letter-spacing: -.065em;
+}
+
+.pet-promo__copy h2 em { color: var(--pet-blue); font-style: normal; }
+
+.pet-promo__lead {
+  max-width: 610px;
+  margin: 0;
+  color: #526579;
+  font-size: clamp(15px, 1.5vw, 18px);
+  line-height: 1.72;
+}
+
+.pet-promo__features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 25px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pet-promo__features li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid rgba(46,103,153,.18);
+  border-radius: 999px;
+  color: #38556f;
+  background: rgba(255,255,255,.58);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.pet-promo__features li::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.pet-promo__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 11px;
+  margin-top: 28px;
+}
+
+.pet-promo__actions a {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 20px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  transition: transform .2s ease, box-shadow .2s ease, background .2s ease;
+}
+
+.pet-promo__primary {
+  gap: 12px;
+  color: #fff;
+  background: var(--pet-ink);
+  box-shadow: 0 13px 30px rgba(20,36,55,.2);
+}
+
+.pet-promo__primary span { font-size: 18px; line-height: 1; }
+.pet-promo__secondary { border: 1px solid rgba(20,36,55,.18); color: var(--pet-ink); background: rgba(255,255,255,.5); }
+.pet-promo__actions a:hover { transform: translateY(-2px); box-shadow: 0 15px 32px rgba(20,36,55,.18); }
+.pet-promo__actions a:focus-visible { outline: 3px solid rgba(255,101,66,.38); outline-offset: 3px; }
+.pet-promo__copy > small { display: block; margin-top: 15px; color: #738292; font-size: 10px; }
+
+.pet-promo--catalog {
+  margin: 16px 0 38px;
+  padding: 46px 0;
+}
+
+.pet-promo--catalog .pet-promo__layout { grid-template-columns: minmax(300px, .72fr) minmax(0, 1.28fr); }
+.pet-promo--catalog .pet-promo__media { max-width: 440px; justify-self: end; border-radius: 2px 38px 2px 38px; }
+.pet-promo--catalog .pet-promo__copy h2 { font-size: clamp(42px, 5vw, 66px); }
+.pet-promo--landing { scroll-margin-top: 132px; }
+
+@media (max-width: 880px) {
+  .pet-promo { padding: 56px 0; }
+  .pet-promo__layout,
+  .pet-promo--catalog .pet-promo__layout { grid-template-columns: minmax(0, .88fr) minmax(0, 1.12fr); gap: 36px; }
+  .pet-promo__copy h2,
+  .pet-promo--catalog .pet-promo__copy h2 { font-size: clamp(40px, 7vw, 60px); }
+  .pet-promo--catalog .pet-promo__media { justify-self: stretch; }
+}
+
+@media (max-width: 680px) {
+  .pet-promo,
+  .pet-promo--catalog { margin: 0; padding: 38px 0 44px; }
+  .pet-promo__layout,
+  .pet-promo--catalog .pet-promo__layout { grid-template-columns: 1fr; gap: 30px; }
+  .pet-promo__media,
+  .pet-promo--catalog .pet-promo__media {
+    width: 100%;
+    max-width: none;
+    aspect-ratio: 4 / 3;
+    border-radius: 2px 30px 2px 30px;
+  }
+  .pet-promo__media img { object-position: center 48%; }
+  .pet-promo__badge { top: 12px; left: 12px; }
+  .pet-promo__copy h2,
+  .pet-promo--catalog .pet-promo__copy h2 { margin-bottom: 16px; font-size: clamp(43px, 14vw, 58px); }
+  .pet-promo__lead { font-size: 14px; line-height: 1.65; }
+  .pet-promo__features { gap: 7px; margin-top: 20px; }
+  .pet-promo__features li { padding: 8px 10px; font-size: 10px; }
+  .pet-promo__actions { display: grid; margin-top: 23px; }
+  .pet-promo__actions a { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pet-promo__media img,
+  .pet-promo__actions a { transition: none; }
+  .pet-promo:hover .pet-promo__media img,
+  .pet-promo__actions a:hover { transform: none; }
+}

@@ -12,6 +12,15 @@
   const allowedImageTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
   let previewUrl = "";
 
+  // Kampanya CTA'sından gelen ziyaretçi boş bir formla karşılaşmasın; ürün
+  // niyetini forma taşıyarak yalnızca isim ve iletişim bilgisini tamamlasın.
+  if (new URLSearchParams(location.search).get("talep") === "evcil-hayvan-mama-kabi") {
+    const messageField = form.elements.message;
+    if (messageField && !messageField.value.trim()) {
+      messageField.value = "Evcil hayvanım için isme özel mama/su kabı standı yaptırmak istiyorum. İsim ve renk tercihlerimi paylaşacağım.";
+    }
+  }
+
   const setStatus = (message, ok) => {
     status.textContent = message;
     status.hidden = !message;
