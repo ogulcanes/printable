@@ -1,0 +1,93 @@
+#!/bin/bash
+# Alastyr (cPanel) yayın betiği — .cpanel.yml bunu çağırır.
+#
+# cPanel > Git Version Control depoyu KENDİ klasörüne klonlar; o klasör çalışan
+# uygulama değildir. Buradaki iş, klondaki dosyaları Node uygulamasının klasörüne
+# kopyalamaktır.
+#
+# Hedef klasör = cPanel > Setup Node.js App > "Application root".
+# Betik onu kendisi bulmaya çalışır; bulamazsa ya da birden fazla aday çıkarsa
+# HİÇBİR ŞEY KOPYALAMADAN durur. Sabitlemek için deponun kökündeki .cpanel.yml
+# içinde PRINTABLE_APP_DIR değerini ver.
+#
+# Kopyalanmayanlar: .env, data/, uploads/, node_modules/ — bunlar sunucunun malı,
+# depoda yer almaz ve üzerine yazılmamalı. Betik hedefte hiçbir dosyayı silmez.
+
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_DIR"
+
+die() { echo "HATA: $*" >&2; exit 1; }
+
+# ---------------------------------------------------------------- hedef klasör
+APP_DIR="${PRINTABLE_APP_DIR:-}"
+
+if [ -n "$APP_DIR" ]; then
+  echo "Hedef (elle verildi): $APP_DIR"
+else
+  echo "Hedef klasör aranıyor: $HOME altında server.js + package.json taşıyan klasör..."
+  candidates="$(
+    find "$HOME" -maxdepth 3 -type f -name server.js \
+         -not -path "$REPO_DIR/*" -not -path "*/node_modules/*" 2>/dev/null |
+    while IFS= read -r hit; do
+      dir="$(dirname "$hit")"
+      [ -f "$dir/package.json" ] && echo "$dir"
+    done | sort -u
+  )"
+
+  count="$(printf '%s' "$candidates" | grep -c . || true)"
+
+  if [ "$count" -eq 1 ]; then
+    APP_DIR="$candidates"
+    echo "Hedef bulundu: $APP_DIR"
+  elif [ "$count" -eq 0 ]; then
+    die "Uygulama klasörü bulunamadı. .cpanel.yml içinde PRINTABLE_APP_DIR değerini
+     cPanel > Setup Node.js App > 'Application root' yoluna ayarla."
+  else
+    echo "Birden fazla aday bulundu:" >&2
+    printf '  %s\n' $candidates >&2
+    die "Hangisi olduğu belirsiz. .cpanel.yml içinde PRINTABLE_APP_DIR ile sabitle."
+  fi
+fi
+
+# --------------------------------------------------------------- güvenlik ağı
+# Yanlış yere kopyalamak, ev dizinini repo dosyalarıyla doldurmak demek.
+[ -d "$APP_DIR" ]            || die "Klasör yok: $APP_DIR"
+[ "$APP_DIR" != "$HOME" ]    || die "Hedef ev dizini olamaz: $APP_DIR"
+[ "$APP_DIR" != "$REPO_DIR" ] || die "Hedef deponun kendisi olamaz: $APP_DIR"
+[ -f "$APP_DIR/server.js" ]  || die "Burası uygulama klasörü değil (server.js yok): $APP_DIR"
+
+# package.json değişirse bağımlılık kurulumu gerekir; sonunda uyaralım diye ölçüyoruz.
+pkg_before="$(md5sum "$APP_DIR/package.json" 2>/dev/null | cut -d' ' -f1 || true)"
+
+# -------------------------------------------------------------------- kopyala
+# git ls-files = yalnızca depoda İZLENEN dosyalar. .env, data/, uploads/ ve
+# node_modules/ zaten .gitignore'da olduğu için listeye hiç girmez.
+copied=0
+while IFS= read -r -d '' file; do
+  target_dir="$APP_DIR/$(dirname "$file")"
+  [ -d "$target_dir" ] || mkdir -p "$target_dir"
+  cp -p "$file" "$APP_DIR/$file"
+  copied=$((copied + 1))
+done < <(git ls-files -z)
+
+echo "$copied dosya kopyalandı -> $APP_DIR"
+
+# ------------------------------------------------------------------- yeniden başlat
+# HTML her istekte diskten okunuyor, CSS/JS statik — yani sadece ön yüz değiştiyse
+# restart şart değil. Ama server.js değiştiyse şart, ve hangisi olduğunu burada
+# ayırt etmek yerine her deploy'da yeniden başlatmak ucuz ve öngörülebilir.
+# Passenger, tmp/restart.txt dosyasına dokunulunca uygulamayı yeniden başlatır.
+mkdir -p "$APP_DIR/tmp"
+touch "$APP_DIR/tmp/restart.txt"
+echo "Uygulama yeniden başlatılmak üzere işaretlendi (tmp/restart.txt)."
+
+pkg_after="$(md5sum "$APP_DIR/package.json" 2>/dev/null | cut -d' ' -f1 || true)"
+if [ -n "$pkg_before" ] && [ "$pkg_before" != "$pkg_after" ]; then
+  echo
+  echo "DİKKAT: package.json değişti. Bağımlılıklar bu betikle KURULMAZ."
+  echo "cPanel > Setup Node.js App > uygulamayı seç > 'Run NPM Install' çalıştır."
+fi
+
+echo "Yayın tamam."

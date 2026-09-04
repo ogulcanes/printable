@@ -1,0 +1,14 @@
+---
+# cPanel > Git Version Control > "Deploy HEAD Commit" bu dosyayı çalıştırır.
+#
+# Asıl iş scripts/cpanel-deploy.sh içinde: klondaki dosyaları çalışan Node
+# uygulamasının klasörüne kopyalar ve uygulamayı yeniden başlatır. Mantık ayrı
+# bir betikte, çünkü .cpanel.yml'nin tek satırlık görevleri okunaklı koşul ve
+# güvenlik kontrolü yazmaya elverişli değil.
+#
+# Betik hedef klasörü kendisi bulur. Bulamazsa aşağıdaki satırın başındaki # işaretini
+# kaldır ve yolu cPanel > Setup Node.js App > "Application root" ne diyorsa ona ayarla.
+deployment:
+  tasks:
+    #- export PRINTABLE_APP_DIR="$HOME/printable"
+    - /bin/bash scripts/cpanel-deploy.sh

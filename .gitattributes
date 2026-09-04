@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Kabuk betikleri her koşulda LF olmalı: CRLF ile checkout edilen bir .sh dosyası
+# Linux'ta "bad interpreter: /bin/bash^M" ile ölür ve sunucuda deploy patlar.
+*.sh text eol=lf
