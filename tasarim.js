@@ -13,11 +13,27 @@
   let previewUrl = "";
 
   // Kampanya CTA'sından gelen ziyaretçi boş bir formla karşılaşmasın; ürün
-  // niyetini forma taşıyarak yalnızca isim ve iletişim bilgisini tamamlasın.
-  if (new URLSearchParams(location.search).get("talep") === "evcil-hayvan-mama-kabi") {
+  // niyetini forma taşıyarak yalnızca iletişim bilgisini tamamlasın.
+  //
+  // Yapılandırıcıda yapılan boyut/renk/isim seçimleri URL ile geliyor: müşteriye
+  // aynı şeyi ikinci kez yazdırmak, kampanyanın anlamını bozan bir adım olurdu.
+  // Fiyat "gördüğüm fiyat" diye geçiyor; bağlayıcı teklif değil, atölyenin hangi
+  // seçenekle karşılaştığını görmesi için.
+  const query = new URLSearchParams(location.search);
+  if (query.get("talep") === "evcil-hayvan-mama-kabi") {
     const messageField = form.elements.message;
     if (messageField && !messageField.value.trim()) {
-      messageField.value = "Evcil hayvanım için isme özel mama/su kabı standı yaptırmak istiyorum. İsim ve renk tercihlerimi paylaşacağım.";
+      const size = query.get("boyut");
+      const color = query.get("renk");
+      const petName = query.get("isim");
+      const price = query.get("fiyat");
+      const lines = ["Evcil hayvanım için isme özel mama/su kabı standı yaptırmak istiyorum."];
+      if (petName) lines.push(`Kaba yazılacak isim: ${petName}`);
+      if (size) lines.push(`Boyut: ${size} cm`);
+      if (color) lines.push(`Panel rengi: ${color}`);
+      if (price) lines.push(`Sitede gördüğüm fiyat: ${Number(price).toFixed(2)} TL`);
+      if (!size && !color && !petName) lines.push("İsim ve renk tercihlerimi paylaşacağım.");
+      messageField.value = lines.join("\n");
     }
   }
 

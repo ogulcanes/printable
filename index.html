@@ -54,13 +54,12 @@
             <p class="section-kicker">Evcil hayvanlarınız için</p>
             <h2 id="pet-promo-title">Onun adı.<br><em>Onun kabı.</em></h2>
             <p class="pet-promo__lead">Patili dostunuzun adını günlük rutinine taşıyın. Kedi ve köpekler için mama ya da su kabı standını ismine ve renklerinize özel hazırlayalım.</p>
-            <ul class="pet-promo__features" aria-label="Ürün özellikleri">
-              <li>İsme özel tasarım</li>
-              <li>Kedi &amp; köpekler için</li>
-              <li>Renk tercihinize göre</li>
-            </ul>
-            <div class="pet-promo__actions">
+            <!-- Yapılandırıcı pet-bowl.js tarafından buraya basılır; içindeki
+                 bağlantı JavaScript kapalıyken kalan yedektir. -->
+            <div data-pet-config>
               <a class="pet-promo__primary" href="/tasarim?talep=evcil-hayvan-mama-kabi#parca-talebi">İsme özel yaptır <span aria-hidden="true">→</span></a>
+            </div>
+            <div class="pet-promo__actions">
               <a class="pet-promo__secondary" href="/tasarim">Özel üretimi keşfet</a>
             </div>
             <small>Her parça talebe özel hazırlanır.</small>
@@ -385,5 +384,6 @@
 
     <!--chat-->
     <script src="script.js"></script>
+    <script src="pet-bowl.js"></script>
   </body>
 </html>

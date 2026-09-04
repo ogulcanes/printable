@@ -137,7 +137,7 @@ fs.mkdirSync(IMAGE_CACHE_DIR, { recursive: true });
 const PUBLIC_STATIC_FILES = [
   "styles.css", "script.js", "product-templates.js", "stl-viewer.js", "admin.css",
   "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js", "tasarim.js",
-  "katalog.js", "hesap.js", "anahtarlik-katalog.js"
+  "katalog.js", "hesap.js", "anahtarlik-katalog.js", "pet-bowl.js"
 ];
 const PUBLIC_ASSET_VERSION = crypto.createHash("sha1")
   .update(PUBLIC_STATIC_FILES.map((file) => {
