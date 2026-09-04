@@ -64,13 +64,22 @@ pkg_before="$(md5sum "$APP_DIR/package.json" 2>/dev/null | cut -d' ' -f1 || true
 # -------------------------------------------------------------------- kopyala
 # git ls-files = yalnızca depoda İZLENEN dosyalar. .env, data/, uploads/ ve
 # node_modules/ zaten .gitignore'da olduğu için listeye hiç girmez.
+#
+# Liste önce geçici bir dosyaya yazılıyor; `done < <(git ls-files -z)` yazmak
+# daha kısa olurdu ama cPanel'in jailed shell'inde /dev/fd yok ve process
+# substitution "No such file or directory" ile ölüyor. Boruya sokmak da olmaz:
+# döngü alt kabukta çalışır, sayaç geri dönmez.
+file_list="$(mktemp)"
+trap 'rm -f "$file_list"' EXIT
+git ls-files -z > "$file_list"
+
 copied=0
 while IFS= read -r -d '' file; do
   target_dir="$APP_DIR/$(dirname "$file")"
   [ -d "$target_dir" ] || mkdir -p "$target_dir"
   cp -p "$file" "$APP_DIR/$file"
   copied=$((copied + 1))
-done < <(git ls-files -z)
+done < "$file_list"
 
 echo "$copied dosya kopyalandı -> $APP_DIR"
 

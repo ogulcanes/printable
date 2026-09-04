@@ -6,9 +6,11 @@
 # bir betikte, çünkü .cpanel.yml'nin tek satırlık görevleri okunaklı koşul ve
 # güvenlik kontrolü yazmaya elverişli değil.
 #
-# Betik hedef klasörü kendisi bulur. Bulamazsa aşağıdaki satırın başındaki # işaretini
-# kaldır ve yolu cPanel > Setup Node.js App > "Application root" ne diyorsa ona ayarla.
+# PRINTABLE_APP_DIR = cPanel > Setup Node.js App > "Application root".
+# Betik bu değer verilmezse klasörü kendi arar, ama sabit olması hem daha hızlı
+# hem de ileride ev dizinine ikinci bir Node uygulaması eklenirse belirsizliğe
+# düşmez. Uygulama taşınırsa burayı güncelle.
 deployment:
   tasks:
-    #- export PRINTABLE_APP_DIR="$HOME/printable"
+    - export PRINTABLE_APP_DIR="$HOME/printable-app"
     - /bin/bash scripts/cpanel-deploy.sh
