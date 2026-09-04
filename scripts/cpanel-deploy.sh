@@ -70,8 +70,29 @@ pkg_before="$(md5sum "$APP_DIR/package.json" 2>/dev/null | cut -d' ' -f1 || true
 # substitution "No such file or directory" ile ölüyor. Boruya sokmak da olmaz:
 # döngü alt kabukta çalışır, sayaç geri dönmez.
 file_list="$(mktemp)"
-trap 'rm -f "$file_list"' EXIT
+changed_list="$(mktemp)"
+trap 'rm -f "$file_list" "$changed_list"' EXIT
 git ls-files -z > "$file_list"
+
+# ---------------------------------------------------------------------- yedek
+# Hedefteki bir dosya depodakinden farklıysa, o fark depoya girmemiş bir
+# değişikliktir. Üzerine yazmak onu geri dönülmez biçimde siler: 4 Eylül 2026'da
+# tam olarak bu oldu, canlıdaki MySQL uyarlaması main'in Postgres sürümüyle
+# ezildi ve site düştü. Artık önce yedek alınıyor, sonra kopyalanıyor.
+while IFS= read -r -d '' file; do
+  if [ -f "$APP_DIR/$file" ] && ! cmp -s "$file" "$APP_DIR/$file"; then
+    printf '%s\n' "$file"
+  fi
+done < "$file_list" > "$changed_list"
+
+if [ -s "$changed_list" ]; then
+  backup_dir="$HOME/deploy-backups"
+  mkdir -p "$backup_dir"
+  backup="$backup_dir/printable-app-$(date +%Y%m%d-%H%M%S).tar.gz"
+  tar -czf "$backup" -C "$APP_DIR" -T "$changed_list"
+  echo "$(wc -l < "$changed_list") dosyanın eski hali yedeklendi: $backup"
+  echo "Geri almak için: tar -xzf $backup -C $APP_DIR"
+fi
 
 copied=0
 while IFS= read -r -d '' file; do
