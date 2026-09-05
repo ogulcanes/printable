@@ -69,7 +69,7 @@ if [ "$onceki" = "$gelen" ]; then
     # kayıt dosyası hiçbir işe yaramayan binlerce satıra boğulur.
     exit 0
   fi
-  log "Sunucu zaten güncel: ${onceki:0:7}"
+  log "Depoda yeni commit yok: ${onceki:0:7}"
 else
   log "Yeni commit(ler) bulundu: ${onceki:0:7} -> ${gelen:0:7}"
   git log --oneline "$onceki..$gelen" | sed 's/^/    /'
@@ -82,11 +82,18 @@ else
     log "      Elle bak:  cd $REPO_DIR && git status"
     exit 1
   fi
-
-  log "Dosyalar uygulamaya kopyalanıyor..."
-  bash "$REPO_DIR/scripts/cpanel-deploy.sh"
-  log "Yayın tamam: $(git rev-parse --short HEAD)"
 fi
+
+# Buraya iki durumda geliniyor: yeni commit çekildi, ya da kurulum çalışıyor.
+#
+# Kurulumda depo güncel olsa bile kopyalama YAPILIR. Deponun güncel olması
+# dosyaların uygulama klasörüne kopyalandığı anlamına gelmez ve ilk kurulumda
+# tam olarak bu oldu: elle 'git pull' çalıştırıldığı için betik "yeni commit
+# yok" deyip hiçbir şey kopyalamadan cron'u kurdu, site eski kaldı. Kurulumun
+# işi zaten bilinen ve çalışan bir duruma getirmektir.
+log "Dosyalar uygulamaya kopyalanıyor..."
+bash "$REPO_DIR/scripts/cpanel-deploy.sh"
+log "Yayın tamam: $(git rev-parse --short HEAD)"
 
 # --------------------------------------------------------------------- kurulum
 # Buraya ulaşıldıysa çekme ve kopyalama sorunsuz çalıştı; artık zamanlayıcıya
