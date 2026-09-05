@@ -37,9 +37,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      # Alastyr'de cPanel alan adının 2083 portundan açılıyor. Sunucu taşınırsa
-      # CPANEL_HOST secret'ı tanımlanarak buraya dokunmadan değiştirilebilir.
-      CPANEL_HOST: ${{ secrets.CPANEL_HOST || 'printable.com.tr' }}
+      # Hesabın bulunduğu Alastyr sunucusu. printable.com.tr:2083 de cPanel'e
+      # çıkıyor ama o alan adı başka bir IP'de (5.2.84.91); sertifika ve
+      # oturum sorunu çıkarmaması için panelin kendi adresi yazılı.
+      # Hesap başka sunucuya taşınırsa CPANEL_HOST secret'ı ile geçilir.
+      CPANEL_HOST: ${{ secrets.CPANEL_HOST || 'uranos.alastyr.com' }}
       CPANEL_USERNAME: ${{ secrets.CPANEL_USERNAME }}
       CPANEL_TOKEN: ${{ secrets.CPANEL_TOKEN }}
       BRANCH: mysql-migration
