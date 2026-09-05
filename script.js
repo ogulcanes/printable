@@ -775,6 +775,43 @@ if (navToggle && mainLinks) {
   });
 }
 
+/* Menüdeki "Kataloglar" açılır listesi. Masaüstünde başlığın altına açılan bir
+   kutu, hamburger menüsünde listenin içinde açılan bir alt liste — ikisi de
+   aynı düğme, farkı CSS taşıyor. */
+document.querySelectorAll("[data-nav-drop]").forEach((drop) => {
+  const trigger = drop.querySelector(".nav-drop__trigger");
+  const menu = drop.querySelector(".nav-drop__menu");
+  if (!trigger || !menu) return;
+
+  const setDrop = (open) => {
+    drop.toggleAttribute("data-open", open);
+    menu.hidden = !open;
+    trigger.setAttribute("aria-expanded", String(open));
+  };
+
+  trigger.addEventListener("click", () => setDrop(menu.hidden));
+
+  // Bağlantıya basınca kapat; yeni sayfada açık kalmış gibi görünmesin.
+  menu.addEventListener("click", (event) => {
+    if (event.target.closest("a")) setDrop(false);
+  });
+
+  /* Dışarı tıklama: tetikleyicinin kendi işleyicisi önce çalışıp durumu
+     değiştiriyor, bu işleyici sonra baloncukla geliyor. Tıklama kutunun
+     içindeyse dokunmuyoruz — yoksa açtığımız menüyü aynı tıklama kapatırdı.
+     stopPropagation yerine bu kontrol var: aksi hâlde arama kutusu gibi
+     başka bileşenlerin dışarı-tıklama kapanışı da bozulurdu. */
+  document.addEventListener("click", (event) => {
+    if (!drop.contains(event.target)) setDrop(false);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    setDrop(false);
+    if (drop.contains(document.activeElement)) trigger.focus();
+  });
+});
+
 /* Bülten formu. Daha önce hiçbir yere bağlı değildi: gönderilince sayfa
    yenileniyor ve e-posta kayboluyordu. */
 const newsletterForm = document.querySelector("#newsletter-form");

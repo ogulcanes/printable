@@ -2410,6 +2410,11 @@ async function renderPromoPopup() {
     })();</script>`;
 }
 
+/* Menüdeki "Kataloglar" başlığı bu sayfaların herhangi birindeyken vurgulanır;
+   kullanıcı açılır menünün içindeyken üstte hiçbir şeyin seçili görünmemesi
+   nerede olduğunu kaybettiriyordu. */
+const KATALOG_SLUGLARI = ["katalog", "anahtarlik-katalogu", "cakmaklik-katalogu", "landing"];
+
 async function renderHeader(active, customer) {
   const link = (href, label, key) => `<a${active === key ? ' class="active"' : ""} href="${href}">${label}</a>`;
   /* Müşterinin adı çerezden zaten biliniyor; HTML'e burada basılır. Eskiden
@@ -2450,7 +2455,22 @@ async function renderHeader(active, customer) {
         <nav class="main-links" id="main-links" aria-label="Ana menü">
           ${await link("/", "Ana Sayfa", "home")}
           ${await link("/urunler", "Ürünler", "urunler")}
-          ${await link("/anahtarlik-katalogu", "Toptan Anahtarlık", "anahtarlik-katalogu")}
+          <!-- Kataloglar tek başlık altında. Dördünü ayrı ayrı menüye dizmek
+               1200px'in altında başlığı taşırıyor (ölçüldü: 1100px'te 142px
+               yatay kayma), üstelik her yeni katalogda sorun büyürdü. -->
+          <div class="nav-drop" data-nav-drop>
+            <button class="nav-drop__trigger${KATALOG_SLUGLARI.includes(active) ? " active" : ""}"
+                    type="button" aria-expanded="false" aria-controls="nav-drop-kataloglar">
+              Kataloglar
+              <svg class="nav-drop__chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="nav-drop__menu" id="nav-drop-kataloglar" hidden>
+              ${await link("/katalog", "Ürün Kataloğu", "katalog")}
+              ${await link("/anahtarlik-katalogu", "Toptan Anahtarlık", "anahtarlik-katalogu")}
+              ${await link("/cakmaklik-katalogu", "Toptan Çakmaklık", "cakmaklik-katalogu")}
+              ${await link("/landing", "Katlaç & Spinball", "landing")}
+            </div>
+          </div>
           ${BLOG_DISCOVERABLE ? await link("/blog", "Blog", "blog") : ""}
           ${await link("/tasarim", "Özel Tasarım", "tasarim")}
           ${await link("/hakkinda", "Hakkımızda", "hakkinda")}

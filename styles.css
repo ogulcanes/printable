@@ -9920,3 +9920,123 @@ body.promo-modal-open .discovery-popup { display: none; }
   .pet-promo:hover .pet-promo__media img,
   .pet-promo__actions a:hover { transform: none; }
 }
+
+/* ---------- Menüdeki "Kataloglar" açılır listesi ----------
+   Katalog sayfaları çoğaldıkça hepsini üst menüye dizmek mümkün değil:
+   dördü yan yana yazıldığında başlık 1200px'in altında taşıyor. Tek başlık
+   altında toplanınca menü bugünkünden dar kalıyor ve yeni katalog eklemek
+   menüyü büyütmüyor. */
+
+.nav-drop { position: relative; display: inline-flex; }
+
+/* Tetikleyici, yanındaki bağlantılarla aynı hapı taşımalı: <button> olduğu
+   için tarayıcı varsayılanları (kenarlık, arka plan, yazı tipi) tek tek
+   sıfırlanıyor, yoksa menüde tek başına farklı görünüyor. */
+.nav-drop__trigger {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 15px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #343741;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 850;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color .2s ease, background .2s ease, transform .2s ease;
+}
+
+.nav-drop__trigger:hover,
+.nav-drop__trigger.active,
+.nav-drop[data-open] .nav-drop__trigger {
+  color: var(--accent);
+  background: #fff;
+  transform: translateY(-1px);
+}
+
+.nav-drop__trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.nav-drop__chev {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform .2s ease;
+}
+
+.nav-drop[data-open] .nav-drop__chev { transform: rotate(180deg); }
+
+.nav-drop__menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: grid;
+  gap: 2px;
+  min-width: 218px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 16px 34px rgba(31,33,40,.14);
+}
+
+/* [hidden] display:none ile gelir ama yukarıdaki display:grid aynı ağırlıkta
+   ve daha sonra yazıldığı için onu eziyor; panel kapalıyken de görünür
+   kalıyordu. Kapalı hali bu yüzden açıkça yazılmak zorunda. */
+.nav-drop__menu[hidden] { display: none; }
+
+.nav-drop__menu a {
+  display: flex;
+  padding: 10px 12px;
+  border-radius: 10px;
+  text-align: left;
+}
+
+.nav-drop__menu a:hover,
+.nav-drop__menu a.active { transform: none; }
+.nav-drop__menu a.active { background: #fff3ee; }
+
+/* Hamburger menüsünün içinde: panel yüzmez, listenin içinde açılır. Mutlak
+   konumlandırılmış bir kutu dar ekranda menünün dışına taşardı. */
+@media (max-width: 1050px) {
+  .nav-drop { display: block; }
+
+  .nav-drop__trigger {
+    width: 100%;
+    justify-content: space-between;
+    padding: 12px 14px;
+    border-radius: 10px;
+  }
+
+  .nav-drop__trigger:hover,
+  .nav-drop__trigger.active,
+  .nav-drop[data-open] .nav-drop__trigger { transform: none; }
+
+  .nav-drop__menu {
+    position: static;
+    transform: none;
+    min-width: 0;
+    margin: 2px 0 4px 12px;
+    padding: 2px 0 2px 8px;
+    border: 0;
+    border-left: 2px solid var(--line);
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-drop__trigger,
+  .nav-drop__chev { transition: none; }
+  .nav-drop__trigger:hover,
+  .nav-drop[data-open] .nav-drop__trigger { transform: none; }
+}
