@@ -49,8 +49,18 @@ if ! git rev-parse --git-dir > /dev/null 2>&1; then
   exit 1
 fi
 
-onceki="$(git rev-parse HEAD)"
 git fetch --quiet origin "$BRANCH"
+
+# cPanel klonu başka bir dalda duruyor olabilir (kurulumda hangisi seçildiyse).
+# Yanlış dalda "ileri sarma yapılamadı" hatası vermek yerine doğru dala geç:
+# yayınlanacak dal tek ve bellidir, klonun ondan sapması bir şeyi korumaz.
+mevcut_dal="$(git rev-parse --abbrev-ref HEAD)"
+if [ "$mevcut_dal" != "$BRANCH" ]; then
+  log "Sunucudaki kopya '$mevcut_dal' dalındaydı, '$BRANCH' dalına geçiliyor."
+  git checkout -B "$BRANCH" "origin/$BRANCH"
+fi
+
+onceki="$(git rev-parse HEAD)"
 gelen="$(git rev-parse "origin/$BRANCH")"
 
 if [ "$onceki" = "$gelen" ]; then
