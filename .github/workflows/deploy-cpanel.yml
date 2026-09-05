@@ -1,0 +1,143 @@
+# Canlıya otomatik yayın (Alastyr / cPanel).
+#
+# mysql-migration'a her push'ta cPanel'deki "Update from Remote" + "Deploy HEAD
+# Commit" düğmelerinin çağırdığı API'yi sırayla tetikler, yayının bitmesini
+# bekler ve sayfaların gerçekten açıldığını doğrular. Elle butona basmak artık
+# gerekmiyor.
+#
+# Neden hazır action yerine curl: bu iş üç HTTP isteği. Üçüncü parti bir
+# action'a cPanel token'ı vermek, deponun yayın anahtarını yabancı bir koda
+# emanet etmek demek.
+#
+# GEREKLİ GITHUB SECRET'LARI (Settings > Secrets and variables > Actions):
+#   CPANEL_HOST       sunucu adresi, protokolsüz.  örn: srv42.alastyr.com
+#   CPANEL_USERNAME   cPanel kullanıcı adı
+#   CPANEL_TOKEN      cPanel > Security > Manage API Tokens'tan üretilen token
+#   CPANEL_REPO_ROOT  cPanel'in klonladığı klasör.
+#                     cPanel > Git Version Control > repo > "Repository Path"
+#                     örn: /home/kullanici/repositories/printable
+#
+# Token'ı üretirken tam yetki vermek gerekmiyor; yayın için yeterli olan
+# VersionControl ve VersionControlDeployment erişimidir.
+
+name: Canlıya yayınla (cPanel)
+
+on:
+  push:
+    branches: [mysql-migration]
+  workflow_dispatch:
+
+# İki yayın aynı anda çalışırsa dosyalar birbirine karışır; sıraya sokuyoruz.
+# cancel-in-progress kapalı: yarıda kesilen bir kopyalama yarım site bırakır.
+concurrency:
+  group: cpanel-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+      CPANEL_USERNAME: ${{ secrets.CPANEL_USERNAME }}
+      CPANEL_TOKEN: ${{ secrets.CPANEL_TOKEN }}
+      REPO_ROOT: ${{ secrets.CPANEL_REPO_ROOT }}
+      BRANCH: mysql-migration
+
+    steps:
+      - name: Secret'lar tanımlı mı
+        run: |
+          set -euo pipefail
+          eksik=""
+          for ad in CPANEL_HOST CPANEL_USERNAME CPANEL_TOKEN REPO_ROOT; do
+            [ -n "${!ad:-}" ] || eksik="$eksik $ad"
+          done
+          if [ -n "$eksik" ]; then
+            echo "::error::Şu secret'lar eksik:$eksik — Settings > Secrets and variables > Actions"
+            exit 1
+          fi
+
+      - name: Depoyu sunucuda güncelle (Update from Remote)
+        run: |
+          set -euo pipefail
+          yanit="$(curl -sS -G "https://${CPANEL_HOST}:2083/execute/VersionControl/update" \
+            -H "Authorization: cpanel ${CPANEL_USERNAME}:${CPANEL_TOKEN}" \
+            --data-urlencode "repository_root=${REPO_ROOT}" \
+            --data-urlencode "branch=${BRANCH}")"
+          echo "$yanit" | jq '{status, errors}'
+          echo "$yanit" | jq -e '.status == 1 and .errors == null' > /dev/null || {
+            echo "::error::Depo güncellenemedi (git pull). Yanıt yukarıda."
+            exit 1
+          }
+          # Bilgi amaçlı; yanıtın şekli sürüme göre değişebildiği için
+          # başarısız olması yayını durdurmamalı.
+          echo "$yanit" | jq -r '[.. | objects | select(has("head_sha")) | .head_sha] | "Sunucudaki HEAD: \(.[0] // "?")"' || true
+
+      - name: Yayını başlat (Deploy HEAD Commit)
+        id: baslat
+        run: |
+          set -euo pipefail
+          yanit="$(curl -sS -G "https://${CPANEL_HOST}:2083/execute/VersionControlDeployment/create" \
+            -H "Authorization: cpanel ${CPANEL_USERNAME}:${CPANEL_TOKEN}" \
+            --data-urlencode "repository_root=${REPO_ROOT}")"
+          echo "$yanit" | jq '{status, errors}'
+          gorev="$(echo "$yanit" | jq -r '.data.task_id // empty')"
+          if [ -z "$gorev" ]; then
+            echo "::error::Yayın görevi başlatılamadı."
+            echo "$yanit" | jq .
+            exit 1
+          fi
+          echo "task_id=$gorev" >> "$GITHUB_OUTPUT"
+          echo "Yayın görevi: $gorev"
+
+      - name: Yayın bitene kadar bekle
+        env:
+          TASK_ID: ${{ steps.baslat.outputs.task_id }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 120); do
+            yanit="$(curl -sS "https://${CPANEL_HOST}:2083/execute/VersionControlDeployment/retrieve" \
+              -H "Authorization: cpanel ${CPANEL_USERNAME}:${CPANEL_TOKEN}")"
+            gorev="$(echo "$yanit" | jq -c --arg id "$TASK_ID" \
+              '.data[]? | select((.task_id|tostring) == $id)')"
+
+            # Görev listeden düştüyse kuyruk onu tamamlamış demektir; canlı
+            # kontrolü zaten son sözü söyleyecek.
+            [ -n "$gorev" ] || { echo "Görev kuyrukta yok, tamamlanmış sayılıyor."; exit 0; }
+
+            if [ "$(echo "$gorev" | jq -r '.timestamps.succeeded // empty')" != "" ]; then
+              echo "Yayın tamam: $(echo "$gorev" | jq -r '.timestamps.succeeded')"
+              exit 0
+            fi
+            if [ "$(echo "$gorev" | jq -r '.timestamps.failed // empty')" != "" ]; then
+              echo "::error::Yayın sunucuda başarısız oldu."
+              echo "$gorev" | jq .
+              echo "Kayıt dosyası: $(echo "$gorev" | jq -r '.log_path // "?"')"
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "::error::Yayın 10 dakikada bitmedi."
+          exit 1
+
+      - name: Canlı sayfaları doğrula
+        run: |
+          set -euo pipefail
+          # Passenger yeniden başlarken ilk istek birkaç saniye gecikebilir.
+          for adres in \
+            https://printable.com.tr/ \
+            https://printable.com.tr/anahtarlik-katalogu \
+            https://printable.com.tr/cakmaklik-katalogu
+          do
+            kod=""
+            for i in $(seq 1 12); do
+              kod="$(curl -s -o /dev/null -w '%{http_code}' -m 25 "$adres" || echo 000)"
+              [ "$kod" = "200" ] && break
+              sleep 5
+            done
+            if [ "$kod" != "200" ]; then
+              echo "::error::$adres → HTTP $kod (200 bekleniyordu)"
+              exit 1
+            fi
+            echo "$adres → 200"
+          done
