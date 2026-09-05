@@ -26,6 +26,7 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BRANCH="${PRINTABLE_BRANCH:-mysql-migration}"
 LOG_FILE="$HOME/printable-autodeploy.log"
+DURUM_DOSYASI="$HOME/printable-autodeploy-durum.txt"
 CRON_ETIKET="PRINTABLE_AUTODEPLOY"
 
 # .cpanel.yml ile aynı hedef; cpanel-deploy.sh klasörü aramak zorunda kalmasın.
@@ -48,6 +49,25 @@ if ! git rev-parse --git-dir > /dev/null 2>&1; then
   log "HATA: burası bir git deposu değil: $REPO_DIR"
   exit 1
 fi
+
+# ----------------------------------------------------------------------- nabız
+# Yapacak iş yokken betik sessizce çıkıyor — doğru davranış, ama bu yüzden
+# "cron çalışıyor mu, yoksa durdu mu?" sorusunun dışarıdan cevabı yoktu.
+# 6 Eylül 2026'da tam olarak bu oldu: cron iki yayından sonra tetiklenmeyi
+# bıraktı, log boş kaldığı için fark edilmesi yayının gecikmesine kaldı.
+#
+# Bu dosya her çalışmada ÜZERİNE yazılır (>), yani hiç büyümez ve her zaman
+# son çalışmanın zamanını gösterir. EXIT tuzağına bağlı olduğu için hata ile
+# biten çalışmalar da kaydediliyor — asıl bilmek istediğin an orası.
+durumYaz() {
+  local kod=$?
+  printf '%s  son kontrol · dal %s · sunucu %s · çıkış %s\n' \
+    "$(date '+%Y-%m-%d %H:%M:%S')" \
+    "$BRANCH" \
+    "$(git rev-parse --short HEAD 2>/dev/null || echo '?')" \
+    "$kod" > "$DURUM_DOSYASI"
+}
+trap durumYaz EXIT
 
 git fetch --quiet origin "$BRANCH"
 
