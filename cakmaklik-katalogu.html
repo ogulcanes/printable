@@ -13,9 +13,9 @@
 
     <main>
       <section class="container page-hero">
-        <p class="section-kicker">Toptan Anahtarlık Kataloğu</p>
-        <h1>3D Baskılı Anahtarlık Koleksiyonu</h1>
-        <p class="page-lead">Onlarca modeli inceleyin, her birinden istediğiniz adedi yazın ve toplu sipariş talebinizi doğrudan bize gönderin.</p>
+        <p class="section-kicker">Toptan Çakmaklık Kataloğu</p>
+        <h1>3D Baskılı Çakmaklık Koleksiyonu</h1>
+        <p class="page-lead">Clipper ve Bic çakmaklara uyan onlarca kılıf modelini inceleyin, her birinden istediğiniz adedi yazın ve toplu sipariş talebinizi doğrudan bize gönderin.</p>
         <div class="keychain-order-rules" aria-label="Toplu sipariş koşulları">
           <span>Her modelden en az <strong>5 adet</strong></span>
           <span>Sipariş toplamı en az <strong>50 adet</strong></span>
@@ -25,18 +25,18 @@
       <section class="container keychain-toolbar-wrap">
         <div class="keychain-toolbar">
           <label class="keychain-select-all">
-            <input type="checkbox" id="keychain-select-all">
+            <input type="checkbox" id="lighter-select-all">
             Tümünü seç
           </label>
-          <span class="keychain-count"><strong id="keychain-count-selected">0</strong> / <span id="keychain-count-total">0</span> model seçili</span>
-          <span class="keychain-count keychain-quantity-total"><strong id="keychain-total-quantity">0</strong> adet</span>
+          <span class="keychain-count"><strong id="lighter-count-selected">0</strong> / <span id="lighter-count-total">0</span> model seçili</span>
+          <span class="keychain-count keychain-quantity-total"><strong id="lighter-total-quantity">0</strong> adet</span>
           <a class="btn-solid keychain-request-jump" href="#toplu-talep-formu">Talep Formuna Geç</a>
         </div>
-        <span class="keychain-export-hint" id="keychain-export-hint" role="status" aria-live="polite">Toplam en az 50 adet seçmelisiniz.</span>
+        <span class="keychain-export-hint" id="lighter-export-hint" role="status" aria-live="polite">Toplam en az 50 adet seçmelisiniz.</span>
       </section>
 
       <section class="container">
-        <div class="keychain-grid" id="keychain-grid"></div>
+        <div class="keychain-grid" id="lighter-grid"></div>
       </section>
 
       <section class="container keychain-request-section" id="toplu-talep-formu">
@@ -51,7 +51,7 @@
               <li>Ad, soyad, telefon ve e-posta zorunlu</li>
             </ul>
           </div>
-          <form class="keychain-request-form" id="keychain-request-form" novalidate>
+          <form class="keychain-request-form" id="lighter-request-form" novalidate>
             <div class="keychain-request-fields">
               <label>Ad
                 <input type="text" name="first_name" autocomplete="given-name" maxlength="80" required>
@@ -67,12 +67,12 @@
               </label>
             </div>
             <div class="keychain-request-summary" aria-live="polite">
-              <span><strong id="keychain-form-model-count">0</strong> model</span>
-              <span><strong id="keychain-form-total">0</strong> adet</span>
-              <small id="keychain-form-rule">Gönderebilmek için toplam 50 adede ulaşın.</small>
+              <span><strong id="lighter-form-model-count">0</strong> model</span>
+              <span><strong id="lighter-form-total">0</strong> adet</span>
+              <small id="lighter-form-rule">Gönderebilmek için toplam 50 adede ulaşın.</small>
             </div>
-            <button class="btn-solid" id="keychain-request-submit" type="submit" disabled>Toplu Sipariş Talebini Gönder</button>
-            <p class="keychain-request-status" id="keychain-request-status" role="status" aria-live="polite"></p>
+            <button class="btn-solid" id="lighter-request-submit" type="submit" disabled>Toplu Sipariş Talebini Gönder</button>
+            <p class="keychain-request-status" id="lighter-request-status" role="status" aria-live="polite"></p>
           </form>
         </div>
       </section>
@@ -84,6 +84,6 @@
     <!--chat-->
     <script src="/script.js"></script>
     <script src="/katalog-secim.js"></script>
-    <script src="/anahtarlik-katalog.js"></script>
+    <script src="/cakmaklik-katalog.js"></script>
   </body>
 </html>

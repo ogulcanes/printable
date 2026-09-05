@@ -11,6 +11,8 @@ const db = require("./db.js");
 const sablonlar = require("./product-templates.js");
 const KEYCHAIN_PRODUCTS = require("./anahtarlik-katalog.js");
 const KEYCHAIN_PRODUCT_BY_ID = new Map(KEYCHAIN_PRODUCTS.map((product) => [String(product.id), product]));
+const LIGHTER_PRODUCTS = require("./cakmaklik-katalog.js");
+const LIGHTER_PRODUCT_BY_ID = new Map(LIGHTER_PRODUCTS.map((product) => [String(product.id), product]));
 const storage = require("./storage.js");
 const shopier = require("./shopier.js");
 
@@ -137,7 +139,8 @@ fs.mkdirSync(IMAGE_CACHE_DIR, { recursive: true });
 const PUBLIC_STATIC_FILES = [
   "styles.css", "script.js", "product-templates.js", "stl-viewer.js", "admin.css",
   "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js", "tasarim.js",
-  "katalog.js", "hesap.js", "anahtarlik-katalog.js", "pet-bowl.js"
+  "katalog.js", "hesap.js", "katalog-secim.js", "anahtarlik-katalog.js",
+  "cakmaklik-katalog.js", "pet-bowl.js"
 ];
 const PUBLIC_ASSET_VERSION = crypto.createHash("sha1")
   .update(PUBLIC_STATIC_FILES.map((file) => {
@@ -172,7 +175,7 @@ function normalizedImageWidth(value) {
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "40";
+const SCHEMA_VERSION = "41";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -1119,6 +1122,13 @@ const extraSeoPages = [
     description: "3D baskılı anahtarlık koleksiyonunu inceleyin; model ve adet seçerek toplu sipariş talebinizi doğrudan gönderin.",
     og_title: "Toptan Anahtarlık Kataloğu | Printable",
     og_description: "Anahtarlık modellerini ve adetlerini seçin, toplu sipariş talebinizi Printable'a gönderin."
+  },
+  {
+    slug: "cakmaklik-katalogu", label: "Çakmaklık toptan kataloğu",
+    title: "Toptan Çakmaklık Kataloğu | Printable",
+    description: "3D baskılı Clipper ve Bic çakmak kılıfı modellerini inceleyin; model ve adet seçerek toplu sipariş talebinizi gönderin.",
+    og_title: "Toptan Çakmaklık Kataloğu | Printable",
+    og_description: "Çakmaklık modellerini ve adetlerini seçin, toplu sipariş talebinizi Printable'a gönderin."
   },
   {
     slug: "sizden-gelenler", label: "Sizden Gelenler sayfası",
@@ -2113,6 +2123,7 @@ async function seoHead(req, slug) {
     sss: "Sıkça Sorulan Sorular",
     katalog: "Katalog",
     "anahtarlik-katalogu": "Toptan Anahtarlık Kataloğu",
+    "cakmaklik-katalogu": "Toptan Çakmaklık Kataloğu",
     "sizden-gelenler": "Sizden Gelenler",
     landing: "Ürün Seçkisi",
     iade: "İade ve Cayma Hakkı",
@@ -2641,7 +2652,7 @@ async function renderFooter(contact = null) {
       </div>
       <div class="container footer__grid">
         <div><h3>Kategoriler</h3><a href="/urunler">Figürler</a><a href="/urunler">Anahtarlıklar</a><a href="/urunler">Fidget & Stres</a><a href="/urunler">Düdükler</a></div>
-        <div><h3>Kurumsal</h3><a href="/sizden-gelenler">Sizden Gelenler</a><a href="/katalog">Katalog</a><a href="/hakkinda">Hakkımızda</a><a href="/iletisim">İletişim</a><a href="/stl-teklif">Özel 3D baskı</a><a href="/tasarim">Özel tasarım</a><a href="/urunler">Tüm ürünler</a></div>
+        <div><h3>Kurumsal</h3><a href="/sizden-gelenler">Sizden Gelenler</a><a href="/katalog">Katalog</a><a href="/cakmaklik-katalogu">Toptan Çakmaklık</a><a href="/hakkinda">Hakkımızda</a><a href="/iletisim">İletişim</a><a href="/stl-teklif">Özel 3D baskı</a><a href="/tasarim">Özel tasarım</a><a href="/urunler">Tüm ürünler</a></div>
         <div><h3>Müşteri Desteği</h3><a href="/iletisim">Bize ulaşın</a><a href="/iade">İade & Değişim</a><a href="/sss">Kargo</a><a href="/sss">S.S.S.</a></div>
         <div><h3>Yasal</h3><a href="/mesafeli-satis">Mesafeli Satış Sözleşmesi</a><a href="/iade">İade ve Cayma Hakkı</a><a href="/gizlilik">Gizlilik ve KVKK</a></div>
         <div class="footer-logo printable-wordmark">
@@ -3229,6 +3240,7 @@ app.get("/iade", async (req, res) => await sendPage(req, res, "iade.html", "iade
 app.get("/gizlilik", async (req, res) => await sendPage(req, res, "gizlilik.html", "gizlilik"));
 app.get("/katalog", async (req, res) => await sendPage(req, res, "katalog.html", "katalog"));
 app.get("/anahtarlik-katalogu", async (req, res) => await sendPage(req, res, "anahtarlik-katalogu.html", "anahtarlik-katalogu"));
+app.get("/cakmaklik-katalogu", async (req, res) => await sendPage(req, res, "cakmaklik-katalogu.html", "cakmaklik-katalogu"));
 
 // Per-product SEO: crawlers need real title/description/og:image/JSON-LD in the HTML
 // (the visible detail is filled by urun.js, matching the rest of the JS-rendered site).
@@ -3369,6 +3381,8 @@ app.get("/sitemap.xml", async (req, res) => {
     { loc: "/hakkinda", priority: "0.5" },
     { loc: "/iletisim", priority: "0.5" },
     { loc: "/katalog", priority: "0.8" },
+    { loc: "/anahtarlik-katalogu", priority: "0.7" },
+    { loc: "/cakmaklik-katalogu", priority: "0.7" },
     { loc: "/mesafeli-satis", priority: "0.3" },
     { loc: "/iade", priority: "0.4" },
     { loc: "/gizlilik", priority: "0.3" },
@@ -3937,12 +3951,12 @@ async function notifyNewDesignRequest({ name, email, phone, message, imageUrl })
   });
 }
 
-async function notifyNewKeychainBulkRequest({ name, email, phone, items, totalQuantity }) {
+async function notifyNewBulkCatalogRequest({ name, email, phone, items, totalQuantity, mailSubject, heading }) {
   const lines = items.map((item) => `<li style="margin:0 0 8px"><strong>${escapeHtml(item.name)}</strong> · ${item.quantity} adet <small style="color:#6b6660">(Model ${escapeHtml(item.id)})</small></li>`).join("");
   return sendStoreNotification({
-    subject: `Yeni toplu anahtarlık talebi · ${String(totalQuantity)} adet`,
+    subject: mailSubject,
     html: `<div style="font-family:Arial,sans-serif;color:#171c2c;line-height:1.6;max-width:680px">
-      <h2>Yeni toplu anahtarlık talebi geldi</h2>
+      <h2>${escapeHtml(heading)}</h2>
       <p><strong>Müşteri:</strong> ${escapeHtml(name)}<br>
         <strong>E-posta:</strong> ${escapeHtml(email)}<br>
         <strong>Telefon:</strong> ${escapeHtml(phone)}</p>
@@ -7267,87 +7281,118 @@ app.post("/api/contact", async (req, res) => {
   res.status(201).json({ ok: true, notification_sent: ownerNotified });
 });
 
-// Toptan anahtarlık kataloğu: müşteri model başına en az 5, toplamda en az 50
-// adet seçer. Ürün adları istemciden değil yukarıdaki ortak katalogdan alınır;
-// böylece panel kaydı ve e-posta değiştirilemez, gerçek modelleri gösterir.
-app.post("/api/keychain-bulk-requests", async (req, res) => {
-  const firstName = String(req.body.first_name || "").replace(/[\r\n]+/g, " ").trim();
-  const lastName = String(req.body.last_name || "").replace(/[\r\n]+/g, " ").trim();
-  const phone = String(req.body.phone || "").replace(/[\r\n]+/g, " ").trim();
-  const email = String(req.body.email || "").trim().toLowerCase();
-  const rawItems = req.body.items;
+/* Toptan katalog talepleri (anahtarlık ve çakmaklık). Müşteri model başına en
+   az 5, toplamda en az 50 adet seçer. Ürün adları istemciden değil sunucudaki
+   ortak katalog dosyasından alınır; böylece panel kaydı ve e-posta
+   değiştirilemez, gerçek modelleri gösterir. İki katalog aynı doğrulamayı
+   paylaşır, yalnızca liste ve Türkçe metinler değişir. */
+function bulkCatalogRequest({ products, byId, labels, minPerModel = 5, minTotal = 50 }) {
+  return async (req, res) => {
+    const firstName = String(req.body.first_name || "").replace(/[\r\n]+/g, " ").trim();
+    const lastName = String(req.body.last_name || "").replace(/[\r\n]+/g, " ").trim();
+    const phone = String(req.body.phone || "").replace(/[\r\n]+/g, " ").trim();
+    const email = String(req.body.email || "").trim().toLowerCase();
+    const rawItems = req.body.items;
 
-  if (!firstName || !lastName || !phone || !email) {
-    return res.status(400).json({ error: "Ad, soyad, telefon ve e-posta alanlarının tamamı zorunludur." });
-  }
-  if (firstName.length > 80 || lastName.length > 80) {
-    return res.status(400).json({ error: "Ad veya soyad alanı çok uzun." });
-  }
-  if (!validCustomerEmail(email) || email.length > 160) {
-    return res.status(400).json({ error: "Geçerli bir e-posta adresi girin." });
-  }
-  const phoneDigits = phone.replace(/\D/g, "");
-  if (phone.length > 30 || phoneDigits.length < 10 || phoneDigits.length > 15) {
-    return res.status(400).json({ error: "Geçerli bir telefon numarası girin." });
-  }
-  if (!Array.isArray(rawItems) || !rawItems.length || rawItems.length > KEYCHAIN_PRODUCTS.length) {
-    return res.status(400).json({ error: "En az bir geçerli anahtarlık modeli seçin." });
-  }
-
-  const seen = new Set();
-  const items = [];
-  for (const rawItem of rawItems) {
-    const id = String(rawItem?.id || "").trim();
-    const quantity = Number(rawItem?.quantity);
-    const product = KEYCHAIN_PRODUCT_BY_ID.get(id);
-    if (!product || seen.has(id)) {
-      return res.status(400).json({ error: "Anahtarlık seçiminizde geçersiz veya tekrarlanan bir model var." });
+    if (!firstName || !lastName || !phone || !email) {
+      return res.status(400).json({ error: "Ad, soyad, telefon ve e-posta alanlarının tamamı zorunludur." });
     }
-    if (!Number.isSafeInteger(quantity) || quantity < 5 || quantity > 10000) {
-      return res.status(400).json({ error: "Seçilen her anahtarlık modelinden en az 5 adet istemelisiniz." });
+    if (firstName.length > 80 || lastName.length > 80) {
+      return res.status(400).json({ error: "Ad veya soyad alanı çok uzun." });
     }
-    seen.add(id);
-    items.push({ id, name: product.name, quantity });
-  }
+    if (!validCustomerEmail(email) || email.length > 160) {
+      return res.status(400).json({ error: "Geçerli bir e-posta adresi girin." });
+    }
+    const phoneDigits = phone.replace(/\D/g, "");
+    if (phone.length > 30 || phoneDigits.length < 10 || phoneDigits.length > 15) {
+      return res.status(400).json({ error: "Geçerli bir telefon numarası girin." });
+    }
+    if (!Array.isArray(rawItems) || !rawItems.length || rawItems.length > products.length) {
+      return res.status(400).json({ error: labels.emptySelection });
+    }
 
-  const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
-  if (totalQuantity < 50) {
-    return res.status(400).json({ error: "Toplu sipariş toplamı en az 50 adet olmalıdır." });
-  }
-  if (totalQuantity > 100000) {
-    return res.status(400).json({ error: "Adet bilgisi çok yüksek. Lütfen bizimle doğrudan iletişime geçin." });
-  }
+    const seen = new Set();
+    const items = [];
+    for (const rawItem of rawItems) {
+      const id = String(rawItem?.id || "").trim();
+      const quantity = Number(rawItem?.quantity);
+      const product = byId.get(id);
+      if (!product || seen.has(id)) {
+        return res.status(400).json({ error: labels.invalidSelection });
+      }
+      if (!Number.isSafeInteger(quantity) || quantity < minPerModel || quantity > 10000) {
+        return res.status(400).json({ error: labels.invalidQuantity });
+      }
+      seen.add(id);
+      items.push({ id, name: product.name, quantity });
+    }
 
-  const name = `${firstName} ${lastName}`;
-  const message = [
-    `Toplu anahtarlık talebi: ${items.length} model, toplam ${totalQuantity} adet`,
-    "",
-    ...items.map((item) => `- ${item.name} (Model ${item.id}): ${item.quantity} adet`)
-  ].join("\n");
-  const request = {
-    name,
-    email,
-    phone,
-    subject: "Toplu anahtarlık sipariş talebi",
-    message,
-    items,
-    totalQuantity
+    const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+    if (totalQuantity < minTotal) {
+      return res.status(400).json({ error: `Toplu sipariş toplamı en az ${minTotal} adet olmalıdır.` });
+    }
+    if (totalQuantity > 100000) {
+      return res.status(400).json({ error: "Adet bilgisi çok yüksek. Lütfen bizimle doğrudan iletişime geçin." });
+    }
+
+    const name = `${firstName} ${lastName}`;
+    const message = [
+      `${labels.summary}: ${items.length} model, toplam ${totalQuantity} adet`,
+      "",
+      ...items.map((item) => `- ${item.name} (Model ${item.id}): ${item.quantity} adet`)
+    ].join("\n");
+
+    await db.prepare("INSERT INTO messages (name, email, phone, subject, message) VALUES (?,?,?,?,?)").run(
+      name,
+      email,
+      phone,
+      labels.subject,
+      message
+    );
+    const ownerNotified = await notifyNewBulkCatalogRequest({
+      name,
+      email,
+      phone,
+      items,
+      totalQuantity,
+      mailSubject: `${labels.mailSubject} · ${totalQuantity} adet`,
+      heading: labels.heading
+    }).catch((error) => {
+      console.error(`${labels.subject} bildirimi gönderilemedi:`, error.message);
+      return false;
+    });
+    if (!ownerNotified) console.error(`${labels.subject} bildirimi gönderilemedi.`);
+    res.status(201).json({ ok: true, total_quantity: totalQuantity, notification_sent: ownerNotified });
   };
+}
 
-  await db.prepare("INSERT INTO messages (name, email, phone, subject, message) VALUES (?,?,?,?,?)").run(
-    request.name,
-    request.email,
-    request.phone,
-    request.subject,
-    request.message
-  );
-  const ownerNotified = await notifyNewKeychainBulkRequest(request).catch((error) => {
-    console.error("Toplu anahtarlık talebi bildirimi gönderilemedi:", error.message);
-    return false;
-  });
-  if (!ownerNotified) console.error("Toplu anahtarlık talebi bildirimi gönderilemedi.");
-  res.status(201).json({ ok: true, total_quantity: totalQuantity, notification_sent: ownerNotified });
-});
+app.post("/api/keychain-bulk-requests", bulkCatalogRequest({
+  products: KEYCHAIN_PRODUCTS,
+  byId: KEYCHAIN_PRODUCT_BY_ID,
+  labels: {
+    emptySelection: "En az bir geçerli anahtarlık modeli seçin.",
+    invalidSelection: "Anahtarlık seçiminizde geçersiz veya tekrarlanan bir model var.",
+    invalidQuantity: "Seçilen her anahtarlık modelinden en az 5 adet istemelisiniz.",
+    summary: "Toplu anahtarlık talebi",
+    subject: "Toplu anahtarlık sipariş talebi",
+    mailSubject: "Yeni toplu anahtarlık talebi",
+    heading: "Yeni toplu anahtarlık talebi geldi"
+  }
+}));
+
+app.post("/api/lighter-bulk-requests", bulkCatalogRequest({
+  products: LIGHTER_PRODUCTS,
+  byId: LIGHTER_PRODUCT_BY_ID,
+  labels: {
+    emptySelection: "En az bir geçerli çakmaklık modeli seçin.",
+    invalidSelection: "Çakmaklık seçiminizde geçersiz veya tekrarlanan bir model var.",
+    invalidQuantity: "Seçilen her çakmaklık modelinden en az 5 adet istemelisiniz.",
+    summary: "Toplu çakmaklık talebi",
+    subject: "Toplu çakmaklık sipariş talebi",
+    mailSubject: "Yeni toplu çakmaklık talebi",
+    heading: "Yeni toplu çakmaklık talebi geldi"
+  }
+}));
 
 const DESIGN_IMAGE_MARKER = /\n*\[\[design-image:([^\]\r\n]+)\]\]\s*$/;
 const designImageRef = (message) => String(message || "").match(DESIGN_IMAGE_MARKER)?.[1] || null;
