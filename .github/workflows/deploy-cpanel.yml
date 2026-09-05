@@ -2,23 +2,22 @@
 #
 # mysql-migration'a her push'ta cPanel'deki "Update from Remote" + "Deploy HEAD
 # Commit" düğmelerinin çağırdığı API'yi sırayla tetikler, yayının bitmesini
-# bekler ve sayfaların gerçekten açıldığını doğrular. Elle butona basmak artık
+# bekler ve sayfaların gerçekten açıldığını doğrular. Elle butona basmak
 # gerekmiyor.
 #
-# Neden hazır action yerine curl: bu iş üç HTTP isteği. Üçüncü parti bir
+# Neden hazır action yerine curl: bu iş birkaç HTTP isteği. Üçüncü parti bir
 # action'a cPanel token'ı vermek, deponun yayın anahtarını yabancı bir koda
 # emanet etmek demek.
 #
-# GEREKLİ GITHUB SECRET'LARI (Settings > Secrets and variables > Actions):
-#   CPANEL_HOST       sunucu adresi, protokolsüz.  örn: srv42.alastyr.com
-#   CPANEL_USERNAME   cPanel kullanıcı adı
-#   CPANEL_TOKEN      cPanel > Security > Manage API Tokens'tan üretilen token
-#   CPANEL_REPO_ROOT  cPanel'in klonladığı klasör.
-#                     cPanel > Git Version Control > repo > "Repository Path"
-#                     örn: /home/kullanici/repositories/printable
+# GEREKLİ GITHUB SECRET'LARI — sadece iki tane
+# (Settings > Secrets and variables > Actions > New repository secret):
 #
-# Token'ı üretirken tam yetki vermek gerekmiyor; yayın için yeterli olan
-# VersionControl ve VersionControlDeployment erişimidir.
+#   CPANEL_USERNAME   cPanel kullanıcı adı
+#   CPANEL_TOKEN      cPanel > Security > Manage API Tokens > Create ile üretilir
+#
+# Sunucu adresi ve depo klasörü elle girilmiyor: adres aşağıda varsayılan,
+# depo klasörünü iş kendisi API'den buluyor. İkisi de gerekirse CPANEL_HOST ve
+# CPANEL_REPO_ROOT secret'larıyla elle sabitlenebilir.
 
 name: Canlıya yayınla (cPanel)
 
@@ -38,10 +37,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+      # Alastyr'de cPanel alan adının 2083 portundan açılıyor. Sunucu taşınırsa
+      # CPANEL_HOST secret'ı tanımlanarak buraya dokunmadan değiştirilebilir.
+      CPANEL_HOST: ${{ secrets.CPANEL_HOST || 'printable.com.tr' }}
       CPANEL_USERNAME: ${{ secrets.CPANEL_USERNAME }}
       CPANEL_TOKEN: ${{ secrets.CPANEL_TOKEN }}
-      REPO_ROOT: ${{ secrets.CPANEL_REPO_ROOT }}
       BRANCH: mysql-migration
 
     steps:
@@ -49,15 +49,54 @@ jobs:
         run: |
           set -euo pipefail
           eksik=""
-          for ad in CPANEL_HOST CPANEL_USERNAME CPANEL_TOKEN REPO_ROOT; do
+          for ad in CPANEL_USERNAME CPANEL_TOKEN; do
             [ -n "${!ad:-}" ] || eksik="$eksik $ad"
           done
           if [ -n "$eksik" ]; then
             echo "::error::Şu secret'lar eksik:$eksik — Settings > Secrets and variables > Actions"
             exit 1
           fi
+          echo "cPanel: ${CPANEL_HOST}:2083"
+
+      - name: Depo klasörünü bul
+        id: depo
+        run: |
+          set -euo pipefail
+          if [ -n "${{ secrets.CPANEL_REPO_ROOT }}" ]; then
+            echo "root=${{ secrets.CPANEL_REPO_ROOT }}" >> "$GITHUB_OUTPUT"
+            echo "Klasör (secret'tan): ${{ secrets.CPANEL_REPO_ROOT }}"
+            exit 0
+          fi
+
+          # cPanel'deki depoları listele ve bu depoyu kendimiz bulalım; kullanıcı
+          # panelden yol kopyalamak zorunda kalmasın.
+          yanit="$(curl -sS "https://${CPANEL_HOST}:2083/execute/VersionControl/retrieve" \
+            -H "Authorization: cpanel ${CPANEL_USERNAME}:${CPANEL_TOKEN}")"
+          echo "$yanit" | jq -e '.status == 1 and .errors == null' > /dev/null || {
+            echo "::error::Depo listesi alınamadı. Kullanıcı adı veya token yanlış olabilir."
+            echo "$yanit" | jq '{status, errors}'
+            exit 1
+          }
+
+          hepsi="$(echo "$yanit" | jq -r '[.data[]?.repository_root] | .[]')"
+          adaylar="$(echo "$hepsi" | grep -i "printable" || true)"
+          # Sunucuda tek depo varsa filtreye gerek yok.
+          [ -n "$adaylar" ] || adaylar="$hepsi"
+          sayi="$(printf '%s' "$adaylar" | grep -c . || true)"
+
+          if [ "$sayi" -ne 1 ]; then
+            echo "::error::Depo klasörü tek başına belirlenemedi ($sayi aday). CPANEL_REPO_ROOT secret'ını elle tanımla."
+            echo "Sunucudaki depolar:"
+            printf '  %s\n' $hepsi
+            exit 1
+          fi
+
+          echo "root=$adaylar" >> "$GITHUB_OUTPUT"
+          echo "Klasör bulundu: $adaylar"
 
       - name: Depoyu sunucuda güncelle (Update from Remote)
+        env:
+          REPO_ROOT: ${{ steps.depo.outputs.root }}
         run: |
           set -euo pipefail
           yanit="$(curl -sS -G "https://${CPANEL_HOST}:2083/execute/VersionControl/update" \
@@ -75,6 +114,8 @@ jobs:
 
       - name: Yayını başlat (Deploy HEAD Commit)
         id: baslat
+        env:
+          REPO_ROOT: ${{ steps.depo.outputs.root }}
         run: |
           set -euo pipefail
           yanit="$(curl -sS -G "https://${CPANEL_HOST}:2083/execute/VersionControlDeployment/create" \
