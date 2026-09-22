@@ -174,7 +174,7 @@ function normalizedImageWidth(value) {
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "43";
+const SCHEMA_VERSION = "44";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -1589,6 +1589,164 @@ if (kisiyeOzelUrunRevizyonu?.value !== KISIYE_OZEL_URUN_REVIZYONU) {
           updated_at = NOW()
       WHERE sku IN ('PR-CUSTOM-001', 'PR-CUSTOM-002', 'PR-CUSTOM-003')
     `).run();
+  });
+}
+
+/* Toptan anahtarlık ve çakmaklık kataloglarında olup mağazada henüz ürün karşılığı
+   bulunmayan modelleri vitrine taşı. Katalogtaki MakerWorld kimliği SKU olarak
+   kullanıldığı için bu aktarım tekrarlanabilir; mevcut ürünler çoğaltılmaz.
+
+   Canlı mağazada katalog eklenmeden önce farklı ad/SKU ile oluşturulmuş bazı
+   anahtarlıklar var. Bu eşleşmeleri ayrıca tanıyoruz ki aynı model ikinci kez
+   eklenmesin. Katalog sırasına göre kampanyalar dönüşümlü dağıtılır:
+   %5, %10, %15 ve 4 al 3 öde. Yüzdeli gruplar kartta indirimli fiyat olarak,
+   4 al 3 öde ise ödeme motorunun gerçekten uyguladığı otomatik kampanya olarak
+   tutulur. */
+const KATALOG_URUN_REVIZYONU = "2026-09-kataloglari-magazaya-tasi-v1";
+const katalogUrunRevizyonu = await db.prepare("SELECT value FROM app_meta WHERE key = 'catalog_store_products_rev'").get();
+if (katalogUrunRevizyonu?.value !== KATALOG_URUN_REVIZYONU) {
+  const mevcutModelEslesmeleri = new Map([
+    ["2495866", { names: ["Işık Öfkesi Ejderha Anahtarlık"] }],
+    ["2246720", { names: ["Moxxie Tilki Anahtarlık ve Magnet"] }],
+    ["831088", { names: ["Flexi Axolotl Anahtarlık"] }],
+    ["1862420", { names: ["Mini Hayalet Maske Anahtarlık"] }],
+    ["2532585", { skus: ["PR-3D-009"] }],
+    ["2678811", { skus: ["PR-3D-006"] }],
+    ["1634037", { skus: ["PR-3D-005"] }],
+    ["2465337", { skus: ["PR-3D-001"] }]
+  ]);
+
+  await db.transaction(async (tx) => {
+    const claim = await tx.prepare(`
+      INSERT INTO app_meta (key, value) VALUES ('catalog_store_products_rev', ?)
+      ON CONFLICT (key) DO UPDATE SET value = excluded.value
+      WHERE app_meta.value <> excluded.value
+    `).run(KATALOG_URUN_REVIZYONU);
+    if (!claim.changes) return;
+
+    let anahtarlikKategori = await tx.prepare("SELECT id FROM categories WHERE LOWER(name) = LOWER(?) LIMIT 1").get("Anahtarlıklar");
+    if (!anahtarlikKategori) {
+      const result = await tx.prepare(`
+        INSERT INTO categories (name, image_path, image_alt, href, sort_order)
+        VALUES (?, ?, ?, ?, ?)
+      `).run("Anahtarlıklar", KEYCHAIN_PRODUCTS[0]?.img || null, "3D baskı anahtarlık kategorisi", "#store-products", 20);
+      anahtarlikKategori = { id: result.lastInsertRowid };
+    }
+
+    let cakmaklikKategori = await tx.prepare("SELECT id FROM categories WHERE LOWER(name) = LOWER(?) LIMIT 1").get("Çakmaklıklar");
+    if (!cakmaklikKategori) {
+      const result = await tx.prepare(`
+        INSERT INTO categories (name, image_path, image_alt, href, sort_order)
+        VALUES (?, ?, ?, ?, ?)
+      `).run("Çakmaklıklar", LIGHTER_PRODUCTS[0]?.img || null, "3D baskı çakmaklık kategorisi", "#store-products", 21);
+      cakmaklikKategori = { id: result.lastInsertRowid };
+    }
+
+    const urunEkle = tx.prepare(`
+      INSERT INTO products
+        (name, sku, category, description, color, price, sale_price, stock,
+         image_path, image_alt, meta_title, meta_description, meta_keywords,
+         is_made_to_order, is_active)
+      VALUES
+        (@name, @sku, @category, @description, @color, @price, @sale_price, @stock,
+         @image_path, @image_alt, @meta_title, @meta_description, @meta_keywords,
+         1, 1)
+    `);
+    const kategoriBagla = tx.prepare(`
+      INSERT INTO product_categories (product_id, category_id)
+      VALUES (?, ?) ON CONFLICT DO NOTHING
+    `);
+
+    const modelZatenUrun = async (model) => {
+      const sku = `MW-${model.id}`;
+      let bulunan = await tx.prepare("SELECT id FROM products WHERE UPPER(sku) = UPPER(?) LIMIT 1").get(sku);
+      if (bulunan) return bulunan;
+
+      const eslesme = mevcutModelEslesmeleri.get(String(model.id));
+      for (const eskiSku of eslesme?.skus || []) {
+        bulunan = await tx.prepare("SELECT id FROM products WHERE UPPER(sku) = UPPER(?) LIMIT 1").get(eskiSku);
+        if (bulunan) return bulunan;
+      }
+      for (const eskiAd of eslesme?.names || []) {
+        bulunan = await tx.prepare("SELECT id FROM products WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1").get(eskiAd);
+        if (bulunan) return bulunan;
+      }
+      return null;
+    };
+
+    const dortAlUcOdeGruplari = { keychain: [], lighter: [] };
+    const kataloglariAktar = async ({ products, type, price, categoryId, categoryName, label }) => {
+      for (const [index, model] of products.entries()) {
+        if (await modelZatenUrun(model)) continue;
+
+        const slot = index % 4;
+        const discount = [5, 10, 15, 0][slot];
+        const salePrice = discount
+          ? Math.round(price * (1 - discount / 100) * 100) / 100
+          : null;
+        const description = `${model.note || model.name}. ${label} kataloğundan seçilen, sipariş üzerine hazırlanan 3D baskı model.`;
+        const result = await urunEkle.run({
+          name: model.name,
+          sku: `MW-${model.id}`,
+          category: categoryName,
+          description,
+          color: "PLA / çok renkli",
+          price,
+          sale_price: salePrice,
+          stock: 10,
+          image_path: model.img,
+          image_alt: `${model.name} 3D baskı ${label.toLocaleLowerCase("tr")}`,
+          meta_title: `${model.name} | Printable`,
+          meta_description: description,
+          meta_keywords: `${model.name}, ${label.toLocaleLowerCase("tr")}, 3d baskı, printable`
+        });
+        await kategoriBagla.run(result.lastInsertRowid, categoryId);
+        if (slot === 3) dortAlUcOdeGruplari[type].push(result.lastInsertRowid);
+      }
+    };
+
+    await kataloglariAktar({
+      products: KEYCHAIN_PRODUCTS,
+      type: "keychain",
+      price: 89.99,
+      categoryId: anahtarlikKategori.id,
+      categoryName: "Anahtarlıklar",
+      label: "Anahtarlık"
+    });
+    await kataloglariAktar({
+      products: LIGHTER_PRODUCTS,
+      type: "lighter",
+      price: 69.99,
+      categoryId: cakmaklikKategori.id,
+      categoryName: "Çakmaklıklar",
+      label: "Çakmaklık"
+    });
+
+    const dortAlUcOdeKampanyasi = async ({ name, discountValue, productIds }) => {
+      if (!productIds.length) return;
+      const result = await tx.prepare(`
+        INSERT INTO campaigns
+          (name, code, kind, discount_type, discount_value, scope, min_quantity,
+           min_order_total, gift_quantity, is_active, show_on_banner, show_on_popup)
+        VALUES (?, NULL, 'discount', 'fixed', ?, 'products', 4, 0, 1, 1, 0, 0)
+      `).run(name, discountValue);
+      const hedefBagla = tx.prepare(`
+        INSERT INTO campaign_products (campaign_id, product_id)
+        VALUES (?, ?) ON CONFLICT DO NOTHING
+      `);
+      for (const productId of productIds) await hedefBagla.run(result.lastInsertRowid, productId);
+    };
+
+    await dortAlUcOdeKampanyasi({
+      name: "Anahtarlıklarda 4 Al 3 Öde",
+      discountValue: 89.99,
+      productIds: dortAlUcOdeGruplari.keychain
+    });
+    await dortAlUcOdeKampanyasi({
+      name: "Çakmaklıklarda 4 Al 3 Öde",
+      discountValue: 69.99,
+      productIds: dortAlUcOdeGruplari.lighter
+    });
   });
 }
 

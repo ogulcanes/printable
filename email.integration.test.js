@@ -109,7 +109,13 @@ test("Kademeli ürün kampanyası ve 4,99 fiyat sonları yalnızca bir kez uygul
   const revision = await db.prepare("SELECT value FROM app_meta WHERE key = 'products_price_rev'").get();
   const campaignRevision = await db.prepare("SELECT value FROM app_meta WHERE key = 'product_campaign_rev'").get();
   const priceEndingRevision = await db.prepare("SELECT value FROM app_meta WHERE key = 'product_price_ending_rev'").get();
-  const paidPrices = await db.prepare("SELECT sale_price FROM products WHERE sale_price IS NOT NULL").all();
+  // Bu revizyon katalog ürünlerinden önceki mağaza fiyatlarına aittir. Yeni
+  // katalog ürünleri kullanıcının istediği 89,99 / 69,99 tabanından tam yüzdeyle
+  // indirilir; bu nedenle onların satış fiyatı 5 TL basamağına yuvarlanmaz.
+  const paidPrices = await db.prepare(`
+    SELECT sale_price FROM products
+    WHERE sale_price IS NOT NULL AND COALESCE(sku, '') NOT LIKE 'MW-%'
+  `).all();
 
   assert.deepEqual(special, { id: special.id, price: 144.43, sale_price: 129.99 });
   assert.deepEqual(deal, { price: 212.49, sale_price: 169.99 });

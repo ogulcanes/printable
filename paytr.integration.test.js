@@ -4,6 +4,8 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const keychainCatalog = require("./anahtarlik-katalog.js");
+const lighterCatalog = require("./cakmaklik-katalog.js");
 
 const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "printable-paytr-test-"));
 process.env.PGLITE_DATA_DIR = testDataDir;
@@ -143,6 +145,54 @@ test("Bülten aboneliği veritabanına tek kayıt yazar", async () => {
 
   const row = await db.prepare("SELECT COUNT(*) AS total FROM subscribers WHERE email = ?").get(email);
   assert.equal(Number(row.total), 1);
+});
+
+test("Anahtarlık ve çakmaklık katalogları fiyat ve kampanyalarıyla mağazaya aktarılır", async () => {
+  const products = await realFetch(`${baseUrl}/api/products`).then((response) => response.json());
+  const bySku = new Map(products.map((product) => [product.sku, product]));
+  const eskiSeedModelIds = new Set(["2532585", "2678811", "1634037", "2465337"]);
+
+  for (const model of [...keychainCatalog, ...lighterCatalog]) {
+    if (eskiSeedModelIds.has(model.id)) continue;
+    assert.ok(bySku.has(`MW-${model.id}`), `${model.id} katalog modeli ürün olarak eklenmeli`);
+  }
+
+  const kampanyaOrnekleri = [];
+  for (const [catalog, price, category] of [
+    [keychainCatalog, 89.99, "Anahtarlıklar"],
+    [lighterCatalog, 69.99, "Çakmaklıklar"]
+  ]) {
+    for (const slot of [0, 1, 2, 3]) {
+      const index = catalog.findIndex((model, i) => i % 4 === slot && !eskiSeedModelIds.has(model.id));
+      const product = bySku.get(`MW-${catalog[index].id}`);
+      assert.ok(product, `${category} için ${slot}. kampanya grubu bulunmalı`);
+      assert.equal(Number(product.price), price);
+      assert.ok(product.categories.some((item) => item.name === category));
+      if (slot < 3) {
+        const discount = [5, 10, 15][slot];
+        assert.equal(Number(product.sale_price), Math.round(price * (1 - discount / 100) * 100) / 100);
+      } else {
+        assert.equal(product.sale_price, null);
+        kampanyaOrnekleri.push({ product, discount: price, category });
+      }
+    }
+  }
+
+  const campaigns = await realFetch(`${baseUrl}/api/campaigns`, {
+    headers: { Cookie: adminCookie }
+  }).then((response) => response.json());
+  assert.ok(campaigns.some((campaign) => campaign.name === "Anahtarlıklarda 4 Al 3 Öde"));
+  assert.ok(campaigns.some((campaign) => campaign.name === "Çakmaklıklarda 4 Al 3 Öde"));
+
+  for (const { product, discount, category } of kampanyaOrnekleri) {
+    const { payload } = await jsonRequest("/api/campaigns/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: [{ product_id: product.id, quantity: 4 }] })
+    });
+    assert.equal(Number(payload.discount), discount, `${category} 4 al 3 öde indirimi bir ürün bedeli olmalı`);
+    assert.ok(payload.applied.some((campaign) => campaign.name.includes("4 Al 3 Öde")));
+  }
 });
 
 test("Bireysel siparişte KDV net fiyatın üzerine eklenir", async () => {
