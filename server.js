@@ -1245,7 +1245,9 @@ if (!existingProducts) {
     { name: "Twerking Ghostface Figürü", sku: "PR-3D-013", category: null, description: "Eğlenceli Twerking Ghostface figürü — parti ve masaüstü için.", color: "PLA / çok renkli", price: 259, sale_price: null, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/US9586770665c394/design/2025-09-15_d14c8919233368.jpg?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "Twerking Ghostface 3D baskı figürü", meta_keywords: "ghostface, scream, twerking, komik figür, 3d baskı figür" },
     { name: "Boks Eldiveni Anahtarlık (Sol El)", sku: "PR-3D-014", category: null, description: "Boks eldiveni şeklinde şık anahtarlık (sol el).", color: "PLA / çok renkli", price: 149, sale_price: null, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/US98a21712a93141/design/2025-11-22_a82377e6e5808.png?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "Boks eldiveni anahtarlık sol el 3D baskı", meta_keywords: "boks eldiveni, anahtarlık, boks figürü, 3d baskı anahtarlık" },
     { name: "Sevimli Sallanan Penguen", sku: "PR-3D-015", category: null, description: "Dokununca sallanan, AMS gerektirmeden basılan sevimli penguen.", color: "PLA / çok renkli", price: 189, sale_price: null, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/USb73ca708d54e53/design/c8ff7e84b2e36794.png?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "Sevimli sallanan penguen 3D baskı", meta_keywords: "penguen, sallanan penguen, sevimli figür, 3d baskı oyuncak" },
-    { name: "Ejderha Kafası Masaüstü Düzenleyici Tepsi", sku: "PR-3D-016", category: null, description: "Ejderha kafası formunda masaüstü / giriş düzenleyici tepsi — anahtar ve takı için.", color: "PLA / çok renkli", price: 399, sale_price: null, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/US9f63a04055cd4b/design/2026-01-13_59140b7190323.png?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "Ejderha kafası masaüstü düzenleyici tepsi 3D baskı", meta_keywords: "ejderha tepsi, masaüstü organizer, catchall tray, ejderha kafası, 3d baskı ev" }
+    { name: "Ejderha Kafası Masaüstü Düzenleyici Tepsi", sku: "PR-3D-016", category: null, description: "Ejderha kafası formunda masaüstü / giriş düzenleyici tepsi — anahtar ve takı için.", color: "PLA / çok renkli", price: 399, sale_price: null, width: null, height: null, depth: null, weight: null, stock: 25, image_path: "https://makerworld.bblmw.com/makerworld/model/US9f63a04055cd4b/design/2026-01-13_59140b7190323.png?x-oss-process=image/resize,w_1200/ignore-error,1", image_alt: "Ejderha kafası masaüstü düzenleyici tepsi 3D baskı", meta_keywords: "ejderha tepsi, masaüstü organizer, catchall tray, ejderha kafası, 3d baskı ev" },
+    // Ana sayfa vitrininde (dragon-spotlight) kendi bölümüyle öne çıkan ürün — bkz. renderHomeGrids.
+    { name: "Işıklı Ejderha Figürü", sku: "PR-3D-017", category: null, description: "Işıklı görünümüyle dikkat çeken, masaüstü ve raf dekorasyonu için hazırlanmış ejderha figürü. Siparişe özel üretilir.", color: "Çok renkli PLA", price: 1000, sale_price: null, width: null, height: null, depth: null, weight: null, stock: 10, image_path: "/assets/urun-gorselleri-secilen/isikli-ejderha-figuru.png", image_alt: "Işıklı Ejderha Figürü", meta_keywords: "ışıklı ejderha, ejderha figürü, gece lambası, 3d baskı figür" }
   ];
   for (const product of seedProducts) await seedProduct.run(product);
 
@@ -1290,10 +1292,21 @@ if (!existingProducts) {
     ["PR-3D-013", ["Figürler"]],
     ["PR-3D-014", ["Anahtarlıklar"]],
     ["PR-3D-015", ["Figürler"]],
-    ["PR-3D-016", ["Ev & Organizer"]]
+    ["PR-3D-016", ["Ev & Organizer"]],
+    ["PR-3D-017", ["Figürler"]]
   ]) {
     const product = await productIdBySku.get(sku);
     if (product) for (const name of names) await linkCategory.run(product.id, name);
+  }
+
+  // Işıklı Ejderha'nın ikinci (atmosferik) fotoğrafı — ana sayfa vitrini bu
+  // galeri görselini "karanlık" hero fotoğrafı olarak kullanır (renderHomeGrids).
+  const dragon = await productIdBySku.get("PR-3D-017");
+  if (dragon) {
+    await db.prepare(`
+      INSERT INTO product_images (product_id, image_path, image_alt, media_type, sort_order)
+      VALUES (?, ?, ?, 'image', 1)
+    `).run(dragon.id, "/assets/urun-gorselleri-secilen/isikli-ejderha-figuru-2.png", "Işıklı Ejderha Figürü karanlıkta ışıklı görünüm");
   }
 }
 
@@ -3301,6 +3314,9 @@ async function renderHomeGrids(sayfa) {
     String(campaign.name || "").toLocaleLowerCase("tr-TR").includes("4 al 3 öde")
   ));
   const yuzdeOnBes = indirimli.filter((p) => sablonlar.discountPercent(p) === 15);
+  const isikliEjderha = aktif.find((product) =>
+    String(product.name || "").toLocaleLowerCase("tr-TR") === "ışıklı ejderha figürü"
+  );
 
   /* Kampanya kartları soyut bir afiş gibi kalmasın: her gruptan gerçek ürünler
      göster. Anahtarlık ve çakmaklığı öne alıp kalan yerleri katalog sırasıyla
@@ -3367,6 +3383,50 @@ async function renderHomeGrids(sayfa) {
         </div>
       </section>`;
 
+  const ejderhaVitrini = (() => {
+    if (!isikliEjderha) return "";
+    const alternatif = (isikliEjderha.images || []).find((image) => image.media_type !== "video")?.image_path;
+    const karanlikGorsel = alternatif || isikliEjderha.image_path;
+    const urunGorseli = isikliEjderha.image_path || alternatif;
+    const fiyat = sablonlar.money(sablonlar.displayPrice(isikliEjderha));
+    const alinabilir = sablonlar.productIsAvailable(isikliEjderha);
+
+    return `
+      <section class="dragon-spotlight" aria-labelledby="dragon-spotlight-title">
+        <div class="container">
+          <article class="dragon-spotlight__card">
+            <div class="dragon-spotlight__copy">
+              <p class="dragon-spotlight__eyebrow"><i aria-hidden="true"></i> Vitrin seçkisi</p>
+              <h2 id="dragon-spotlight-title"><span>Işıklı Ejderha Figürü</span>Alevi yak.<br><em>Ejderhayı uyandır.</em></h2>
+              <p class="dragon-spotlight__lead">Siyah ejderha figürü, alev formundaki ışıklı tabanıyla gündüz heykel; ışıklar kapandığında etkileyici bir ambiyans parçası.</p>
+              <div class="dragon-spotlight__facts" aria-label="Ürün özellikleri">
+                <span><i aria-hidden="true">✦</i> Dekoratif ışık</span>
+                <span><i aria-hidden="true">◆</i> Siparişe özel üretim</span>
+              </div>
+              <div class="dragon-spotlight__purchase">
+                <p><strong>${fiyat}</strong><small>KDV hariç</small></p>
+                <div>
+                  <a href="/urun/${isikliEjderha.id}">Ürünü incele <span aria-hidden="true">→</span></a>
+                  <button type="button" data-add-product="${isikliEjderha.id}"${alinabilir ? "" : " disabled"}>${alinabilir ? "Sepete ekle" : "Tükendi"}</button>
+                </div>
+              </div>
+            </div>
+
+            <a class="dragon-spotlight__media" href="/urun/${isikliEjderha.id}" aria-label="Işıklı Ejderha Figürünü incele">
+              <span class="dragon-spotlight__glow dragon-spotlight__glow--red" aria-hidden="true"></span>
+              <span class="dragon-spotlight__glow dragon-spotlight__glow--blue" aria-hidden="true"></span>
+              <img class="dragon-spotlight__hero-image" src="${escapeHtml(sablonlar.gorselAdresi(karanlikGorsel, 1200) || "/assets/printable-logo.svg")}" width="900" height="1125" loading="lazy" alt="${escapeHtml(isikliEjderha.image_alt || isikliEjderha.name)} karanlıkta ışıklı görünüm">
+              <span class="dragon-spotlight__mini">
+                <img src="${escapeHtml(sablonlar.gorselAdresi(urunGorseli, 500) || "/assets/printable-logo.svg")}" width="400" height="500" loading="lazy" alt="">
+                <small>Işıklı görünüm</small>
+              </span>
+              <span class="dragon-spotlight__mood"><b>Gündüz heykel.</b><small>Gece ambiyans.</small></span>
+            </a>
+          </article>
+        </div>
+      </section>`;
+  })();
+
   /* İndirim bölümü boşken gizli kalmalı; ürün varsa hidden'ı sunucu kaldırır ki
      bölüm ilk HTML'de açık gelsin ve JS onu açarken sayfa kaymasın. */
   const enIyi = indirimli.length ? sablonlar.discountPercent(indirimli[0]) : 0;
@@ -3376,6 +3436,7 @@ async function renderHomeGrids(sayfa) {
 
   const rendered = sayfa
     .replace("<!--kampanya-vitrini-->", kampanyaVitrini)
+    .replace("<!--isikli-ejderha-vitrini-->", ejderhaVitrini)
     .replace("<!--vitrin-yeni-->", izgara(aktif))
     .replace("<!--vitrin-secki-->", izgara(secki.slice(1, 5)))
     .replace("<!--vitrin-cok-satan-->", izgara(aktif.slice(0, 5)))

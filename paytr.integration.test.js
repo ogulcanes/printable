@@ -212,6 +212,13 @@ test("Anahtarlık ve çakmaklık katalogları fiyat ve kampanyalarıyla mağazay
   assert.match(homePage, /campaign-showcase__products--single/);
   assert.match(homePage, /campaign-showcase__products--all/);
   assert.ok((homePage.match(/data-campaign-product=/g) || []).length >= 5);
+  const dragon = products.find((product) => product.sku === "PR-3D-017");
+  assert.ok(dragon, "Işıklı Ejderha Figürü ürünü seed'de bulunmalı");
+  assert.match(homePage, /class="dragon-spotlight"/);
+  assert.match(homePage, /Alevi yak\./);
+  assert.match(homePage, /Ejderhayı uyandır\./);
+  assert.match(homePage, new RegExp(`data-add-product="${dragon.id}"`));
+  assert.match(homePage, /isikli-ejderha-figuru-2\.png/);
 
   const bundlePage = await realFetch(`${baseUrl}/urunler?kampanya=4al3`).then((response) => response.text());
   const bundleOlmayan = products.find((product) => !(product.promotions || []).some((campaign) => campaign.name.includes("4 Al 3 Öde")));
