@@ -4193,6 +4193,14 @@ body {
   font-weight: 600;
   color: var(--muted);
 }
+
+/* Kart fiyatını okunaklı tut: vergi bilgisi fiyatla aynı satırı paylaşmasın. */
+.product-card .price-from {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  line-height: 1.2;
+}
 /* Sepette satırın hangi boy olduğu; ürün adının hemen altında. */
 .cart-item__scale {
   display: inline-block;
