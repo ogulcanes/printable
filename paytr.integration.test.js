@@ -201,6 +201,28 @@ test("Anahtarlık ve çakmaklık katalogları fiyat ve kampanyalarıyla mağazay
   assert.match(productsPage, /4 AL 3 ÖDE/);
   assert.match(productPage, /4 AL 3 ÖDE/);
   assert.match(productPage, /bir ürün bedeli otomatik düşsün/);
+
+  const homePage = await realFetch(`${baseUrl}/`).then((response) => response.text());
+  assert.match(homePage, /class="campaign-showcase"/);
+  assert.match(homePage, /4 AL/);
+  assert.match(homePage, /3 ÖDE/);
+  assert.match(homePage, /href="\/urunler\?kampanya=4al3"/);
+  assert.match(homePage, /href="\/urunler\?indirim=1&amp;oran=15"/);
+
+  const bundlePage = await realFetch(`${baseUrl}/urunler?kampanya=4al3`).then((response) => response.text());
+  const bundleOlmayan = products.find((product) => !(product.promotions || []).some((campaign) => campaign.name.includes("4 Al 3 Öde")));
+  assert.match(bundlePage, /4 Al 3 Öde ✕/);
+  assert.ok(bundlePage.includes(`href="/urun/${sample.id}"`));
+  assert.ok(bundleOlmayan);
+  assert.ok(!bundlePage.includes(`href="/urun/${bundleOlmayan.id}"`));
+
+  const yuzdeOnBes = products.find((product) =>
+    product.sale_price && Math.round((1 - Number(product.sale_price) / Number(product.price)) * 100) === 15
+  );
+  assert.ok(yuzdeOnBes, "%15 indirimli örnek ürün bulunmalı");
+  const discountPage = await realFetch(`${baseUrl}/urunler?indirim=1&oran=15`).then((response) => response.text());
+  assert.match(discountPage, /%15 özel indirim ✕/);
+  assert.ok(discountPage.includes(`href="/urun/${yuzdeOnBes.id}"`));
 });
 
 test("Bireysel siparişte KDV net fiyatın üzerine eklenir", async () => {

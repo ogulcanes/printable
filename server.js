@@ -3018,6 +3018,15 @@ async function renderProductGrid(query) {
     // Ölçekli üründe sale_price uygulanmıyor, o yüzden indirimli sayılmıyor.
     suslu = suslu.filter((p) => !(p.scales || []).length && p.sale_price && p.price > p.sale_price);
   }
+  const indirimOrani = Number(query.oran);
+  if ([5, 10, 15].includes(indirimOrani)) {
+    suslu = suslu.filter((p) => sablonlar.discountPercent(p) === indirimOrani);
+  }
+  if (query.kampanya === "4al3") {
+    suslu = suslu.filter((p) => (p.promotions || []).some((campaign) =>
+      String(campaign.name || "").toLocaleLowerCase("tr-TR").includes("4 al 3 öde")
+    ));
+  }
   const arama = String(query.q || "").trim().toLocaleLowerCase("tr-TR").slice(0, 80);
   if (arama) {
     suslu = suslu.filter((p) =>
@@ -3288,6 +3297,46 @@ async function renderHomeGrids(sayfa) {
   const secki = [...aktif].sort((a, b) => (b.sale_price || b.price) - (a.sale_price || a.price));
   const indirimli = aktif.filter((p) => p.sale_price && p.price > p.sale_price)
     .sort((a, b) => sablonlar.discountPercent(b) - sablonlar.discountPercent(a));
+  const dortAlUcOde = aktif.filter((p) => (p.promotions || []).some((campaign) =>
+    String(campaign.name || "").toLocaleLowerCase("tr-TR").includes("4 al 3 öde")
+  ));
+  const yuzdeOnBes = indirimli.filter((p) => sablonlar.discountPercent(p) === 15);
+
+  const kampanyaVitrini = `
+      <section class="campaign-showcase" aria-labelledby="campaign-showcase-title">
+        <div class="container">
+          <header class="campaign-showcase__head">
+            <div>
+              <p class="section-kicker">Kaçırmayın</p>
+              <h2 id="campaign-showcase-title">Kampanyalar şimdi vitrinde.</h2>
+            </div>
+            <p>Beğendiğiniz fırsatı seçin, kampanyalı ürünlere doğrudan ulaşın.</p>
+          </header>
+          <div class="campaign-showcase__grid">
+            <a class="campaign-showcase__card campaign-showcase__card--bundle" href="/urunler?kampanya=4al3">
+              <span class="campaign-showcase__eyebrow">Sepet kampanyası</span>
+              <strong class="campaign-showcase__bundle-title"><b>4 AL</b><em>3 ÖDE</em></strong>
+              <span class="campaign-showcase__copy">Seçili ${dortAlUcOde.length} anahtarlık ve çakmaklıktan 4 adet ekleyin, 1 ürün bedeli sepetten otomatik düşsün.</span>
+              <span class="campaign-showcase__cta">Kampanyalı ürünleri gör <i aria-hidden="true">→</i></span>
+              <span class="campaign-showcase__tokens" aria-hidden="true"><i>1</i><i>2</i><i>3</i><i>4</i></span>
+            </a>
+
+            <a class="campaign-showcase__card campaign-showcase__card--special" href="/urunler?indirim=1&amp;oran=15">
+              <span class="campaign-showcase__eyebrow">Özel indirim</span>
+              <strong class="campaign-showcase__percent"><small>%</small>15</strong>
+              <span class="campaign-showcase__copy">${yuzdeOnBes.length} seçili üründe özel fiyatları keşfedin.</span>
+              <span class="campaign-showcase__cta">%15 indirimlileri gör <i aria-hidden="true">→</i></span>
+            </a>
+
+            <a class="campaign-showcase__card campaign-showcase__card--all" href="/urunler?indirim=1">
+              <span class="campaign-showcase__eyebrow">Fırsat seçkisi</span>
+              <strong class="campaign-showcase__steps"><i>%5</i><i>%10</i><i>%15</i></strong>
+              <span class="campaign-showcase__copy">Farklı indirim oranlarıyla bütçenize uygun ürünü bulun.</span>
+              <span class="campaign-showcase__cta">Tüm fırsatları keşfet <i aria-hidden="true">→</i></span>
+            </a>
+          </div>
+        </div>
+      </section>`;
 
   /* İndirim bölümü boşken gizli kalmalı; ürün varsa hidden'ı sunucu kaldırır ki
      bölüm ilk HTML'de açık gelsin ve JS onu açarken sayfa kaymasın. */
@@ -3297,6 +3346,7 @@ async function renderHomeGrids(sayfa) {
     : "";
 
   const rendered = sayfa
+    .replace("<!--kampanya-vitrini-->", kampanyaVitrini)
     .replace("<!--vitrin-yeni-->", izgara(aktif))
     .replace("<!--vitrin-secki-->", izgara(secki.slice(1, 5)))
     .replace("<!--vitrin-cok-satan-->", izgara(aktif.slice(0, 5)))
@@ -3357,6 +3407,8 @@ async function renderProductFilters(sayfa, query) {
 
   const seciliKategori = Number(query.kategori) || null;
   const indirimli = query.indirim === "1";
+  const indirimOrani = [5, 10, 15].includes(Number(query.oran)) ? Number(query.oran) : null;
+  const dortAlUcOde = query.kampanya === "4al3";
   const arama = String(query.q || "").trim().toLocaleLowerCase("tr-TR").slice(0, 80);
 
   /* Aktif filtre etiketleri de sunucudan. Kutu boş+hidden başlayıp JS onu
@@ -3366,7 +3418,9 @@ async function renderProductFilters(sayfa, query) {
   const etiketler = [];
   const kategoriAdi = categories.find((c) => c.id === seciliKategori);
   if (kategoriAdi) etiketler.push(`<button type="button" class="chip" data-remove-category="${kategoriAdi.id}">${escapeHtml(kategoriAdi.name)} ✕</button>`);
-  if (indirimli) etiketler.push(`<button type="button" class="chip" data-remove-sale>İndirimli ✕</button>`);
+  if (indirimli && !indirimOrani) etiketler.push(`<button type="button" class="chip" data-remove-sale>İndirimli ✕</button>`);
+  if (indirimOrani) etiketler.push(`<button type="button" class="chip" data-remove-discount-rate>%${indirimOrani} özel indirim ✕</button>`);
+  if (dortAlUcOde) etiketler.push(`<button type="button" class="chip" data-remove-campaign>4 Al 3 Öde ✕</button>`);
   if (arama) etiketler.push(`<button type="button" class="chip" data-remove-query>Arama: ${escapeHtml(arama)} ✕</button>`);
   sayfa = sayfa.replace(
     '<!--aktif-filtreler--><div id="active-filters" class="active-filters" hidden></div>',

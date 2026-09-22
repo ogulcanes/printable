@@ -283,6 +283,269 @@ img { display: block; max-width: 100%; }
   align-items: center;
 }
 
+/* Ana sayfa kampanya vitrini */
+.campaign-showcase {
+  padding: 46px 0 42px;
+  background:
+    radial-gradient(circle at 8% 16%, rgba(255, 101, 66, .12), transparent 24%),
+    radial-gradient(circle at 91% 82%, rgba(0, 215, 245, .11), transparent 25%),
+    #fffaf6;
+}
+
+.campaign-showcase__head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 28px;
+  margin-bottom: 20px;
+}
+
+.campaign-showcase__head h2 {
+  margin: 3px 0 0;
+  font-size: clamp(27px, 3vw, 42px);
+  line-height: 1.05;
+  letter-spacing: -.04em;
+}
+
+.campaign-showcase__head > p {
+  width: min(100%, 420px);
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.campaign-showcase__grid {
+  display: grid;
+  grid-template-columns: 1.42fr .8fr .9fr;
+  gap: 16px;
+}
+
+.campaign-showcase__card {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  min-height: 312px;
+  overflow: hidden;
+  padding: 28px;
+  border-radius: 26px;
+  color: #fff;
+  box-shadow: 0 22px 54px rgba(29, 26, 48, .14);
+  transition: transform .22s ease, box-shadow .22s ease;
+}
+
+.campaign-showcase__card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 28px 64px rgba(29, 26, 48, .2);
+}
+
+.campaign-showcase__card:focus-visible {
+  outline: 3px solid #171722;
+  outline-offset: 4px;
+}
+
+.campaign-showcase__card::before,
+.campaign-showcase__card::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  border-radius: 50%;
+}
+
+.campaign-showcase__card::before {
+  width: 210px;
+  height: 210px;
+  top: -110px;
+  right: -68px;
+  background: rgba(255, 255, 255, .12);
+}
+
+.campaign-showcase__card::after {
+  width: 110px;
+  height: 110px;
+  right: 38px;
+  bottom: -68px;
+  border: 20px solid rgba(255, 255, 255, .1);
+}
+
+.campaign-showcase__card--bundle {
+  background: linear-gradient(135deg, #151b37 0%, #3930a4 58%, #6c43db 100%);
+}
+
+.campaign-showcase__card--special {
+  background: linear-gradient(150deg, #ff5d3d 0%, #ff416c 100%);
+}
+
+.campaign-showcase__card--all {
+  background: linear-gradient(145deg, #057a8c 0%, #0050a4 100%);
+}
+
+.campaign-showcase__eyebrow {
+  align-self: flex-start;
+  padding: 7px 11px;
+  border: 1px solid rgba(255, 255, 255, .3);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .13);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.campaign-showcase__bundle-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 26px 0 10px;
+  font-size: clamp(42px, 5vw, 68px);
+  line-height: .85;
+  letter-spacing: -.065em;
+}
+
+.campaign-showcase__bundle-title b,
+.campaign-showcase__bundle-title em {
+  font: inherit;
+}
+
+.campaign-showcase__bundle-title em {
+  color: #a9ff47;
+}
+
+.campaign-showcase__copy {
+  display: block;
+  max-width: 390px;
+  color: rgba(255, 255, 255, .84);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.55;
+}
+
+.campaign-showcase__cta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  margin-top: auto;
+  padding-top: 22px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.campaign-showcase__cta i {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #fff;
+  color: #171722;
+  font-style: normal;
+  transition: transform .2s ease;
+}
+
+.campaign-showcase__card:hover .campaign-showcase__cta i { transform: translateX(4px); }
+
+.campaign-showcase__tokens {
+  position: absolute;
+  right: 25px;
+  bottom: 25px;
+  display: flex;
+  flex-direction: row-reverse;
+  pointer-events: none;
+}
+
+.campaign-showcase__tokens i {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  margin-left: -10px;
+  border: 3px solid rgba(21, 27, 55, .75);
+  border-radius: 50%;
+  background: #a9ff47;
+  color: #18213a;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+  animation: campaign-token-float 3s ease-in-out infinite;
+}
+
+.campaign-showcase__tokens i:nth-child(2) { animation-delay: -.45s; }
+.campaign-showcase__tokens i:nth-child(3) { animation-delay: -.9s; }
+.campaign-showcase__tokens i:nth-child(4) { animation-delay: -1.35s; }
+
+.campaign-showcase__percent {
+  display: flex;
+  align-items: start;
+  margin: 21px 0 8px;
+  color: #fff2a9;
+  font-size: clamp(68px, 7vw, 94px);
+  line-height: .9;
+  letter-spacing: -.08em;
+}
+
+.campaign-showcase__percent small {
+  margin: 7px 3px 0 0;
+  font-size: .4em;
+}
+
+.campaign-showcase__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 28px 0 18px;
+}
+
+.campaign-showcase__steps i {
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .95);
+  color: #075e89;
+  font-size: clamp(17px, 2vw, 24px);
+  font-style: normal;
+  line-height: 1;
+}
+
+@keyframes campaign-token-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+@media (max-width: 980px) {
+  .campaign-showcase__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .campaign-showcase__card--bundle { grid-column: 1 / -1; }
+}
+
+@media (max-width: 720px) {
+  .campaign-showcase { padding: 34px 0; }
+  .campaign-showcase__head { display: block; }
+  .campaign-showcase__head > p { margin-top: 10px; }
+  .campaign-showcase__grid {
+    display: flex;
+    gap: 12px;
+    width: calc(100% + 11px);
+    overflow-x: auto;
+    padding: 2px 11px 18px 2px;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: thin;
+  }
+  .campaign-showcase__card {
+    flex: 0 0 min(84vw, 380px);
+    min-height: 288px;
+    padding: 24px;
+    border-radius: 22px;
+    scroll-snap-align: start;
+  }
+  .campaign-showcase__bundle-title { margin-top: 23px; font-size: 45px; }
+  .campaign-showcase__tokens { opacity: .42; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .campaign-showcase__tokens i { animation: none; }
+  .campaign-showcase__card { transition: none; }
+}
+
 .promo-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

@@ -16,12 +16,20 @@
     priceMax: null,
     inStock: false,
     onSale: false,
+    discountRate: null,
+    campaign: "",
     query: "",
     sort: "new"
   };
   // Ölçekli üründe sale_price uygulanmıyor (bkz. script.js displayPrice), o
   // yüzden "indirimdekiler" filtresine de girmiyor.
   const isOnSale = (p) => !(p.scales || []).length && p.sale_price && p.price > p.sale_price;
+  const discountRateOf = (p) => isOnSale(p)
+    ? Math.round((1 - Number(p.sale_price) / Number(p.price)) * 100)
+    : 0;
+  const hasBundleDeal = (p) => (p.promotions || []).some((campaign) =>
+    String(campaign.name || "").toLocaleLowerCase("tr-TR").includes("4 al 3 öde")
+  );
   let products = [];
   let categories = [];
   let colors = [];
@@ -62,6 +70,8 @@
     if (state.priceMax != null && price > state.priceMax) return false;
     if (state.inStock && !(p.stock > 0)) return false;
     if (state.onSale && !isOnSale(p)) return false;
+    if (state.discountRate && discountRateOf(p) !== state.discountRate) return false;
+    if (state.campaign === "4al3" && !hasBundleDeal(p)) return false;
     return true;
   }
 
@@ -88,7 +98,9 @@
       chips.push(`<button type="button" class="chip" data-remove-price>${state.priceMin ?? 0}–${state.priceMax ?? "∞"} TL ✕</button>`);
     }
     if (state.inStock) chips.push(`<button type="button" class="chip" data-remove-stock>Stokta ✕</button>`);
-    if (state.onSale) chips.push(`<button type="button" class="chip" data-remove-sale>İndirimli ✕</button>`);
+    if (state.onSale && !state.discountRate) chips.push(`<button type="button" class="chip" data-remove-sale>İndirimli ✕</button>`);
+    if (state.discountRate) chips.push(`<button type="button" class="chip" data-remove-discount-rate>%${state.discountRate} özel indirim ✕</button>`);
+    if (state.campaign === "4al3") chips.push(`<button type="button" class="chip" data-remove-campaign>4 Al 3 Öde ✕</button>`);
     if (state.query) chips.push(`<button type="button" class="chip" data-remove-query>Arama: ${escapeHTML(state.query)} ✕</button>`);
     box.innerHTML = chips.join("");
     box.hidden = chips.length === 0;
@@ -138,6 +150,8 @@
     state.priceMin = state.priceMax = null;
     state.inStock = false;
     state.onSale = false;
+    state.discountRate = null;
+    state.campaign = "";
     state.sort = "new";
     qs("#price-min").value = "";
     qs("#price-max").value = "";
@@ -157,6 +171,8 @@
     else if (t.hasAttribute("data-remove-price")) { state.priceMin = state.priceMax = null; qs("#price-min").value = ""; qs("#price-max").value = ""; }
     else if (t.hasAttribute("data-remove-stock")) { state.inStock = false; qs("#in-stock").checked = false; }
     else if (t.hasAttribute("data-remove-sale")) { state.onSale = false; qs("#on-sale").checked = false; }
+    else if (t.hasAttribute("data-remove-discount-rate")) { state.discountRate = null; state.onSale = false; qs("#on-sale").checked = false; }
+    else if (t.hasAttribute("data-remove-campaign")) { state.campaign = ""; }
     else if (t.hasAttribute("data-remove-query")) { state.query = ""; }
     else return;
     renderCategoryFilters();
@@ -200,11 +216,14 @@
       return;
     }
     window.printableProducts = products; // so script.js's add-to-cart can resolve ids
-    // Homepage links land here pre-filtered: ?kategori=<id>, ?indirim=1 or ?q=katlaç.
+    // Homepage links land here pre-filtered: category, discount, campaign or search.
     const params = new URLSearchParams(location.search);
     const preset = Number(params.get("kategori"));
     if (preset && categories.some((c) => c.id === preset)) state.categories.add(preset);
     if (params.get("indirim") === "1") { state.onSale = true; qs("#on-sale").checked = true; }
+    const discountPreset = Number(params.get("oran"));
+    if ([5, 10, 15].includes(discountPreset)) state.discountRate = discountPreset;
+    if (params.get("kampanya") === "4al3") state.campaign = "4al3";
     state.query = String(params.get("q") || "").trim().toLocaleLowerCase("tr-TR").slice(0, 80);
     renderCategoryFilters();
     renderColorFilters();
