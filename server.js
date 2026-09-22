@@ -174,7 +174,7 @@ function normalizedImageWidth(value) {
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "45";
+const SCHEMA_VERSION = "46";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -1323,7 +1323,7 @@ await db.prepare(`
   WHERE NOT EXISTS (SELECT 1 FROM products WHERE sku = @sku)
 `).run(isikliEjderha);
 
-const ISIKLI_EJDERHA_REVIZYONU = "2026-09-isikli-ejderha-yayin";
+const ISIKLI_EJDERHA_REVIZYONU = "2026-09-isikli-ejderha-yayin-renkler";
 const isikliEjderhaRevizyonu = await db.prepare("SELECT value FROM app_meta WHERE key = 'isikli_ejderha_rev'").get();
 if (isikliEjderhaRevizyonu?.value !== ISIKLI_EJDERHA_REVIZYONU) {
   await db.prepare(`
@@ -1338,6 +1338,22 @@ if (isikliEjderhaRevizyonu?.value !== ISIKLI_EJDERHA_REVIZYONU) {
 
   const isikliEjderhaKaydi = await db.prepare("SELECT id FROM products WHERE sku = ?").get(isikliEjderha.sku);
   if (isikliEjderhaKaydi) {
+  const ekleRenk = db.prepare(`
+    INSERT INTO colors (name, hex, sort_order)
+    SELECT @name, @hex, @sort_order
+    WHERE NOT EXISTS (SELECT 1 FROM colors WHERE name = @name)
+  `);
+  for (const renk of [
+    { name: "Alev Kırmızı", hex: "#ef1d2f", sort_order: 90 },
+    { name: "Mavi", hex: "#1398e8", sort_order: 91 }
+  ]) await ekleRenk.run(renk);
+  const baglaRenk = db.prepare(`
+    INSERT INTO product_colors (product_id, color_id)
+    SELECT ?, id FROM colors WHERE name = ?
+    ON CONFLICT DO NOTHING
+  `);
+  await baglaRenk.run(isikliEjderhaKaydi.id, "Alev Kırmızı");
+  await baglaRenk.run(isikliEjderhaKaydi.id, "Mavi");
   await db.prepare(`
     INSERT INTO product_categories (product_id, category_id)
     SELECT ?, id FROM categories WHERE name = ?
