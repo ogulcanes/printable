@@ -67,7 +67,7 @@ async function callback(reference, status, totalAmount, extra = {}) {
   });
 }
 
-async function newCheckout(quantity = 1) {
+async function newCheckout(quantity = 1, overrides = {}) {
   const products = await realFetch(`${baseUrl}/api/products`).then((response) => response.json());
   const product = products.find((item) => Number(item.is_active) === 1);
   assert.ok(product, "Test için aktif ürün bulunmalı");
@@ -83,8 +83,10 @@ async function newCheckout(quantity = 1) {
         district: "Kağıthane",
         neighborhood: "Emniyetevleri",
         postal_code: "34415",
-        address: "Test Sokak No: 1"
+        address: "Test Sokak No: 1",
+        ...(overrides.customer || {})
       },
+      ...(overrides.invoice ? { invoice: overrides.invoice } : {}),
       payment_method: "kart",
       items: [{ product_id: product.id, quantity }]
     })
@@ -134,7 +136,7 @@ test("Bülten aboneliği veritabanına tek kayıt yazar", async () => {
   assert.equal(Number(row.total), 1);
 });
 
-test("Sipariş fatura veya kimlik bilgisi olmadan oluşturulur", async () => {
+test("Bireysel siparişte KDV toplamın içinden ayrıştırılır", async () => {
   const order = await newCheckout();
   const row = await db.prepare(`
     SELECT invoice_type, tc_no, tax_office, tax_number, company_name,
@@ -142,15 +144,38 @@ test("Sipariş fatura veya kimlik bilgisi olmadan oluşturulur", async () => {
     FROM orders WHERE payment_reference = ?
   `).get(order.reference);
 
-  assert.equal(row.invoice_type, null);
+  assert.equal(row.invoice_type, "individual");
   assert.equal(row.tc_no, null);
   assert.equal(row.tax_office, null);
   assert.equal(row.tax_number, null);
   assert.equal(row.company_name, null);
   assert.equal(row.billing_address, row.shipping_address);
-  assert.equal(Number(row.tax_rate), 0);
-  assert.equal(Number(row.tax_amount), 0);
+  assert.equal(Number(row.tax_rate), 20);
   assert.equal(Number(row.total), Number(row.subtotal) - Number(row.discount));
+  assert.equal(Number(row.tax_amount), Math.round(Number(row.total) * 20 / 120 * 100) / 100);
+});
+
+test("Kurumsal fatura bilgileri ve farklı fatura adresi siparişe kaydedilir", async () => {
+  const order = await newCheckout(1, {
+    invoice: {
+      type: "corporate",
+      company_name: "Örnek Baskı Ltd. Şti.",
+      tax_office: "Kağıthane",
+      tax_number: "1234567890",
+      billing_address: "Fatura Mah. Vergi Cad. No: 20 Şişli/İstanbul"
+    }
+  });
+  const row = await db.prepare(`
+    SELECT invoice_type, company_name, tax_office, tax_number, billing_address, shipping_address
+    FROM orders WHERE payment_reference = ?
+  `).get(order.reference);
+
+  assert.equal(row.invoice_type, "corporate");
+  assert.equal(row.company_name, "Örnek Baskı Ltd. Şti.");
+  assert.equal(row.tax_office, "Kağıthane");
+  assert.equal(row.tax_number, "1234567890");
+  assert.equal(row.billing_address, "Fatura Mah. Vergi Cad. No: 20 Şişli/İstanbul");
+  assert.notEqual(row.billing_address, row.shipping_address);
 });
 
 test("100 adetlik toplu paket tek sepet satırı olarak siparişe dönüşür", async () => {

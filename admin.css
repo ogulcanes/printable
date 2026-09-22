@@ -452,6 +452,46 @@ textarea { resize: vertical; }
   flex-wrap: wrap;
   gap: 7px;
 }
+.order-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
+  gap: 8px;
+  margin: 10px 0;
+}
+.order-details > div {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+}
+.order-details span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.order-details strong,
+.order-details small {
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+.order-details strong { color: var(--ink); font-size: 12px; }
+.order-details small { color: var(--muted); font-size: 12px; }
+.row .order-note {
+  margin: 0 0 9px;
+  padding: 9px 11px;
+  border-left: 3px solid var(--orange);
+  border-radius: 0 7px 7px 0;
+  background: rgba(255,101,66,.07);
+  color: var(--ink);
+}
+.list--compact .order-details,
+.list--compact .order-note { display: none; }
 .badge {
   display: inline-flex;
   align-items: center;
@@ -644,6 +684,7 @@ textarea { resize: vertical; }
   .login-shell { grid-template-columns: 1fr; }
   .login-brand { min-height: 360px; }
   .login-brand h1 { font-size: 36px; }
+  .order-details { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 560px) {

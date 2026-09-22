@@ -133,6 +133,21 @@
     })
     .catch(() => {});
 
+  const deliveryForm = qs("#delivery-form");
+  function syncInvoiceFields() {
+    const corporate = deliveryForm.elements.corporate_invoice.checked;
+    const differentAddress = deliveryForm.elements.different_billing_address.checked;
+    qs("#corporate-invoice-fields").hidden = !corporate;
+    qs("#billing-address-field").hidden = !differentAddress;
+    ["company_name", "tax_office", "tax_number"].forEach((name) => {
+      deliveryForm.elements[name].required = corporate;
+    });
+    deliveryForm.elements.billing_address.required = differentAddress;
+  }
+  deliveryForm.elements.corporate_invoice.addEventListener("change", syncInvoiceFields);
+  deliveryForm.elements.different_billing_address.addEventListener("change", syncInvoiceFields);
+  syncInvoiceFields();
+
   function renderCheckoutCart() {
     const box = qs("#checkout-cart");
     if (!cart.length) {
@@ -169,6 +184,7 @@
 
   let minSepet = 0;   // panelden gelen minimum sipariş tutarı; 0 = sınır yok
   let freeShippingThreshold = 599;
+  let taxRate = 20;
 
   // Campaigns are computed server-side; this holds the last preview so the
   // summary can show it. The server recomputes everything on submit anyway.
@@ -179,6 +195,9 @@
     const discount = Math.min(campaigns.discount || 0, subtotal);
     const net = subtotal - discount;
     const total = Math.round(net * 100) / 100;
+    const taxAmount = taxRate > 0
+      ? Math.round((total * taxRate / (100 + taxRate)) * 100) / 100
+      : 0;
     const ucretsizKargo = total >= freeShippingThreshold;
     qs("#summary-items").innerHTML = cart.map((i) =>
       `<div class="summary-item"><span>${i.quantity} × ${i.name}${
@@ -197,6 +216,8 @@
     qs("#summary-campaigns").innerHTML = rows;
 
     qs("#summary-subtotal").textContent = money(subtotal);
+    qs("#summary-tax-label").textContent = `KDV (%${taxRate}, fiyata dâhil)`;
+    qs("#summary-tax").textContent = money(taxAmount);
     qs("#summary-total").textContent = money(total);
     qs(".summary-shipping").textContent = ucretsizKargo ? "Ücretsiz" : "Alıcı ödemeli";
     const shippingNote = qs("#summary-shipping-note");
@@ -253,6 +274,7 @@
   // Pull storefront thresholds so the summary matches the server's calculation.
   fetch("/api/site-info").then((r) => r.json()).then((info) => {
     if (info && Number.isFinite(Number(info.min_cart_total))) minSepet = Number(info.min_cart_total);
+    if (info && Number.isFinite(Number(info.tax_rate))) taxRate = Math.max(0, Number(info.tax_rate));
     if (info && Number.isFinite(Number(info.free_shipping_threshold))) {
       freeShippingThreshold = Number(info.free_shipping_threshold);
     }
@@ -331,6 +353,20 @@
         setError("#delivery-error", "İl, ilçe ve açık adres zorunludur.");
         return false;
       }
+      if (f.corporate_invoice.checked) {
+        if (!f.company_name.value.trim() || !f.tax_office.value.trim() || !f.tax_number.value.trim()) {
+          setError("#delivery-error", "Kurumsal fatura için şirket/unvan, vergi dairesi ve VKN/TCKN zorunludur.");
+          return false;
+        }
+        if (!/^\d{10,11}$/.test(f.tax_number.value.replace(/\s+/g, ""))) {
+          setError("#delivery-error", "VKN / T.C. kimlik numarası 10 veya 11 haneli olmalıdır.");
+          return false;
+        }
+      }
+      if (f.different_billing_address.checked && !f.billing_address.value.trim()) {
+        setError("#delivery-error", "Farklı fatura adresini yazın.");
+        return false;
+      }
       setError("#delivery-error", "");
       return true;
     }
@@ -372,6 +408,13 @@
         neighborhood: d.neighborhood.value.trim(),
         postal_code: d.postal_code.value.trim(),
         address: d.address.value.trim()
+      },
+      invoice: {
+        type: d.corporate_invoice.checked ? "corporate" : "individual",
+        company_name: d.corporate_invoice.checked ? d.company_name.value.trim() : "",
+        tax_office: d.corporate_invoice.checked ? d.tax_office.value.trim() : "",
+        tax_number: d.corporate_invoice.checked ? d.tax_number.value.replace(/\s+/g, "") : "",
+        billing_address: d.different_billing_address.checked ? d.billing_address.value.trim() : ""
       },
       payment_method: "kart",
       // Only the code travels — the server prices the campaign itself.

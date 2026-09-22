@@ -634,18 +634,34 @@ function renderOrders() {
         <div class="meta-line">
           <span class="badge ${statusClass[order.status] || ""}">${statusLabels[order.status] || order.status}</span>
           <span class="badge blue">${money(order.total)}</span>
-          ${Number(order.tax_amount) > 0 ? `<span class="badge">KDV %${order.tax_rate}: ${money(order.tax_amount)}</span>` : ""}
+          ${Number(order.tax_amount) > 0 ? `<span class="badge">KDV %${order.tax_rate} (dâhil): ${money(order.tax_amount)}</span>` : ""}
           <span class="badge">Kargo: ${order.shipping_method === "free" ? "Ücretsiz" : order.shipping_method === "recipient_paid" ? "Alıcı ödemeli" : "-"}</span>
           <span class="badge">${paymentLabels[order.payment_status] || order.payment_status}</span>
           <span class="badge">${paymentMethodLabels[order.payment_method] || "Ödeme yöntemi belirtilmemiş"}</span>
           <span class="badge">${escapeHtml(order.tracking_code) || "Takip kodu yok"}</span>
         </div>
+        <div class="order-details">
+          <div>
+            <span>İletişim</span>
+            <strong>${escapeHtml(order.customer_phone) || "Telefon yok"}</strong>
+            <small>${escapeHtml(order.customer_email) || "E-posta yok"}</small>
+          </div>
+          <div>
+            <span>Teslimat adresi</span>
+            <strong>${escapeHtml(order.shipping_address) || "Adres yok"}</strong>
+          </div>
+          <div>
+            <span>Fatura adresi</span>
+            <strong>${escapeHtml(order.billing_address || order.shipping_address) || "Adres yok"}</strong>
+          </div>
+        </div>
+        ${order.notes ? `<p class="order-note"><strong>Sipariş notu:</strong> ${escapeHtml(order.notes)}</p>` : ""}
         ${order.invoice_type ? `
           <div class="meta-line">
             <span class="badge ${order.invoice_type === "corporate" ? "blue" : ""}">${order.invoice_type === "corporate" ? "Kurumsal fatura" : "Bireysel fatura"}</span>
             ${order.invoice_type === "corporate"
               ? `<span class="badge">${escapeHtml(order.company_name) || "-"}</span><span class="badge">VKN ${escapeHtml(order.tax_number) || "-"}</span><span class="badge">${escapeHtml(order.tax_office) || "-"}</span>`
-              : `<span class="badge">TC ${escapeHtml(order.tc_no) || "-"}</span>`}
+              : order.tc_no ? `<span class="badge">TC ${escapeHtml(order.tc_no)}</span>` : ""}
           </div>` : ""}
       </div>
       <div class="row-actions">
@@ -733,7 +749,7 @@ function renderSettings() {
   form.elements.show_stock.checked = Number(state.settings.show_stock) === 1;
   form.elements.track_stock.checked = Number(state.settings.track_stock) === 1;
   form.elements.min_cart_total.value = Number(state.settings.min_cart_total) || 0;
-  ["company_title", "legal_address"]
+  ["company_title", "legal_address", "tax_office", "tax_number", "mersis", "return_address"]
     .forEach((alan) => { form.elements[alan].value = state.settings[alan] || ""; });
 }
 
@@ -1863,7 +1879,7 @@ qs("#settings-form").addEventListener("submit", async (event) => {
     track_stock: form.elements.track_stock.checked ? 1 : 0,
     min_cart_total: form.elements.min_cart_total.value.trim() || 0
   };
-  ["company_title", "legal_address"]
+  ["company_title", "legal_address", "tax_office", "tax_number", "mersis", "return_address"]
     .forEach((alan) => { govde[alan] = form.elements[alan].value; });
 
   await api("/api/settings", {

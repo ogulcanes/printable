@@ -4525,6 +4525,42 @@ body {
   color: var(--text);
 }
 .checkout-form__row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.checkout-invoice {
+  display: grid;
+  gap: 14px;
+  margin: 4px 0 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--soft);
+}
+.checkout-invoice legend {
+  padding: 0 7px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 800;
+}
+.checkout-form .checkout-check {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  cursor: pointer;
+}
+.checkout-form .checkout-check input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+.checkout-check span,
+.checkout-check strong,
+.checkout-check small { display: block; }
+.checkout-check strong { color: var(--text); font-size: 14px; }
+.checkout-check small { margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.checkout-invoice__fields { display: grid; gap: 14px; }
+.checkout-invoice__fields[hidden],
+#billing-address-field[hidden] { display: none; }
 .checkout-hint { color: var(--muted); font-size: 14px; margin-bottom: 14px; }
 .checkout-error {
   margin: 4px 0 0;

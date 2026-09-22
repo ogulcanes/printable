@@ -86,7 +86,9 @@ const STORE_NOTIFICATION_EMAILS = [...new Set([
 const SEED_ADMIN_USERS = [...new Set(
   (process.env.ADMIN_USERS || "ogulcan,furkan").split(",").map((name) => name.trim().toLowerCase()).filter(Boolean).concat(ADMIN_USER.toLowerCase())
 )];
-const KDV_RATE = 0; // Vitrinde görünen fiyat müşterinin ödediği nihai ürün fiyatıdır.
+/* Vitrindeki fiyat KDV DÂHİL nihai tüketici fiyatıdır. PayTR'ye bu nihai tutar
+   gönderilir; KDV ayrıca eklenmez, sipariş kaydında toplamın içinden ayrıştırılır. */
+const KDV_RATE = 20;
 const FREE_SHIPPING_THRESHOLD = 599; // İndirim sonrası nihai ürün toplamı.
 
 /* PayTR bilgileri yalnızca sunucuda tutulur. Test modu bilinçli olarak güvenli
@@ -175,7 +177,7 @@ function normalizedImageWidth(value) {
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "41";
+const SCHEMA_VERSION = "42";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -1175,30 +1177,35 @@ const SITE_CONTACT = {
   phone: "0543 687 4208",
   social_links: "https://www.instagram.com/printablestr\nhttps://www.tiktok.com/@printabletr"
 };
+const SITE_LEGAL = {
+  company_title: "FURKAN HÜSEYİN ARAZ"
+};
 
 const existingSite = (await db.prepare("SELECT COUNT(*) count FROM site_settings").get()).count;
 if (!existingSite) {
   await db.prepare(`
-    INSERT INTO site_settings (id, site_name, site_url, description, logo_path, social_links, default_og_image, phone)
-    VALUES (1, @site_name, @site_url, @description, @logo_path, @social_links, @default_og_image, @phone)
+    INSERT INTO site_settings (id, site_name, site_url, description, logo_path, social_links, default_og_image, phone, company_title)
+    VALUES (1, @site_name, @site_url, @description, @logo_path, @social_links, @default_og_image, @phone, @company_title)
   `).run({
     site_name: "Printable",
     site_url: "",
     description: "Özel 3D baskı figür, oyuncak ve anahtarlık ürünleri; STL baskı hizmeti.",
     logo_path: "/assets/printable-logo.png",
     default_og_image: "",
-    ...SITE_CONTACT
+    ...SITE_CONTACT,
+    ...SITE_LEGAL
   });
 }
 
-// Mevcut veritabanlarına gerçek iletişim bilgilerini taşı. Sadece boş alanları
-// doldurur; admin panelinden girilen bir değerin üstüne asla yazmaz.
+// Mevcut veritabanlarına gerçek iletişim ve satıcı unvanını taşı. Sadece boş
+// alanları doldurur; admin panelinden girilen bir değerin üstüne asla yazmaz.
 await db.prepare(`
   UPDATE site_settings SET
     phone = COALESCE(NULLIF(TRIM(phone), ''), @phone),
-    social_links = COALESCE(NULLIF(TRIM(social_links), ''), @social_links)
+    social_links = COALESCE(NULLIF(TRIM(social_links), ''), @social_links),
+    company_title = COALESCE(NULLIF(TRIM(company_title), ''), @company_title)
   WHERE id = 1
-`).run(SITE_CONTACT);
+`).run({ ...SITE_CONTACT, ...SITE_LEGAL });
 
 const existingProducts = (await db.prepare("SELECT COUNT(*) count FROM products").get()).count;
 if (!existingProducts) {
@@ -2738,18 +2745,20 @@ async function injectShell(html, headActive, customer) {
 
 /* Satıcı kimliği yasal sayfalarda TEK yerden gelir: /admin → Ayarlar. Metni
    HTML'e gömmek, satıcı adı ya da adres değiştiğinde üç sayfayı birden
-   güncellemeyi unutmak demekti. PayTR'nin site kontrolünde aradığı temel
-   kimlik alanları satıcı adı, açık adres, telefon ve e-postadır. Ziyaretçiye
-   bunların dışında bir satıcı alanı gösterilmez. */
+   güncellemeyi unutmak demekti. Temel iletişim alanlarının yanında vergi ve
+   MERSİS bilgileri de girildiyse aynı tabloda yayınlanır. */
 async function renderSellerBlock() {
   const s = await db.prepare("SELECT * FROM site_settings WHERE id = 1").get() || {};
   const zorunlu = new Set(["Satıcı", "Adres", "Telefon", "E-posta"]);
   const goster = [
     ["Satıcı", s.company_title],
+    ["Vergi dairesi", s.tax_office],
+    ["Vergi / T.C. kimlik no", s.tax_number],
+    ["MERSİS no", s.mersis],
     ["Adres", s.legal_address],
     ["Telefon", s.phone],
     ["E-posta", s.email]
-  ].filter(([etiket, deger]) => deger?.trim() || zorunlu.has(etiket));
+  ].filter(([etiket, deger]) => String(deger || "").trim() || zorunlu.has(etiket));
   const eksik = goster.filter(([, deger]) => !deger?.trim()).map(([etiket]) => etiket);
 
   const govde = goster.map(([etiket, deger]) => `
@@ -2774,8 +2783,8 @@ async function renderSellerBlock() {
 }
 
 async function renderReturnAddress() {
-  const s = await db.prepare("SELECT legal_address, company_title FROM site_settings WHERE id = 1").get() || {};
-  const adres = s.legal_address?.trim();
+  const s = await db.prepare("SELECT legal_address, return_address, company_title FROM site_settings WHERE id = 1").get() || {};
+  const adres = String(s.return_address || s.legal_address || "").trim();
   if (!adres) {
     return '<p class="legal-warning legal-warning--admin"><strong>İade adresi belirtilmemiş.</strong> Yönetim panelindeki <em>Ayarlar</em> bölümünden ekleyin.</p>';
   }
@@ -4360,7 +4369,8 @@ app.delete("/api/katlac/:id", requireAdmin, async (req, res) => {
    sütunlarını UPDATE eder, satırın tamamını değil. */
 app.get("/api/settings", requireAdmin, async (req, res) => {
   const s = await db.prepare(`
-    SELECT show_stock, track_stock, min_cart_total, company_title, legal_address
+    SELECT show_stock, track_stock, min_cart_total, company_title, legal_address,
+      tax_office, tax_number, mersis, return_address
     FROM site_settings WHERE id = 1
   `).get() || {};
   res.json({
@@ -4368,7 +4378,11 @@ app.get("/api/settings", requireAdmin, async (req, res) => {
     track_stock: s.track_stock ?? 0,
     min_cart_total: s.min_cart_total ?? 0,
     company_title: s.company_title || "",
-    legal_address: s.legal_address || ""
+    legal_address: s.legal_address || "",
+    tax_office: s.tax_office || "",
+    tax_number: s.tax_number || "",
+    mersis: s.mersis || "",
+    return_address: s.return_address || ""
   });
 });
 
@@ -4383,7 +4397,8 @@ app.put("/api/settings", requireAdmin, async (req, res) => {
     UPDATE site_settings SET
       show_stock=@show_stock, track_stock=@track_stock, min_cart_total=@min_cart_total,
       company_title=@company_title, legal_address=@legal_address,
-      tax_office=NULL, tax_number=NULL, mersis=NULL, return_address=NULL,
+      tax_office=@tax_office, tax_number=@tax_number, mersis=@mersis,
+      return_address=@return_address,
       updated_at=NOW()
     WHERE id = 1
   `).run({
@@ -4392,7 +4407,11 @@ app.put("/api/settings", requireAdmin, async (req, res) => {
     track_stock: req.body.track_stock === true || req.body.track_stock === "1" || req.body.track_stock === 1 ? 1 : 0,
     min_cart_total: minTutar,
     company_title: metin(req.body.company_title),
-    legal_address: metin(req.body.legal_address)
+    legal_address: metin(req.body.legal_address),
+    tax_office: metin(req.body.tax_office),
+    tax_number: metin(req.body.tax_number),
+    mersis: metin(req.body.mersis),
+    return_address: metin(req.body.return_address)
   });
   res.json({ ok: true });
 });
@@ -5934,7 +5953,9 @@ app.post("/api/customers", async (req, res) => {
 
 app.get("/api/orders", requireAdmin, async (req, res) => {
   const orders = await db.prepare(`
-    SELECT orders.*, customers.name customer_name, customers.email customer_email
+    SELECT orders.*, customers.name customer_name, customers.email customer_email,
+      customers.phone customer_phone, customers.address customer_address,
+      customers.city customer_city
     FROM orders
     JOIN customers ON customers.id = orders.customer_id
     ORDER BY orders.created_at DESC
@@ -5978,12 +5999,15 @@ app.post("/api/orders", requireAdmin, async (req, res) => {
   const subtotal = normalized.reduce((sum, item) => sum + item.line_total, 0);
   const discount = money(req.body.discount);
   const total = Math.max(0, subtotal - discount);
+  const taxAmount = round2(total * KDV_RATE / (100 + KDV_RATE));
   const orderNumber = `PRN-${Date.now().toString().slice(-8)}`;
 
   const id = await db.transaction(async (tx) => {
     const result = await tx.prepare(`
-      INSERT INTO orders (order_number, customer_id, status, payment_status, shipping_address, tracking_code, subtotal, discount, total, notes)
-      VALUES (@order_number, @customer_id, @status, @payment_status, @shipping_address, @tracking_code, @subtotal, @discount, @total, @notes)
+      INSERT INTO orders (order_number, customer_id, status, payment_status, shipping_address, tracking_code,
+        subtotal, discount, total, notes, tax_rate, tax_amount)
+      VALUES (@order_number, @customer_id, @status, @payment_status, @shipping_address, @tracking_code,
+        @subtotal, @discount, @total, @notes, @tax_rate, @tax_amount)
     `).run({
       order_number: orderNumber,
       customer_id: toInt(req.body.customer_id),
@@ -5994,7 +6018,9 @@ app.post("/api/orders", requireAdmin, async (req, res) => {
       subtotal,
       discount,
       total,
-      notes: req.body.notes || null
+      notes: req.body.notes || null,
+      tax_rate: KDV_RATE,
+      tax_amount: taxAmount
     });
 
     const insertItem = tx.prepare(`
@@ -6823,6 +6849,7 @@ async function notifyPaidOrder(orderId) {
 app.post("/api/checkout", async (req, res) => {
   const body = req.body || {};
   const customer = body.customer || {};
+  const invoice = body.invoice || {};
   const items = Array.isArray(body.items) ? body.items : [];
 
   if (!PAYTR_CONFIGURED) {
@@ -6839,6 +6866,22 @@ app.post("/api/checkout", async (req, res) => {
   if (!customer.district?.trim()) return res.status(400).json({ error: "İlçe zorunludur." });
   if (!customer.address?.trim()) return res.status(400).json({ error: "Açık adres zorunludur." });
   if (!items.length) return res.status(400).json({ error: "Sepetiniz boş." });
+
+  const invoiceType = invoice.type === "corporate" ? "corporate" : "individual";
+  const companyName = String(invoice.company_name || "").trim();
+  const taxOffice = String(invoice.tax_office || "").trim();
+  const taxNumber = String(invoice.tax_number || "").replace(/\s+/g, "");
+  const requestedBillingAddress = String(invoice.billing_address || "").trim();
+  if (invoiceType === "corporate") {
+    if (!companyName) return res.status(400).json({ error: "Kurumsal fatura için şirket/unvan zorunludur." });
+    if (!taxOffice) return res.status(400).json({ error: "Kurumsal fatura için vergi dairesi zorunludur." });
+    if (!/^\d{10,11}$/.test(taxNumber)) {
+      return res.status(400).json({ error: "VKN / T.C. kimlik numarası 10 veya 11 haneli olmalıdır." });
+    }
+    if (companyName.length > 160 || taxOffice.length > 100 || requestedBillingAddress.length > 400) {
+      return res.status(400).json({ error: "Fatura bilgilerinden biri izin verilen uzunluğu aşıyor." });
+    }
+  }
 
   if (body.payment_method !== "kart") {
     return res.status(400).json({ error: "Yalnızca kredi veya banka kartıyla ödeme kabul edilir." });
@@ -6932,7 +6975,10 @@ app.post("/api/checkout", async (req, res) => {
       customer.name.trim(), customerEmail, customer.phone.trim(), customer.address.trim(), customer.city?.trim() || null
     );
 
-    const taxAmount = 0;
+    // Fiyatlar KDV dâhil: vergi genel toplama eklenmez, toplamın içinden ayrılır.
+    const taxAmount = taxRate > 0
+      ? round2(uygulananNet * taxRate / (100 + taxRate))
+      : 0;
     const grandTotal = uygulananNet;
     const shippingMethod = grandTotal >= FREE_SHIPPING_THRESHOLD ? "free" : "recipient_paid";
     // Compose the structured address (mahalle / ilçe / il / posta kodu) into one line.
@@ -6977,12 +7023,12 @@ app.post("/api/checkout", async (req, res) => {
         : null,
       total: grandTotal,
       notes: body.notes?.trim() || null,
-      invoice_type: null,
+      invoice_type: invoiceType,
       tc_no: null,
-      tax_office: null,
-      tax_number: null,
-      company_name: null,
-      billing_address: shippingAddress,
+      tax_office: invoiceType === "corporate" ? taxOffice : null,
+      tax_number: invoiceType === "corporate" ? taxNumber : null,
+      company_name: invoiceType === "corporate" ? companyName : null,
+      billing_address: requestedBillingAddress || shippingAddress,
       payment_method: paymentMethod,
       tax_rate: taxRate,
       tax_amount: taxAmount,

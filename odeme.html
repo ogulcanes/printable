@@ -49,6 +49,26 @@
                   <label>Posta kodu<input name="postal_code" inputmode="numeric" maxlength="5" autocomplete="postal-code" placeholder="34000"></label>
                 </div>
                 <label>Açık adres *<textarea name="address" rows="3" required autocomplete="street-address" placeholder="Cadde, sokak, bina no, daire"></textarea></label>
+
+                <fieldset class="checkout-invoice">
+                  <legend>Fatura bilgileri</legend>
+                  <label class="checkout-check">
+                    <input type="checkbox" name="corporate_invoice">
+                    <span><strong>Kurumsal fatura istiyorum</strong><small>Şirket/unvan, vergi dairesi ve VKN/TCKN bilgilerini ekleyin.</small></span>
+                  </label>
+                  <div class="checkout-invoice__fields" id="corporate-invoice-fields" hidden>
+                    <label>Şirket / unvan *<input name="company_name" autocomplete="organization" maxlength="160"></label>
+                    <div class="checkout-form__row">
+                      <label>Vergi dairesi *<input name="tax_office" maxlength="100"></label>
+                      <label>VKN / T.C. kimlik no *<input name="tax_number" inputmode="numeric" maxlength="11" autocomplete="off"></label>
+                    </div>
+                  </div>
+                  <label class="checkout-check">
+                    <input type="checkbox" name="different_billing_address">
+                    <span><strong>Fatura adresim farklı</strong><small>İşaretlemezseniz teslimat adresi fatura adresi olarak kullanılır.</small></span>
+                  </label>
+                  <label id="billing-address-field" hidden>Fatura adresi *<textarea name="billing_address" rows="3" maxlength="400" autocomplete="billing street-address" placeholder="Mahalle, cadde, sokak, bina no, ilçe/il"></textarea></label>
+                </fieldset>
                 <p class="checkout-error" id="delivery-error" hidden></p>
               </form>
             </section>
@@ -85,6 +105,7 @@
             <div class="summary-line"><span>Ürünler toplamı</span><strong id="summary-subtotal">0.00 TL</strong></div>
             <div id="summary-campaigns" class="summary-campaigns"></div>
             <div class="summary-line summary-line--muted"><span>Kargo</span><span class="summary-shipping">Alıcı ödemeli</span></div>
+            <div class="summary-line summary-line--muted"><span id="summary-tax-label">KDV (%20, fiyata dâhil)</span><span id="summary-tax">0.00 TL</span></div>
             <div class="summary-line summary-total"><span>Genel toplam</span><strong id="summary-total">0.00 TL</strong></div>
             <p class="summary-note" id="summary-shipping-note">599 TL ve üzeri siparişlerde kargo ücretsizdir.</p>
             <a class="summary-back" href="/urunler">← Alışverişe devam et</a>
