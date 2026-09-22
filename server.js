@@ -3322,7 +3322,7 @@ async function renderHomeGrids(sayfa) {
     if (!ornekler.length) return "";
     return `<span class="campaign-showcase__products campaign-showcase__products--${sinif}" aria-hidden="true">${ornekler.map((product) => `
                 <span class="campaign-showcase__product" data-campaign-product="${product.id}">
-                  <img src="${escapeHtml(sablonlar.gorselAdresi(product.image_path, 360) || "/assets/printable-logo.svg")}" width="180" height="180" loading="lazy" alt="">
+                  <img src="${escapeHtml(sablonlar.gorselAdresi(product.image_path, 360) || "/assets/printable-logo.svg")}" width="180" height="180" loading="eager" decoding="async" alt="">
                   <small>${escapeHtml(product.name)}</small>
                 </span>`).join("")}
               </span>`;
