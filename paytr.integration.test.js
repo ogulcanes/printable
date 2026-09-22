@@ -208,6 +208,10 @@ test("Anahtarlık ve çakmaklık katalogları fiyat ve kampanyalarıyla mağazay
   assert.match(homePage, /3 ÖDE/);
   assert.match(homePage, /href="\/urunler\?kampanya=4al3"/);
   assert.match(homePage, /href="\/urunler\?indirim=1&amp;oran=15"/);
+  assert.match(homePage, /campaign-showcase__products--bundle/);
+  assert.match(homePage, /campaign-showcase__products--single/);
+  assert.match(homePage, /campaign-showcase__products--all/);
+  assert.ok((homePage.match(/data-campaign-product=/g) || []).length >= 5);
 
   const bundlePage = await realFetch(`${baseUrl}/urunler?kampanya=4al3`).then((response) => response.text());
   const bundleOlmayan = products.find((product) => !(product.promotions || []).some((campaign) => campaign.name.includes("4 Al 3 Öde")));

@@ -3302,6 +3302,32 @@ async function renderHomeGrids(sayfa) {
   ));
   const yuzdeOnBes = indirimli.filter((p) => sablonlar.discountPercent(p) === 15);
 
+  /* Kampanya kartları soyut bir afiş gibi kalmasın: her gruptan gerçek ürünler
+     göster. Anahtarlık ve çakmaklığı öne alıp kalan yerleri katalog sırasıyla
+     tamamlamak, vitrin her iki ürün grubunu da temsil ederken yeni ürünlerin de
+     kendiliğinden görünmesini sağlar. */
+  const kampanyaOrnekleri = (liste, adet) => {
+    const kategoriden = (aranan) => liste.find((product) =>
+      (product.categories || []).some((category) =>
+        String(category.name || "").toLocaleLowerCase("tr-TR").includes(aranan)
+      )
+    );
+    const adaylar = [kategoriden("anahtarlık"), kategoriden("çakmaklık"), ...liste].filter(Boolean);
+    return adaylar.filter((product, index) =>
+      adaylar.findIndex((item) => Number(item.id) === Number(product.id)) === index
+    ).slice(0, adet);
+  };
+  const kampanyaUrunleriHTML = (liste, sinif, adet) => {
+    const ornekler = kampanyaOrnekleri(liste, adet);
+    if (!ornekler.length) return "";
+    return `<span class="campaign-showcase__products campaign-showcase__products--${sinif}" aria-hidden="true">${ornekler.map((product) => `
+                <span class="campaign-showcase__product" data-campaign-product="${product.id}">
+                  <img src="${escapeHtml(sablonlar.gorselAdresi(product.image_path, 360) || "/assets/printable-logo.svg")}" width="180" height="180" loading="lazy" alt="">
+                  <small>${escapeHtml(product.name)}</small>
+                </span>`).join("")}
+              </span>`;
+  };
+
   const kampanyaVitrini = `
       <section class="campaign-showcase" aria-labelledby="campaign-showcase-title">
         <div class="container">
@@ -3318,6 +3344,7 @@ async function renderHomeGrids(sayfa) {
               <strong class="campaign-showcase__bundle-title"><b>4 AL</b><em>3 ÖDE</em></strong>
               <span class="campaign-showcase__copy">Seçili ${dortAlUcOde.length} anahtarlık ve çakmaklıktan 4 adet ekleyin, 1 ürün bedeli sepetten otomatik düşsün.</span>
               <span class="campaign-showcase__cta">Kampanyalı ürünleri gör <i aria-hidden="true">→</i></span>
+              ${kampanyaUrunleriHTML(dortAlUcOde, "bundle", 2)}
               <span class="campaign-showcase__tokens" aria-hidden="true"><i>1</i><i>2</i><i>3</i><i>4</i></span>
             </a>
 
@@ -3326,6 +3353,7 @@ async function renderHomeGrids(sayfa) {
               <strong class="campaign-showcase__percent"><small>%</small>15</strong>
               <span class="campaign-showcase__copy">${yuzdeOnBes.length} seçili üründe özel fiyatları keşfedin.</span>
               <span class="campaign-showcase__cta">%15 indirimlileri gör <i aria-hidden="true">→</i></span>
+              ${kampanyaUrunleriHTML(yuzdeOnBes, "single", 1)}
             </a>
 
             <a class="campaign-showcase__card campaign-showcase__card--all" href="/urunler?indirim=1">
@@ -3333,6 +3361,7 @@ async function renderHomeGrids(sayfa) {
               <strong class="campaign-showcase__steps"><i>%5</i><i>%10</i><i>%15</i></strong>
               <span class="campaign-showcase__copy">Farklı indirim oranlarıyla bütçenize uygun ürünü bulun.</span>
               <span class="campaign-showcase__cta">Tüm fırsatları keşfet <i aria-hidden="true">→</i></span>
+              ${kampanyaUrunleriHTML(indirimli, "all", 2)}
             </a>
           </div>
         </div>
