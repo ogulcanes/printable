@@ -174,7 +174,7 @@ function normalizedImageWidth(value) {
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "44";
+const SCHEMA_VERSION = "46";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -1308,6 +1308,88 @@ if (!existingProducts) {
       VALUES (?, ?, ?, 'image', 1)
     `).run(dragon.id, "/assets/urun-gorselleri-secilen/isikli-ejderha-figuru-2.png", "Işıklı Ejderha Figürü karanlıkta ışıklı görünüm");
   }
+}
+
+/* Canlı mağazaya sonradan eklenen ürünler. SKU ile korunduğu için her ortamda
+   yalnızca bir kez oluşur; kaynak görseller proje içinden servis edilir. */
+const isikliEjderha = {
+  name: "Işıklı Ejderha Figürü",
+  sku: "PR-3D-017",
+  category: null,
+  description: "Işıklı görünümüyle dikkat çeken, masaüstü ve raf dekorasyonu için hazırlanmış ejderha figürü. Siparişe özel üretilir.",
+  color: "Çok renkli PLA",
+  price: 1000,
+  stock: 0,
+  image_path: "/assets/products/isikli-ejderha-figuru-1.png",
+  image_alt: "Işıklı ejderha figürü",
+  meta_title: "Işıklı Ejderha Figürü | Printable",
+  meta_description: "Masaüstü ve raf dekorasyonu için siparişe özel üretilen ışıklı ejderha figürü.",
+  meta_keywords: "ışıklı ejderha figürü, ejderha dekorasyonu, 3d baskı figür, masaüstü dekorasyonu"
+};
+await db.prepare(`
+  INSERT INTO products
+    (name, sku, category, description, color, price, stock, image_path, image_alt,
+     meta_title, meta_description, meta_keywords, is_made_to_order, is_active)
+  SELECT
+    @name, @sku, @category, @description, @color, @price, @stock, @image_path, @image_alt,
+    @meta_title, @meta_description, @meta_keywords, 1, 1
+  WHERE NOT EXISTS (SELECT 1 FROM products WHERE sku = @sku)
+`).run(isikliEjderha);
+
+const ISIKLI_EJDERHA_REVIZYONU = "2026-09-isikli-ejderha-yayin-renkler";
+const isikliEjderhaRevizyonu = await db.prepare("SELECT value FROM app_meta WHERE key = 'isikli_ejderha_rev'").get();
+if (isikliEjderhaRevizyonu?.value !== ISIKLI_EJDERHA_REVIZYONU) {
+  await db.prepare(`
+    UPDATE products SET
+      name=@name, category=@category, description=@description, color=@color,
+      price=@price, sale_price=NULL, stock=@stock, image_path=@image_path,
+      image_alt=@image_alt, meta_title=@meta_title, meta_description=@meta_description,
+      meta_keywords=@meta_keywords, is_made_to_order=1, is_active=1,
+      updated_at=CURRENT_TIMESTAMP
+    WHERE sku=@sku
+  `).run(isikliEjderha);
+
+  const isikliEjderhaKaydi = await db.prepare("SELECT id FROM products WHERE sku = ?").get(isikliEjderha.sku);
+  if (isikliEjderhaKaydi) {
+  const ekleRenk = db.prepare(`
+    INSERT INTO colors (name, hex, sort_order)
+    SELECT @name, @hex, @sort_order
+    WHERE NOT EXISTS (SELECT 1 FROM colors WHERE name = @name)
+  `);
+  for (const renk of [
+    { name: "Alev Kırmızı", hex: "#ef1d2f", sort_order: 90 },
+    { name: "Mavi", hex: "#1398e8", sort_order: 91 }
+  ]) await ekleRenk.run(renk);
+  const baglaRenk = db.prepare(`
+    INSERT INTO product_colors (product_id, color_id)
+    SELECT ?, id FROM colors WHERE name = ?
+    ON CONFLICT DO NOTHING
+  `);
+  await baglaRenk.run(isikliEjderhaKaydi.id, "Alev Kırmızı");
+  await baglaRenk.run(isikliEjderhaKaydi.id, "Mavi");
+  await db.prepare(`
+    INSERT INTO product_categories (product_id, category_id)
+    SELECT ?, id FROM categories WHERE name = ?
+    ON CONFLICT DO NOTHING
+  `).run(isikliEjderhaKaydi.id, "Figürler");
+  await db.prepare(`
+    INSERT INTO product_images (product_id, image_path, image_alt, media_type, sort_order)
+    SELECT ?, ?, ?, 'image', 1
+    WHERE NOT EXISTS (
+      SELECT 1 FROM product_images WHERE product_id = ? AND image_path = ?
+    )
+  `).run(
+    isikliEjderhaKaydi.id,
+    "/assets/products/isikli-ejderha-figuru-2.png",
+    "Işıklı ejderha figürü alternatif görünüm",
+    isikliEjderhaKaydi.id,
+    "/assets/products/isikli-ejderha-figuru-2.png"
+  );
+  }
+  await db.prepare(`
+    INSERT INTO app_meta (key, value) VALUES ('isikli_ejderha_rev', ?)
+    ON CONFLICT (key) DO UPDATE SET value = excluded.value
+  `).run(ISIKLI_EJDERHA_REVIZYONU);
 }
 
 /* Hazırlık aşamasındaki kişiselleştirilebilir ürünler. Ana katalog seed'inden
