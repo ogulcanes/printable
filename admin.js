@@ -634,7 +634,7 @@ function renderOrders() {
         <div class="meta-line">
           <span class="badge ${statusClass[order.status] || ""}">${statusLabels[order.status] || order.status}</span>
           <span class="badge blue">${money(order.total)}</span>
-          ${Number(order.tax_amount) > 0 ? `<span class="badge">KDV %${order.tax_rate} (dâhil): ${money(order.tax_amount)}</span>` : ""}
+          ${Number(order.tax_amount) > 0 ? `<span class="badge">KDV %${order.tax_rate}: ${money(order.tax_amount)}</span>` : ""}
           <span class="badge">Kargo: ${order.shipping_method === "free" ? "Ücretsiz" : order.shipping_method === "recipient_paid" ? "Alıcı ödemeli" : "-"}</span>
           <span class="badge">${paymentLabels[order.payment_status] || order.payment_status}</span>
           <span class="badge">${paymentMethodLabels[order.payment_method] || "Ödeme yöntemi belirtilmemiş"}</span>
@@ -749,6 +749,7 @@ function renderSettings() {
   form.elements.show_stock.checked = Number(state.settings.show_stock) === 1;
   form.elements.track_stock.checked = Number(state.settings.track_stock) === 1;
   form.elements.min_cart_total.value = Number(state.settings.min_cart_total) || 0;
+  form.elements.tax_rate.value = Number(state.settings.tax_rate) || 0;
   ["company_title", "legal_address", "tax_office", "tax_number", "mersis", "return_address"]
     .forEach((alan) => { form.elements[alan].value = state.settings[alan] || ""; });
 }
@@ -1097,14 +1098,14 @@ function costHesapla(g) {
   const netMaliyet = malzeme + elektrik + iscilikAmortisman;
 
   const karliFiyat = netMaliyet * (1 + g.karMarji / 100);
-  const karliFiyatKdvDahil = karliFiyat * (1 + g.kdv / 100);
   const kargoDahil = karliFiyat + g.kargo;
   const kdvTutari = kargoDahil * (g.kdv / 100);
   const kdvDahil = kargoDahil + kdvTutari;
   const komisyonFiyati = kdvDahil * (g.komisyon / 100);
   const komisyonKdv = komisyonFiyati * 0.20;          // hizmet bedeli KDV'si
   const komisyonlaFiyat = kdvDahil + komisyonFiyati + komisyonKdv;
-  const fark = g.belirlenen - komisyonlaFiyat;
+  const belirlenenKdvli = g.belirlenen * (1 + g.kdv / 100);
+  const fark = belirlenenKdvli - komisyonlaFiyat;
 
   /* Belirlenen fiyat artık yalnızca karşılaştırma değil: doluysa ölçeğin
      satış fiyatı O olur (bkz. atama). "Kaça mal oluyor" değil, "kaça
@@ -1116,10 +1117,9 @@ function costHesapla(g) {
      iki farklı tanım aynı ekranda olmamalı. */
   const belirlenenKar = g.belirlenen - netMaliyet;
   const belirlenenMarj = g.belirlenen > 0 ? (belirlenenKar / g.belirlenen) * 100 : null;
-  // Belirlenen fiyat vitrindeki nihai fiyattır; kasada ayrıca KDV eklenmez.
-  const belirlenenKdvli = g.belirlenen;
+  // Belirlenen fiyat net satış fiyatıdır; mağaza da KDV'yi kasada üzerine ekler.
 
-  return { malzeme, elektrik, iscilikAmortisman, netMaliyet, karliFiyat, karliFiyatKdvDahil, kargoDahil,
+  return { malzeme, elektrik, iscilikAmortisman, netMaliyet, karliFiyat, kargoDahil,
     kdvTutari, kdvDahil, komisyonFiyati, komisyonKdv, komisyonlaFiyat, fark,
     belirlenenKar, belirlenenMarj, belirlenenKdvli };
 }
@@ -1148,8 +1148,8 @@ function renderCost() {
     satir("Toplam elektrik mâliyeti", h.elektrik),
     satir("Toplam işçilik ve amortisman", h.iscilikAmortisman),
     satir("Toplam net mâliyet", h.netMaliyet, "cost-cell--strong"),
-    satir(`Kârlı nihai satış fiyatı${belirlenenSecili ? "" : ` ${etiket}`}`,
-      h.karliFiyatKdvDahil, belirlenenSecili ? "" : "cost-cell--price"),
+    satir(`Kârlı net satış fiyatı${belirlenenSecili ? "" : ` ${etiket}`}`,
+      h.karliFiyat, belirlenenSecili ? "" : "cost-cell--price"),
     satir("Kargo dâhil", h.kargoDahil),
     satir("KDV tutarı", h.kdvTutari),
     satir("KDV dâhil", h.kdvDahil),
@@ -1203,7 +1203,9 @@ qs("#cost-save").addEventListener("click", async () => {
 
 qs("#cost-reset").addEventListener("click", () => {
   const form = qs("#cost-form");
-  COST_ALANLAR.forEach((a) => { form.elements[a].value = a === "adet" ? 1 : 0; });
+  COST_ALANLAR.forEach((a) => {
+    form.elements[a].value = a === "adet" ? 1 : a === "kdv" ? Number(state.settings.tax_rate) || 0 : 0;
+  });
   form.elements.olcek.value = "";
   renderCost();
 });
@@ -1381,13 +1383,13 @@ qs("#cost-assign").addEventListener("click", async () => {
      İkisi de boşsa (marj da 0) fiyat yazılmaz: ölçek yalnızca iç maliyet
      kaydı olur ve mağazada görünmez.
 
-     Belirlenen fiyat doluysa vitrindeki nihai fiyat odur. Maliyetten hesaplanan
-     fiyat kullanılırsa hesaplanan KDV satış fiyatına burada dahil edilir; kasada
-     yeniden eklenmez. Kargo alıcı ödemeliyse ürün fiyatının dışında kalır. */
+     Belirlenen fiyat doluysa vitrindeki KDV hariç taban fiyat odur. Maliyetten
+     hesaplanan fiyat da net kaydedilir; mağaza KDV'yi ödeme adımında üzerine
+     ekler. Kargo alıcı ödemeliyse ürün fiyatının dışında kalır. */
   const belirlenen = yuvarla(g.belirlenen);
   const fiyat = belirlenen > 0
     ? belirlenen
-    : (g.karMarji > 0 ? yuvarla(h.karliFiyatKdvDahil) : null);
+    : (g.karMarji > 0 ? yuvarla(h.karliFiyat) : null);
   const olcek = g.olcek || "Standart";
   const idler = [...costSecili];
 
@@ -1404,8 +1406,8 @@ qs("#cost-assign").addEventListener("click", async () => {
   const marj = fiyat && fiyat > 0 ? ((fiyat - maliyet) / fiyat) * 100 : null;
   const fiyatCumlesi = fiyat === null
     ? " Belirlenen fiyat ve hedef kâr marjı boş olduğu için satış fiyatı yazılmadı — ölçek yalnızca maliyet kaydı."
-    : ` Satış fiyatı ${money(fiyat)} (${belirlenen > 0 ? "belirlenen fiyat" : "maliyetten hesaplandı"}, nihai müşteri fiyatı)`
-      + `, kâr ${money(fiyat - maliyet)} · %${marj.toFixed(1)} marj. Müşteri ürün için ${money(fiyat)} öder.`;
+    : ` Net satış fiyatı ${money(fiyat)} (${belirlenen > 0 ? "belirlenen fiyat" : "maliyetten hesaplandı"}, KDV hariç)`
+      + `, kâr ${money(fiyat - maliyet)} · %${marj.toFixed(1)} marj. KDV ödeme adımında ayrıca eklenir.`;
 
   if (idler.length === 1) {
     const urun = state.products.find((p) => p.id === idler[0]);
@@ -1877,7 +1879,8 @@ qs("#settings-form").addEventListener("submit", async (event) => {
   const govde = {
     show_stock: form.elements.show_stock.checked ? 1 : 0,
     track_stock: form.elements.track_stock.checked ? 1 : 0,
-    min_cart_total: form.elements.min_cart_total.value.trim() || 0
+    min_cart_total: form.elements.min_cart_total.value.trim() || 0,
+    tax_rate: form.elements.tax_rate.value.trim()
   };
   ["company_title", "legal_address", "tax_office", "tax_number", "mersis", "return_address"]
     .forEach((alan) => { govde[alan] = form.elements[alan].value; });

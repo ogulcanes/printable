@@ -17,6 +17,7 @@ process.env.PAYTR_MERCHANT_KEY = "TESTKEY";
 process.env.PAYTR_MERCHANT_SALT = "TESTSALT";
 process.env.PAYTR_TEST_MODE = "1";
 process.env.SESSION_SECRET = "test-session-secret-that-is-long";
+process.env.ADMIN_USER = "paytrtest";
 process.env.ADMIN_PASSWORD = "test-admin-password";
 
 const realFetch = global.fetch;
@@ -35,6 +36,7 @@ const app = require("./server.js");
 const db = require("./db.js");
 let server;
 let baseUrl;
+let adminCookie;
 
 const hmacBase64 = (text) => crypto.createHmac("sha256", "TESTKEY").update(text).digest("base64");
 const statusToken = (reference) => crypto
@@ -107,6 +109,13 @@ test.before(async () => {
       resolve();
     });
   });
+  const login = await realFetch(`${baseUrl}/api/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "paytrtest", password: "test-admin-password" })
+  });
+  assert.equal(login.status, 200);
+  adminCookie = login.headers.get("set-cookie").split(";")[0];
 });
 
 test.after(async () => {
@@ -136,7 +145,7 @@ test("Bülten aboneliği veritabanına tek kayıt yazar", async () => {
   assert.equal(Number(row.total), 1);
 });
 
-test("Bireysel siparişte KDV toplamın içinden ayrıştırılır", async () => {
+test("Bireysel siparişte KDV net fiyatın üzerine eklenir", async () => {
   const order = await newCheckout();
   const row = await db.prepare(`
     SELECT invoice_type, tc_no, tax_office, tax_number, company_name,
@@ -151,8 +160,43 @@ test("Bireysel siparişte KDV toplamın içinden ayrıştırılır", async () =>
   assert.equal(row.company_name, null);
   assert.equal(row.billing_address, row.shipping_address);
   assert.equal(Number(row.tax_rate), 20);
-  assert.equal(Number(row.total), Number(row.subtotal) - Number(row.discount));
-  assert.equal(Number(row.tax_amount), Math.round(Number(row.total) * 20 / 120 * 100) / 100);
+  const net = Math.round((Number(row.subtotal) - Number(row.discount)) * 100) / 100;
+  const tax = Math.round(net * 20 / 100 * 100) / 100;
+  assert.equal(Number(row.tax_amount), tax);
+  assert.equal(Number(row.total), Math.round((net + tax) * 100) / 100);
+});
+
+test("Panelden değiştirilen KDV oranı checkout ve site bilgisine uygulanır", async () => {
+  const current = await realFetch(`${baseUrl}/api/settings`, {
+    headers: { Cookie: adminCookie }
+  }).then((response) => response.json());
+
+  const saveTaxRate = async (taxRate) => realFetch(`${baseUrl}/api/settings`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Cookie: adminCookie },
+    body: JSON.stringify({ ...current, tax_rate: taxRate })
+  });
+
+  const changed = await saveTaxRate(10);
+  assert.equal(changed.status, 200);
+  try {
+    const info = await realFetch(`${baseUrl}/api/site-info`).then((response) => response.json());
+    assert.equal(Number(info.tax_rate), 10);
+
+    const order = await newCheckout();
+    const row = await db.prepare(`
+      SELECT subtotal, discount, total, tax_rate, tax_amount
+      FROM orders WHERE payment_reference = ?
+    `).get(order.reference);
+    const net = Math.round((Number(row.subtotal) - Number(row.discount)) * 100) / 100;
+    const tax = Math.round(net * 10 / 100 * 100) / 100;
+    assert.equal(Number(row.tax_rate), 10);
+    assert.equal(Number(row.tax_amount), tax);
+    assert.equal(Number(row.total), Math.round((net + tax) * 100) / 100);
+  } finally {
+    const restored = await saveTaxRate(20);
+    assert.equal(restored.status, 200);
+  }
 });
 
 test("Kurumsal fatura bilgileri ve farklı fatura adresi siparişe kaydedilir", async () => {

@@ -194,8 +194,8 @@
     /* Ölçekli üründe indirim rozeti ve üstü çizili fiyat gösterilmiyor: fiyat
        ölçekten geliyor, sale_price o üründe uygulanmıyor (bkz. displayPrice). */
     const priceHTML = scales.length
-      ? `${money(scales[0].price)}${scales.length > 1 ? `<span class="price-from">'den itibaren</span>` : ""}`
-      : `${money(product.sale_price || product.price)}${product.sale_price ? ` <s>${money(product.price)}</s>` : ""}`;
+      ? `${money(scales[0].price)}<span class="price-from">${scales.length > 1 ? "'den itibaren · " : ""}KDV hariç</span>`
+      : `${money(product.sale_price || product.price)}${product.sale_price ? ` <s>${money(product.price)}</s>` : ""}<span class="price-from">KDV hariç</span>`;
     /* Birden fazla ölçek varsa karttan doğrudan sepete atmıyoruz — hangi boyu
        istediğini müşteri seçmeli; buton ürün sayfasına götürür (bkz.
        data-add-product işleyicisi). Kartın görünümü değişmesin diye yine
@@ -342,7 +342,7 @@
                  <span>Henüz değerlendirilmemiş</span></a>`}
           <p class="product-detail__price">${money(price)}${onSale ? ` <s>${money(product.price)}</s>${badgeHTML ? ` ${badgeHTML}` : ""}` : ""}</p>
           ${onSale ? `<p class="product-detail__save">${money(product.price - product.sale_price)} tasarruf edin</p>` : ""}
-          <p class="product-detail__tax">KDV dahil · Kargo alıcı ödemeli</p>
+          <p class="product-detail__tax">KDV hariç · KDV ödeme adımında eklenir · Kargo alıcı ödemeli</p>
           ${olcekSecici}
           ${swatches ? `<div class="product-detail__colors"><span>Renkler</span><div class="swatches">${swatches}</div></div>` : ""}
           ${product.description ? `<p class="product-detail__desc">${escapeHtml(product.description)}</p>` : ""}

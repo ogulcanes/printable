@@ -13,7 +13,7 @@
   const mounts = document.querySelectorAll("[data-pet-config]");
   if (!mounts.length) return;
 
-  /* Fiyatlar KDV dahil, tek parça. Değişince tek yer burası. */
+  /* Fiyatlar KDV hariç tabandır, tek parça. Değişince tek yer burası. */
   const SIZES = [
     { id: "15", label: "15 cm", note: "Kedi & küçük ırk", price: 850 },
     { id: "20", label: "20 cm", note: "Orta ırk", price: 1250 },
@@ -186,7 +186,7 @@
       mainName.setAttribute("fill", color.hex);
 
       priceNode.textContent = money(size.price);
-      priceNote.textContent = `${size.label} · ${color.name}`;
+      priceNote.textContent = `${size.label} · ${color.name} · KDV hariç`;
       caption.textContent = typed
         ? `Önizleme · ${shown} · ${size.label} · ${color.name}`
         : `Önizleme · isim yazınca burada görünür`;

@@ -190,14 +190,24 @@
   // summary can show it. The server recomputes everything on submit anyway.
   let campaigns = { discount: 0, gifts: [], applied: [], incentives: [] };
 
-  function renderSummary() {
+  function checkoutTotals() {
     const subtotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
     const discount = Math.min(campaigns.discount || 0, subtotal);
-    const net = subtotal - discount;
-    const total = Math.round(net * 100) / 100;
+    const net = Math.round((subtotal - discount) * 100) / 100;
     const taxAmount = taxRate > 0
-      ? Math.round((total * taxRate / (100 + taxRate)) * 100) / 100
+      ? Math.round((net * taxRate / 100) * 100) / 100
       : 0;
+    return {
+      subtotal,
+      discount,
+      net,
+      taxAmount,
+      total: Math.round((net + taxAmount) * 100) / 100
+    };
+  }
+
+  function renderSummary() {
+    const { subtotal, taxAmount, total } = checkoutTotals();
     const ucretsizKargo = total >= freeShippingThreshold;
     qs("#summary-items").innerHTML = cart.map((i) =>
       `<div class="summary-item"><span>${i.quantity} × ${i.name}${
@@ -216,7 +226,7 @@
     qs("#summary-campaigns").innerHTML = rows;
 
     qs("#summary-subtotal").textContent = money(subtotal);
-    qs("#summary-tax-label").textContent = `KDV (%${taxRate}, fiyata dâhil)`;
+    qs("#summary-tax-label").textContent = `KDV (%${taxRate})`;
     qs("#summary-tax").textContent = money(taxAmount);
     qs("#summary-total").textContent = money(total);
     qs(".summary-shipping").textContent = ucretsizKargo ? "Ücretsiz" : "Alıcı ödemeli";
@@ -432,7 +442,7 @@
     setError("#payment-error", "");
     olay("begin_checkout", {
       currency: "TRY",
-      value: cart.reduce((t, i) => t + i.price * i.quantity, 0),
+      value: checkoutTotals().total,
       items: cart.map(olayUrunu)
     });
     try {

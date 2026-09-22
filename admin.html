@@ -576,9 +576,9 @@
               <legend>Fiyatlama</legend>
               <label>Hedef kâr marjı <small>%</small><input type="number" name="karMarji" min="0" step="0.1" value="0"></label>
               <label>Kargo ücreti <small>TL</small><input type="number" name="kargo" min="0" step="0.01" value="0"></label>
-              <label>KDV <small>%</small><input type="number" name="kdv" min="0" step="0.1" value="20"></label>
+              <label>Hesaplama KDV'si <small>% · yalnızca maliyet tablosu</small><input type="number" name="kdv" min="0" step="0.1" value="20"></label>
               <label>Pazar yeri komisyonu <small>%</small><input type="number" name="komisyon" min="0" step="0.1" value="0"></label>
-              <label>Belirlenen satış fiyatı <small>TL · doluysa ölçeğe bu yazılır</small><input type="number" name="belirlenen" min="0" step="0.01" value="0"></label>
+              <label>Belirlenen net satış fiyatı <small>TL · KDV hariç · doluysa ölçeğe bu yazılır</small><input type="number" name="belirlenen" min="0" step="0.01" value="0"></label>
             </fieldset>
           </form>
         </div>
@@ -598,7 +598,7 @@
 
           <p class="form-note">Fiyat iki yoldan biriyle belirlenir: <strong>Belirlenen satış fiyatı</strong> doluysa o yazılır (“bu katlacı 62 TL’ye satıyorum” dersin, marj sonuçtan çıkar); boşsa maliyet + hedef kâr marjından hesaplanan <strong>kârlı satış fiyatı</strong> yazılır. İkisi de boşsa fiyat yazılmaz, ölçek yalnızca iç maliyet kaydı olur ve mağazada görünmez.</p>
 
-          <p class="form-note">Yazılan fiyat müşterinin vitrinde gördüğü ve kasada ödediği <strong>nihai ürün fiyatıdır</strong>. Örneğin 62 TL yazarsan müşteri ürün için 62 TL öder; ayrıca KDV eklenmez. Kargo koşulları ayrıca uygulanır.</p>
+          <p class="form-note">Yazılan fiyat ürünün <strong>KDV hariç net fiyatıdır</strong>. Örneğin 100 TL yazıp mağaza KDV oranını %20 seçersen PayTR, kampanya indirimi yoksa 120 TL tahsil eder. Buradaki hesaplama KDV'si yalnızca maliyet tablosunun önizlemesidir; kasadaki oranı <strong>Ayarlar → Mağaza Ayarları</strong> belirler.</p>
 
           <div class="cost-pick-toolbar">
             <input type="search" id="cost-pick-search" placeholder="Ürün adı veya koda göre ara..." autocomplete="off">
@@ -689,6 +689,11 @@
               <small class="field-note">0 yazarsan sınır uygulanmaz. Sınırın altındaki sepetlerde ödeme adımı uyarı verir ve sipariş tamamlanamaz. Kontrol, kupon indirimi uygulanmadan önceki ara toplama göre yapılır.</small>
             </label>
 
+            <label>Satış KDV oranı (%)
+              <input type="number" name="tax_rate" min="0" max="100" step="0.01" value="20" required>
+              <small class="field-note">Ürün ve ölçeklere yazdığın fiyatlar KDV hariç kabul edilir. Bu oran, kampanya indirimi sonrası net tutarın üzerine eklenir ve PayTR genel toplamı tahsil eder.</small>
+            </label>
+
             <div class="form-actions">
               <button class="btn-solid" type="submit">Mağaza ayarlarını kaydet</button>
             </div>
@@ -696,7 +701,7 @@
 
           <div class="admin-card">
             <div class="card-title"><h2>Satıcı / Yasal Bilgiler</h2></div>
-            <p class="form-note">Bu bilgiler <a href="/mesafeli-satis" target="_blank">Mesafeli Satış Sözleşmesi</a>, <a href="/iade" target="_blank">İade</a> ve <a href="/gizlilik" target="_blank">Gizlilik &amp; KVKK</a> sayfalarında otomatik olarak yayınlanır. Mağaza fiyatları <strong>%20 KDV dâhil</strong> nihai fiyatlardır; PayTR aynı nihai tutarı tahsil eder.</p>
+            <p class="form-note">Bu bilgiler <a href="/mesafeli-satis" target="_blank">Mesafeli Satış Sözleşmesi</a>, <a href="/iade" target="_blank">İade</a> ve <a href="/gizlilik" target="_blank">Gizlilik &amp; KVKK</a> sayfalarında otomatik olarak yayınlanır. Ürün fiyatları <strong>KDV hariç</strong> tabandır; yukarıdaki satış KDV oranı ödeme adımında fiyatın üzerine eklenir.</p>
 
             <label>Satıcı adı
               <input name="company_title" placeholder="Örn. FURKAN HÜSEYİN ARAZ">

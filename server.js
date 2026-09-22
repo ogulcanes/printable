@@ -86,9 +86,6 @@ const STORE_NOTIFICATION_EMAILS = [...new Set([
 const SEED_ADMIN_USERS = [...new Set(
   (process.env.ADMIN_USERS || "ogulcan,furkan").split(",").map((name) => name.trim().toLowerCase()).filter(Boolean).concat(ADMIN_USER.toLowerCase())
 )];
-/* Vitrindeki fiyat KDV DÂHİL nihai tüketici fiyatıdır. PayTR'ye bu nihai tutar
-   gönderilir; KDV ayrıca eklenmez, sipariş kaydında toplamın içinden ayrıştırılır. */
-const KDV_RATE = 20;
 const FREE_SHIPPING_THRESHOLD = 599; // İndirim sonrası nihai ürün toplamı.
 
 /* PayTR bilgileri yalnızca sunucuda tutulur. Test modu bilinçli olarak güvenli
@@ -177,7 +174,7 @@ function normalizedImageWidth(value) {
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "42";
+const SCHEMA_VERSION = "43";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -310,7 +307,7 @@ async function initDb() {
     min_order_total REAL NOT NULL DEFAULT 150,
     shell_share REAL NOT NULL DEFAULT 0.15,
     color_change_fee REAL NOT NULL DEFAULT 35,
-    tax_rate REAL NOT NULL DEFAULT 0,
+    tax_rate REAL NOT NULL DEFAULT 20,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
@@ -791,7 +788,7 @@ for (const [table, column, type] of [
   ["orders", "tax_amount", "REAL NOT NULL DEFAULT 0"],
   ["orders", "shipping_method", "TEXT"],
   // Eski kurulumlardan kalan fiyat ayarı + iletişim bilgileri.
-  ["pricing_settings", "tax_rate", "REAL NOT NULL DEFAULT 0"],
+  ["pricing_settings", "tax_rate", "REAL NOT NULL DEFAULT 20"],
   ["site_settings", "phone", "TEXT"],
   ["site_settings", "email", "TEXT"],
   ["site_settings", "contact_address", "TEXT"],
@@ -946,9 +943,27 @@ if (kademeRevizyonu?.value !== KADEME_REVIZYONU) {
 
 if (!(await db.prepare("SELECT COUNT(*) count FROM pricing_settings").get()).count) {
   await db.prepare(`
-    INSERT INTO pricing_settings (id, setup_fee, size_fee_per_cm, min_order_total, shell_share)
-    VALUES (1, 120, 2.5, 150, 0.15)
+    INSERT INTO pricing_settings (id, setup_fee, size_fee_per_cm, min_order_total, shell_share, tax_rate)
+    VALUES (1, 120, 2.5, 150, 0.15, 20)
   `).run();
+}
+
+/* Ürün fiyatlarının KDV hariç taban fiyata dönüştüğü sürüm. Canlıdaki eski
+   tax_rate alanı kullanılmadığı için 0'dı; bu geçiş onu bir kez %20 yapar.
+   Ayrı revizyon anahtarı sayesinde yönetici daha sonra 0 dâhil başka bir oran
+   seçerse sonraki şema güncellemeleri bu tercihi ezmez. */
+const MAGAZA_KDV_REVIZYONU = "2026-09-net-fiyat-uzerine-kdv-v1";
+const magazaKdvRevizyonu = await db.prepare("SELECT value FROM app_meta WHERE key = 'store_tax_rev'").get();
+if (magazaKdvRevizyonu?.value !== MAGAZA_KDV_REVIZYONU) {
+  await db.transaction(async (tx) => {
+    const claim = await tx.prepare(`
+      INSERT INTO app_meta (key, value) VALUES ('store_tax_rev', ?)
+      ON CONFLICT (key) DO UPDATE SET value = excluded.value
+      WHERE app_meta.value <> excluded.value
+    `).run(MAGAZA_KDV_REVIZYONU);
+    if (!claim.changes) return;
+    await tx.prepare("UPDATE pricing_settings SET tax_rate = 20, updated_at = NOW() WHERE id = 1").run();
+  });
 }
 
 const existingColors = (await db.prepare("SELECT COUNT(*) count FROM colors").get()).count;
@@ -2519,7 +2534,7 @@ function renderCartPanel() {
       </div>
       <div id="cart-items" class="cart-items"></div>
       <div class="cart-panel__footer" id="cart-footer" hidden>
-        <div class="cart-subtotal"><span>Ara toplam</span><strong id="cart-subtotal">0.00 TL</strong></div>
+        <div class="cart-subtotal"><span>KDV dâhil ürün toplamı</span><strong id="cart-subtotal">0.00 TL</strong></div>
         <p class="cart-note" id="cart-shipping-note">599 TL ve üzeri ücretsiz kargo</p>
         <a class="cart-checkout" href="/odeme">Ödemeye geç</a>
         <button type="button" class="cart-continue" id="cart-continue">Alışverişe devam et</button>
@@ -4363,26 +4378,29 @@ app.delete("/api/katlac/:id", requireAdmin, async (req, res) => {
   res.status(204).end();
 });
 
-/* Mağaza ayarları: stok görünürlüğü, minimum sepet tutarı ve satıcı kimliği.
-   SEO formuyla aynı tabloyu (site_settings) yazdıkları için birbirlerinin
-   alanlarını ezmemeleri gerekir — bu yüzden ikisi de yalnızca kendi
-   sütunlarını UPDATE eder, satırın tamamını değil. */
+/* Mağaza ayarları: stok görünürlüğü, minimum sepet tutarı, KDV ve satıcı kimliği.
+   SEO formuyla ortak site_settings alanlarını ezmemek için yalnızca bu formun
+   sütunları güncellenir; satış KDV'sinin tek kaynağı pricing_settings'tır. */
 app.get("/api/settings", requireAdmin, async (req, res) => {
-  const s = await db.prepare(`
-    SELECT show_stock, track_stock, min_cart_total, company_title, legal_address,
-      tax_office, tax_number, mersis, return_address
-    FROM site_settings WHERE id = 1
-  `).get() || {};
+  const [s, taxRate] = await Promise.all([
+    db.prepare(`
+      SELECT show_stock, track_stock, min_cart_total, company_title, legal_address,
+        tax_office, tax_number, mersis, return_address
+      FROM site_settings WHERE id = 1
+    `).get(),
+    currentTaxRate()
+  ]);
   res.json({
-    show_stock: s.show_stock ?? 1,
-    track_stock: s.track_stock ?? 0,
-    min_cart_total: s.min_cart_total ?? 0,
-    company_title: s.company_title || "",
-    legal_address: s.legal_address || "",
-    tax_office: s.tax_office || "",
-    tax_number: s.tax_number || "",
-    mersis: s.mersis || "",
-    return_address: s.return_address || ""
+    show_stock: s?.show_stock ?? 1,
+    track_stock: s?.track_stock ?? 0,
+    min_cart_total: s?.min_cart_total ?? 0,
+    tax_rate: taxRate,
+    company_title: s?.company_title || "",
+    legal_address: s?.legal_address || "",
+    tax_office: s?.tax_office || "",
+    tax_number: s?.tax_number || "",
+    mersis: s?.mersis || "",
+    return_address: s?.return_address || ""
   });
 });
 
@@ -4391,27 +4409,35 @@ app.put("/api/settings", requireAdmin, async (req, res) => {
   if (!Number.isFinite(minTutar) || minTutar < 0) {
     return res.status(400).json({ error: "Minimum sepet tutarı 0 veya daha büyük bir sayı olmalı." });
   }
+  const taxRate = Number(req.body.tax_rate);
+  if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) {
+    return res.status(400).json({ error: "KDV oranı 0 ile 100 arasında bir sayı olmalı." });
+  }
   const metin = (deger) => (typeof deger === "string" && deger.trim() ? deger.trim() : null);
 
-  await db.prepare(`
-    UPDATE site_settings SET
-      show_stock=@show_stock, track_stock=@track_stock, min_cart_total=@min_cart_total,
-      company_title=@company_title, legal_address=@legal_address,
-      tax_office=@tax_office, tax_number=@tax_number, mersis=@mersis,
-      return_address=@return_address,
-      updated_at=NOW()
-    WHERE id = 1
-  `).run({
-    // Checkbox işaretli değilse tarayıcı alanı hiç göndermez; yokluğu "kapalı" demek.
-    show_stock: req.body.show_stock === true || req.body.show_stock === "1" || req.body.show_stock === 1 ? 1 : 0,
-    track_stock: req.body.track_stock === true || req.body.track_stock === "1" || req.body.track_stock === 1 ? 1 : 0,
-    min_cart_total: minTutar,
-    company_title: metin(req.body.company_title),
-    legal_address: metin(req.body.legal_address),
-    tax_office: metin(req.body.tax_office),
-    tax_number: metin(req.body.tax_number),
-    mersis: metin(req.body.mersis),
-    return_address: metin(req.body.return_address)
+  await db.transaction(async (tx) => {
+    await tx.prepare(`
+      UPDATE site_settings SET
+        show_stock=@show_stock, track_stock=@track_stock, min_cart_total=@min_cart_total,
+        company_title=@company_title, legal_address=@legal_address,
+        tax_office=@tax_office, tax_number=@tax_number, mersis=@mersis,
+        return_address=@return_address,
+        updated_at=NOW()
+      WHERE id = 1
+    `).run({
+      // Checkbox işaretli değilse tarayıcı alanı hiç göndermez; yokluğu "kapalı" demek.
+      show_stock: req.body.show_stock === true || req.body.show_stock === "1" || req.body.show_stock === 1 ? 1 : 0,
+      track_stock: req.body.track_stock === true || req.body.track_stock === "1" || req.body.track_stock === 1 ? 1 : 0,
+      min_cart_total: minTutar,
+      company_title: metin(req.body.company_title),
+      legal_address: metin(req.body.legal_address),
+      tax_office: metin(req.body.tax_office),
+      tax_number: metin(req.body.tax_number),
+      mersis: metin(req.body.mersis),
+      return_address: metin(req.body.return_address)
+    });
+    await tx.prepare("UPDATE pricing_settings SET tax_rate = ?, updated_at = NOW() WHERE id = 1")
+      .run(taxRate);
   });
   res.json({ ok: true });
 });
@@ -4469,6 +4495,14 @@ app.delete("/api/admin-users/:id", requireAdmin, async (req, res) => {
 });
 
 const money = (value) => Number(value || 0);
+const normalizeTaxRate = (value) => {
+  const rate = Number(value);
+  return Number.isFinite(rate) && rate >= 0 && rate <= 100 ? rate : 20;
+};
+const currentTaxRate = async (client = db) => {
+  const row = await client.prepare("SELECT tax_rate FROM pricing_settings WHERE id = 1").get();
+  return normalizeTaxRate(row?.tax_rate);
+};
 const nullableMoney = (value) => value === "" || value == null ? null : Number(value);
 const toInt = (value) => Number.parseInt(value || "0", 10);
 const customizationType = (value) => {
@@ -5998,8 +6032,10 @@ app.post("/api/orders", requireAdmin, async (req, res) => {
 
   const subtotal = normalized.reduce((sum, item) => sum + item.line_total, 0);
   const discount = money(req.body.discount);
-  const total = Math.max(0, subtotal - discount);
-  const taxAmount = round2(total * KDV_RATE / (100 + KDV_RATE));
+  const netTotal = round2(Math.max(0, subtotal - discount));
+  const taxRate = await currentTaxRate();
+  const taxAmount = round2(netTotal * taxRate / 100);
+  const total = round2(netTotal + taxAmount);
   const orderNumber = `PRN-${Date.now().toString().slice(-8)}`;
 
   const id = await db.transaction(async (tx) => {
@@ -6019,7 +6055,7 @@ app.post("/api/orders", requireAdmin, async (req, res) => {
       discount,
       total,
       notes: req.body.notes || null,
-      tax_rate: KDV_RATE,
+      tax_rate: taxRate,
       tax_amount: taxAmount
     });
 
@@ -6930,12 +6966,11 @@ app.post("/api/checkout", async (req, res) => {
   // Kampanyalar burada yeniden hesaplanır; tarayıcının gönderdiği indirim yok sayılır.
   const kimlik = customerIdentity({ email: customerEmail, phone: customer.phone });
   const campaigns = await evaluateCampaigns(normalized, body.coupon_code, kimlik);
-  const discount = Math.min(campaigns.discount, subtotal);
-  const netTotal = round2(subtotal - discount);
 
-  // Vitrindeki fiyat nihai ürün fiyatıdır. Kampanya indirimi düşüldükten sonra
-  // ayrıca KDV eklenmez; kargo alıcı ödemeliyse o da çevrimiçi tahsilata girmez.
-  const taxRate = KDV_RATE;
+  // Ürün ve ölçek fiyatları KDV hariç tabandır. Geçerli oran sipariş anında
+  // veritabanından okunur ve siparişe yazılır; yönetici oranı daha sonra
+  // değiştirse bile eski siparişin vergi dökümü değişmez.
+  const taxRate = await currentTaxRate();
 
   const pendingOrder = await db.transaction(async (tx) => {
     /* Kontenjan rezervasyonu — sipariş yazılmadan ÖNCE, çünkü kontenjan
@@ -6975,11 +7010,11 @@ app.post("/api/checkout", async (req, res) => {
       customer.name.trim(), customerEmail, customer.phone.trim(), customer.address.trim(), customer.city?.trim() || null
     );
 
-    // Fiyatlar KDV dâhil: vergi genel toplama eklenmez, toplamın içinden ayrılır.
+    // Kampanya indirimi net fiyattan düşer, KDV kalan net tutarın üzerine eklenir.
     const taxAmount = taxRate > 0
-      ? round2(uygulananNet * taxRate / (100 + taxRate))
+      ? round2(uygulananNet * taxRate / 100)
       : 0;
-    const grandTotal = uygulananNet;
+    const grandTotal = round2(uygulananNet + taxAmount);
     const shippingMethod = grandTotal >= FREE_SHIPPING_THRESHOLD ? "free" : "recipient_paid";
     // Compose the structured address (mahalle / ilçe / il / posta kodu) into one line.
     const locality = [
@@ -7277,18 +7312,22 @@ app.patch("/api/orders/:id", requireAdmin, async (req, res) => {
 
 // Public site info — iletişim ve vitrin ayarları.
 app.get("/api/site-info", async (req, res) => {
-  const site = await db.prepare("SELECT phone, email, legal_address, working_hours, social_links, show_stock, min_cart_total FROM site_settings WHERE id = 1").get() || {};
-  const { wa } = await contactInfo();
+  const [site, taxRate, contact] = await Promise.all([
+    db.prepare("SELECT phone, email, legal_address, working_hours, social_links, show_stock, min_cart_total FROM site_settings WHERE id = 1").get(),
+    currentTaxRate(),
+    contactInfo()
+  ]);
+  const { wa } = contact;
   res.json({
-    tax_rate: KDV_RATE,
-    phone: site.phone || "",
-    email: site.email || "",
+    tax_rate: taxRate,
+    phone: site?.phone || "",
+    email: site?.email || "",
     whatsapp: wa ? `https://wa.me/${wa}` : "",
-    address: site.legal_address || "",
-    working_hours: site.working_hours || "",
-    social_links: site.social_links || "",
-    show_stock: site.show_stock ?? 1,
-    min_cart_total: Number(site.min_cart_total ?? 0),
+    address: site?.legal_address || "",
+    working_hours: site?.working_hours || "",
+    social_links: site?.social_links || "",
+    show_stock: site?.show_stock ?? 1,
+    min_cart_total: Number(site?.min_cart_total ?? 0),
     free_shipping_threshold: FREE_SHIPPING_THRESHOLD
   });
 });

@@ -49,6 +49,7 @@ function saveCart() {
 }
 const cart = loadCart();
 let freeShippingThreshold = 599;
+let storeTaxRate = 20;
 
 /* Sepet satırının kimliği ÜRÜN + ÖLÇEK. Aynı katlacın küçük ve büyük boyu iki
    ayrı satır, iki ayrı fiyat; yalnızca ürün id'siyle eşleştirseydik biri
@@ -107,6 +108,8 @@ function fillProductGrid(target, products) {
 }
 
 const cartSubtotal = () => cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+const cartTaxAmount = () => Math.round((cartSubtotal() * storeTaxRate / 100) * 100) / 100;
+const cartTotal = () => Math.round((cartSubtotal() + cartTaxAmount()) * 100) / 100;
 
 function renderCart() {
   if (cartCount) cartCount.textContent = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -119,6 +122,7 @@ function renderCart() {
         ${item.scale ? `<span class="cart-item__scale">${item.scale}</span>` : ""}
         ${cartCustomizationHTML(item)}
         <p>${money(item.price)}</p>
+        <span class="cart-item__scale">KDV hariç</span>
         <div class="cart-qty">
           <button type="button" data-dec="${lineKey(item)}" aria-label="Azalt">−</button>
           <span>${item.quantity}</span>
@@ -135,10 +139,10 @@ function renderCart() {
   const footer = document.querySelector("#cart-footer");
   if (footer) footer.hidden = cart.length === 0;
   const subtotalEl = document.querySelector("#cart-subtotal");
-  if (subtotalEl) subtotalEl.textContent = money(cartSubtotal());
+  if (subtotalEl) subtotalEl.textContent = money(cartTotal());
   const shippingNote = document.querySelector("#cart-shipping-note");
   if (shippingNote) {
-    const kalan = Math.max(0, freeShippingThreshold - cartSubtotal());
+    const kalan = Math.max(0, freeShippingThreshold - cartTotal());
     shippingNote.textContent = kalan > 0
       ? `Ücretsiz kargoya ${money(kalan)} kaldı`
       : "Ücretsiz kargoyu kazandınız 🎉";
@@ -1070,6 +1074,16 @@ loadProducts();
 loadCategories();
 loadHeroSlides();
 renderCart();
+fetch("/api/site-info")
+  .then((response) => response.json())
+  .then((info) => {
+    if (Number.isFinite(Number(info.tax_rate))) storeTaxRate = Math.max(0, Number(info.tax_rate));
+    if (Number.isFinite(Number(info.free_shipping_threshold))) {
+      freeShippingThreshold = Number(info.free_shipping_threshold);
+    }
+    renderCart();
+  })
+  .catch(() => {});
 observeCards();
 if (document.querySelector(".google-reviews-home")) {
   if ("requestIdleCallback" in window) requestIdleCallback(hydrateGoogleReviews, { timeout: 2500 });
