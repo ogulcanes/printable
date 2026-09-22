@@ -8987,6 +8987,28 @@ body.promo-modal-open .discovery-popup { display: none; }
   box-shadow: 0 8px 18px rgba(37, 42, 116, .24);
 }
 
+.discount-badge.campaign-badge--bundle {
+  display: inline-flex;
+  align-items: center;
+  background: linear-gradient(135deg, #14845f, #26a978);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(20, 132, 95, .26);
+}
+
+.product-detail__campaign {
+  margin: -6px 0 18px;
+  padding: 10px 12px;
+  border: 1px solid rgba(20, 132, 95, .22);
+  border-radius: 10px;
+  background: rgba(20, 132, 95, .08);
+  color: #166b50;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* Liste görünümünde diğer rozetler sadeleşse de paket kampanyası kaybolmasın. */
+.products--list .discount-badge.campaign-badge--bundle { display: inline-flex; }
+
 /* ---- Sizden Gelenler / müşteri vitrini ---- */
 .customer-stories-home {
   padding: 76px 0 84px;

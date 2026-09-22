@@ -173,6 +173,7 @@ test("Anahtarlık ve çakmaklık katalogları fiyat ve kampanyalarıyla mağazay
         assert.equal(Number(product.sale_price), Math.round(price * (1 - discount / 100) * 100) / 100);
       } else {
         assert.equal(product.sale_price, null);
+        assert.ok((product.promotions || []).some((campaign) => campaign.name.includes("4 Al 3 Öde")));
         kampanyaOrnekleri.push({ product, discount: price, category });
       }
     }
@@ -193,6 +194,13 @@ test("Anahtarlık ve çakmaklık katalogları fiyat ve kampanyalarıyla mağazay
     assert.equal(Number(payload.discount), discount, `${category} 4 al 3 öde indirimi bir ürün bedeli olmalı`);
     assert.ok(payload.applied.some((campaign) => campaign.name.includes("4 Al 3 Öde")));
   }
+
+  const sample = kampanyaOrnekleri[0].product;
+  const productsPage = await realFetch(`${baseUrl}/urunler`).then((response) => response.text());
+  const productPage = await realFetch(`${baseUrl}/urun/${sample.id}`).then((response) => response.text());
+  assert.match(productsPage, /4 AL 3 ÖDE/);
+  assert.match(productPage, /4 AL 3 ÖDE/);
+  assert.match(productPage, /bir ürün bedeli otomatik düşsün/);
 });
 
 test("Bireysel siparişte KDV net fiyatın üzerine eklenir", async () => {

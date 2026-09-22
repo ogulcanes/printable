@@ -174,6 +174,20 @@
       : "";
   };
 
+  const buyFourPayThreePromotion = (product) => (product.promotions || []).find((promotion) =>
+    Number(promotion.min_quantity) === 4 &&
+    promotion.kind === "discount" &&
+    promotion.discount_type === "fixed" &&
+    /4\s*al\s*3\s*öde/i.test(promotion.name || "")
+  ) || null;
+
+  const buyFourPayThreeBadgeHTML = (product, baseClass = "discount-badge") => {
+    const promotion = buyFourPayThreePromotion(product);
+    return promotion
+      ? `<span class="${baseClass} campaign-badge campaign-badge--bundle" title="${escapeHtml(promotion.name)}">4 AL 3 ÖDE</span>`
+      : "";
+  };
+
   const stars = (rating) => {
     const rounded = Math.round(Number(rating) || 0);
     return `<span class="stars" aria-label="5 üzerinden ${rating}">${"★".repeat(rounded)}${"☆".repeat(5 - rounded)}</span>`;
@@ -190,7 +204,8 @@
 
   function productCardHTML(product) {
     const scales = productScales(product);
-    const badgeHTML = !scales.length ? promotionBadgeHTML(product) : "";
+    const badgeHTML = buyFourPayThreeBadgeHTML(product)
+      || (!scales.length ? promotionBadgeHTML(product) : "");
     /* Ölçekli üründe indirim rozeti ve üstü çizili fiyat gösterilmiyor: fiyat
        ölçekten geliyor, sale_price o üründe uygulanmıyor (bkz. displayPrice). */
     const priceHTML = scales.length
@@ -276,7 +291,8 @@
     const madeToOrder = productIsMadeToOrder(product);
     const inStock = productIsAvailable(product);
     const onSale = !olcekler.length && product.sale_price && product.price > product.sale_price;
-    const badgeHTML = onSale ? promotionBadgeHTML(product) : "";
+    const bundlePromotion = buyFourPayThreePromotion(product);
+    const badgeHTML = buyFourPayThreeBadgeHTML(product) || (onSale ? promotionBadgeHTML(product) : "");
     const cats = (product.categories || [])
       .map((c) => `<a class="chip" href="/urunler?kategori=${c.id}">${escapeHtml(c.name)}</a>`).join("");
 
@@ -340,9 +356,10 @@
                  <span>${product.rating.average} · ${product.rating.count} değerlendirme</span></a>`
             : `<a class="product-detail__rating product-detail__rating--empty" href="#reviews-section">${stars(0)}
                  <span>Henüz değerlendirilmemiş</span></a>`}
-          <p class="product-detail__price">${money(price)}${onSale ? ` <s>${money(product.price)}</s>${badgeHTML ? ` ${badgeHTML}` : ""}` : ""}</p>
+          <p class="product-detail__price">${money(price)}${onSale ? ` <s>${money(product.price)}</s>` : ""}${badgeHTML ? ` ${badgeHTML}` : ""}</p>
           ${onSale ? `<p class="product-detail__save">${money(product.price - product.sale_price)} tasarruf edin</p>` : ""}
           <p class="product-detail__tax">KDV hariç · KDV ödeme adımında eklenir · Kargo alıcı ödemeli</p>
+          ${bundlePromotion ? `<p class="product-detail__campaign"><strong>4 Al 3 Öde:</strong> Bu kampanyaya dahil ürünlerden 4 adet ekleyin; ödeme adımında bir ürün bedeli otomatik düşsün.</p>` : ""}
           ${olcekSecici}
           ${swatches ? `<div class="product-detail__colors"><span>Renkler</span><div class="swatches">${swatches}</div></div>` : ""}
           ${product.description ? `<p class="product-detail__desc">${escapeHtml(product.description)}</p>` : ""}

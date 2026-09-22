@@ -4789,6 +4789,27 @@ const ratingOfProduct = db.prepare(`
   FROM reviews WHERE product_id = ? AND is_approved = 1
 `);
 
+/* Let product cards expose a promotion before the customer reaches checkout.
+   Only active campaigns directly linked to products are included, and coupon or
+   usage data never leaves the server. */
+async function activeProductPromotions(productIds) {
+  const ids = [...new Set([].concat(productIds || []).map(Number).filter(Boolean))];
+  if (!ids.length) return [];
+  const list = `(${ids.map(() => "?").join(",")})`;
+  return await db.prepare(`
+    SELECT cp.product_id, c.id, c.name, c.kind, c.discount_type,
+           c.discount_value, c.min_quantity, c.min_order_total
+    FROM campaigns c
+    JOIN campaign_products cp ON cp.campaign_id = c.id
+    WHERE cp.product_id IN ${list}
+      AND c.is_active = 1
+      AND (c.starts_at IS NULL OR c.starts_at::date <= CURRENT_DATE)
+      AND (c.ends_at IS NULL OR c.ends_at::date >= CURRENT_DATE)
+      AND (c.usage_limit IS NULL OR c.used_count < c.usage_limit)
+    ORDER BY c.id ASC
+  `).all(...ids);
+}
+
 /* Liste için toplu sürüm. withColors ürün BAŞINA 3 sorgu yapıyor; 16 ürünlük
    katalogda bu 49 sorgu demek. Uzak bir veritabanında (Supabase) ve küçük bir
    bağlantı havuzunda sorgular sıraya girip zaman aşımına uğruyordu — tarayıcı
@@ -4799,7 +4820,7 @@ async function decorateProducts(products) {
   const ids = products.map((p) => p.id);
   const list = `(${ids.map(() => "?").join(",")})`;
 
-  const [colorRows, categoryRows, ratingRows, imageRows, scaleRows] = await Promise.all([
+  const [colorRows, categoryRows, ratingRows, imageRows, scaleRows, promotionRows] = await Promise.all([
     db.prepare(`
       SELECT pc.product_id, c.* FROM colors c
       JOIN product_colors pc ON pc.color_id = c.id
@@ -4827,7 +4848,8 @@ async function decorateProducts(products) {
     db.prepare(`
       SELECT id, product_id, scale, unit_cost, price, inputs FROM product_cost_scales
       WHERE product_id IN ${list} ORDER BY unit_cost ASC, id ASC
-    `).all(...ids)
+    `).all(...ids),
+    activeProductPromotions(ids)
   ]);
 
   const bucket = (rows) => rows.reduce((map, row) => {
@@ -4840,6 +4862,7 @@ async function decorateProducts(products) {
   const ratings = Object.fromEntries(ratingRows.map((r) => [r.product_id, { average: r.average, count: r.count }]));
   const images = bucket(imageRows);
   const scales = bucket(scaleRows);
+  const promotions = bucket(promotionRows);
 
   return products.map((product) => ({
     ...product,
@@ -4848,7 +4871,8 @@ async function decorateProducts(products) {
     categories: categories[product.id] || [],
     images: images[product.id] || [],
     cost_scales: scales[product.id] || [],
-    scales: satisOlcekleri(scales[product.id], product.sale_price || product.price)
+    scales: satisOlcekleri(scales[product.id], product.sale_price || product.price),
+    promotions: promotions[product.id] || []
   }));
 }
 
@@ -4892,17 +4916,25 @@ const imagesOfProduct = db.prepare(`
 `);
 
 const withColors = async (product) => {
-  const olcekler = await db.prepare(
-    "SELECT id, scale, unit_cost, price, inputs FROM product_cost_scales WHERE product_id = ? ORDER BY unit_cost ASC, id ASC"
-  ).all(product.id);
+  const [olcekler, rating, colors, categories, images, promotionRows] = await Promise.all([
+    db.prepare(
+      "SELECT id, scale, unit_cost, price, inputs FROM product_cost_scales WHERE product_id = ? ORDER BY unit_cost ASC, id ASC"
+    ).all(product.id),
+    ratingOfProduct.get(product.id),
+    colorsOfProduct.all(product.id),
+    categoriesOfProduct.all(product.id),
+    imagesOfProduct.all(product.id),
+    activeProductPromotions([product.id])
+  ]);
   return {
     ...product,
-    rating: (await ratingOfProduct.get(product.id)) || { average: null, count: 0 },
-    colors: await colorsOfProduct.all(product.id),
-    categories: await categoriesOfProduct.all(product.id),
-    images: await imagesOfProduct.all(product.id),
+    rating: rating || { average: null, count: 0 },
+    colors,
+    categories,
+    images,
     cost_scales: olcekler,
-    scales: satisOlcekleri(olcekler, product.sale_price || product.price)
+    scales: satisOlcekleri(olcekler, product.sale_price || product.price),
+    promotions: promotionRows.map(({ product_id, ...promotion }) => promotion)
   };
 };
 
