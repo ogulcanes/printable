@@ -1157,9 +1157,9 @@ const extraSeoPages = [
   {
     slug: "istanbul-3d-baski", label: "İstanbul 3D baskı hizmeti",
     title: "İstanbul 3D Baskı Hizmeti ve Teslimat | Printable",
-    description: "İstanbul için STL ve 3MF dosyadan 3D baskı, ölçüye özel parça tasarımı, prototip ve küçük seri üretim. Üretim Bursa atölyemizde, teslimat kargoyla.",
+    description: "İstanbul üretim noktamızda STL ve 3MF dosyadan 3D baskı, ölçüye özel parça tasarımı, prototip ve küçük seri üretim hizmeti alın.",
     og_title: "İstanbul 3D Baskı Hizmeti | Printable",
-    og_description: "Dosyanızı gönderin; fiyat, üretim ve İstanbul teslimat planını birlikte netleştirelim."
+    og_description: "Dosyanızı gönderin; İstanbul'daki üretim ve teslimat planını birlikte netleştirelim."
   },
   {
     slug: "bursa-3d-baski", label: "Bursa 3D baskı hizmeti",
@@ -1170,6 +1170,21 @@ const extraSeoPages = [
   },
 ];
 for (const page of extraSeoPages) await addSeoPage.run(page);
+
+// İstanbul artık yalnızca Bursa'dan kargo gönderilen bir bölge değil, ikinci
+// üretim noktasıdır. Yalnızca önceki sabit açıklama duruyorsa düzelt; panelden
+// özel olarak değiştirilmiş SEO metnine dokunma.
+await db.prepare(`
+  UPDATE seo_pages
+     SET description = @description,
+         og_description = @og_description
+   WHERE slug = 'istanbul-3d-baski'
+     AND description = @old_description
+`).run({
+  old_description: "İstanbul için STL ve 3MF dosyadan 3D baskı, ölçüye özel parça tasarımı, prototip ve küçük seri üretim. Üretim Bursa atölyemizde, teslimat kargoyla.",
+  description: "İstanbul üretim noktamızda STL ve 3MF dosyadan 3D baskı, ölçüye özel parça tasarımı, prototip ve küçük seri üretim hizmeti alın.",
+  og_description: "Dosyanızı gönderin; İstanbul'daki üretim ve teslimat planını birlikte netleştirelim."
+});
 
 // Canlı veritabanındaki eski katalog meta metni Excel indirme akışını anlatıyor.
 // Yalnızca artık geçersiz olan o metni değiştir; panelden yazılmış farklı metne dokunma.
@@ -2430,7 +2445,7 @@ async function seoHead(req, slug) {
     "istanbul-3d-baski": {
       city: "İstanbul",
       name: "İstanbul 3D baskı ve özel parça üretimi",
-      description: "İstanbul'daki bireysel ve kurumsal müşteriler için STL/3MF dosyadan 3D baskı, ölçüye özel parça tasarımı, prototip ve küçük seri üretim; Bursa atölyesinden kargo teslimatı."
+      description: "İstanbul üretim noktasında bireysel ve kurumsal müşteriler için STL/3MF dosyadan 3D baskı, ölçüye özel parça tasarımı, prototip ve küçük seri üretim hizmeti."
     },
     "bursa-3d-baski": {
       city: "Bursa",

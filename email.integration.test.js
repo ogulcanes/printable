@@ -360,6 +360,23 @@ test("Doğrulanmış Instagram, Trendyol ve TikTok adresleri resmî kanal olarak
   assert.doesNotMatch(html, /[?&](?:stkn|sst|sk)=/);
 });
 
+test("Bursa ve İstanbul ayrı üretim noktaları olarak anlatılır", async () => {
+  const [homeResponse, istanbulResponse] = await Promise.all([
+    realFetch(`${baseUrl}/`),
+    realFetch(`${baseUrl}/istanbul-3d-baski`)
+  ]);
+  const [home, istanbul] = await Promise.all([homeResponse.text(), istanbulResponse.text()]);
+
+  assert.equal(homeResponse.status, 200);
+  assert.equal(istanbulResponse.status, 200);
+  assert.match(home, /Bursa ve İstanbul'da üretiyoruz/);
+  assert.match(home, /İstanbul üretim noktası/);
+  assert.doesNotMatch(home, /Bursa'da üretiyor, İstanbul'a gönderiyoruz/);
+  assert.match(istanbul, /İstanbul, Printable'ın ikinci üretim noktasıdır/);
+  assert.match(istanbul, /İstanbul siparişleri İstanbul üretim noktamızda hazırlanır/);
+  assert.doesNotMatch(istanbul, /Üretim Bursa'da/);
+});
+
 test("Toplu anahtarlık talebi adet kurallarını uygular, panele ve e-postaya düşer", async () => {
   const page = await realFetch(`${baseUrl}/anahtarlik-katalogu`);
   const html = await page.text();
