@@ -219,6 +219,7 @@ test("Anahtarlık ve çakmaklık katalogları fiyat ve kampanyalarıyla mağazay
   assert.match(homePage, /Ejderhayı uyandır\./);
   assert.match(homePage, new RegExp(`data-add-product="${dragon.id}"`));
   assert.match(homePage, /isikli-ejderha-figuru-2\.png/);
+  assert.doesNotMatch(homePage, /class="dragon-spotlight__mini"/);
 
   const bundlePage = await realFetch(`${baseUrl}/urunler?kampanya=4al3`).then((response) => response.text());
   const bundleOlmayan = products.find((product) => !(product.promotions || []).some((campaign) => campaign.name.includes("4 Al 3 Öde")));

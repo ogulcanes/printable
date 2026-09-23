@@ -883,37 +883,6 @@ img { display: block; max-width: 100%; }
 .dragon-spotlight__glow--red { left: 5%; bottom: -20%; background: #ff1b12; }
 .dragon-spotlight__glow--blue { right: -15%; top: -17%; background: #146eff; opacity: .17; }
 
-.dragon-spotlight__mini {
-  position: absolute;
-  z-index: 3;
-  left: 28px;
-  bottom: 27px;
-  display: grid;
-  width: 145px;
-  overflow: hidden;
-  padding: 7px 7px 9px;
-  border: 1px solid rgba(255, 255, 255, .8);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, .94);
-  box-shadow: 0 18px 42px rgba(0, 0, 0, .4);
-  transform: rotate(-4deg);
-}
-
-.dragon-spotlight__mini img {
-  width: 100%;
-  aspect-ratio: 4 / 5;
-  object-fit: cover;
-  border-radius: 12px;
-}
-
-.dragon-spotlight__mini small {
-  padding-top: 7px;
-  color: #272934;
-  font-size: 10px;
-  font-weight: 900;
-  text-align: center;
-}
-
 .dragon-spotlight__mood {
   position: absolute;
   z-index: 3;
@@ -951,7 +920,6 @@ img { display: block; max-width: 100%; }
   .dragon-spotlight__purchase > div { width: 100%; }
   .dragon-spotlight__purchase a,
   .dragon-spotlight__purchase button { flex: 1; padding-inline: 12px; }
-  .dragon-spotlight__mini { left: 16px; bottom: 18px; width: 112px; border-radius: 15px; }
   .dragon-spotlight__mood { top: 17px; right: 17px; }
 }
 

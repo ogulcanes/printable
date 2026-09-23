@@ -3469,7 +3469,6 @@ async function renderHomeGrids(sayfa) {
     if (!isikliEjderha) return "";
     const alternatif = (isikliEjderha.images || []).find((image) => image.media_type !== "video")?.image_path;
     const karanlikGorsel = alternatif || isikliEjderha.image_path;
-    const urunGorseli = isikliEjderha.image_path || alternatif;
     const fiyat = sablonlar.money(sablonlar.displayPrice(isikliEjderha));
     const alinabilir = sablonlar.productIsAvailable(isikliEjderha);
 
@@ -3498,10 +3497,6 @@ async function renderHomeGrids(sayfa) {
               <span class="dragon-spotlight__glow dragon-spotlight__glow--red" aria-hidden="true"></span>
               <span class="dragon-spotlight__glow dragon-spotlight__glow--blue" aria-hidden="true"></span>
               <img class="dragon-spotlight__hero-image" src="${escapeHtml(sablonlar.gorselAdresi(karanlikGorsel, 1200) || "/assets/printable-logo.svg")}" width="900" height="1125" loading="lazy" alt="${escapeHtml(isikliEjderha.image_alt || isikliEjderha.name)} karanlıkta ışıklı görünüm">
-              <span class="dragon-spotlight__mini">
-                <img src="${escapeHtml(sablonlar.gorselAdresi(urunGorseli, 500) || "/assets/printable-logo.svg")}" width="400" height="500" loading="lazy" alt="">
-                <small>Işıklı görünüm</small>
-              </span>
               <span class="dragon-spotlight__mood"><b>Gündüz heykel.</b><small>Gece ambiyans.</small></span>
             </a>
           </article>
