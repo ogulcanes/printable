@@ -348,6 +348,18 @@ test("Ana sayfa Google değerlendirmelerini fotoğraflı gösterir ve eski yorum
   googleReviewsMode = "success";
 });
 
+test("Doğrulanmış Instagram, Trendyol ve TikTok adresleri resmî kanal olarak yayınlanır", async () => {
+  const page = await realFetch(`${baseUrl}/`);
+  const html = await page.text();
+
+  assert.equal(page.status, 200);
+  assert.match(html, /https:\/\/www\.instagram\.com\/printablestr/);
+  assert.match(html, /https:\/\/www\.trendyol\.com\/magaza\/printable-m-1334446/);
+  assert.match(html, /https:\/\/www\.tiktok\.com\/@printabletr/);
+  assert.match(html, /Trendyol Mağazası/);
+  assert.doesNotMatch(html, /[?&](?:stkn|sst|sk)=/);
+});
+
 test("Toplu anahtarlık talebi adet kurallarını uygular, panele ve e-postaya düşer", async () => {
   const page = await realFetch(`${baseUrl}/anahtarlik-katalogu`);
   const html = await page.text();

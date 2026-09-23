@@ -174,7 +174,7 @@ function normalizedImageWidth(value) {
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "46";
+const SCHEMA_VERSION = "47";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -1204,7 +1204,11 @@ for (const g of varsayilanOgGorselleri) {
 
 const SITE_CONTACT = {
   phone: "0543 687 4208",
-  social_links: "https://www.instagram.com/printablestr\nhttps://www.tiktok.com/@printabletr"
+  social_links: [
+    "https://www.instagram.com/printablestr",
+    "https://www.trendyol.com/magaza/printable-m-1334446",
+    "https://www.tiktok.com/@printabletr"
+  ].join("\n")
 };
 const SITE_LEGAL = {
   company_title: "FURKAN HÜSEYİN ARAZ"
@@ -1235,6 +1239,27 @@ await db.prepare(`
     company_title = COALESCE(NULLIF(TRIM(company_title), ''), @company_title)
   WHERE id = 1
 `).run({ ...SITE_CONTACT, ...SITE_LEGAL });
+
+/* Kullanıcının doğruladığı resmî marka hesapları bir kez canlı ayara taşınır.
+   Ayrı revizyon anahtarı, sonraki şema güncellemelerinde panelden yapılabilecek
+   değişikliklerin tekrar ezilmesini önler. Takip parametreleri özellikle
+   saklanmaz; canonical profil ve mağaza adresleri kullanılır. */
+const RESMI_KANALLAR_REVIZYONU = "2026-09-resmi-kanallar-v1";
+const resmiKanallarRevizyonu = await db.prepare(
+  "SELECT value FROM app_meta WHERE key = 'official_channels_rev'"
+).get();
+if (resmiKanallarRevizyonu?.value !== RESMI_KANALLAR_REVIZYONU) {
+  await db.transaction(async (tx) => {
+    const claim = await tx.prepare(`
+      INSERT INTO app_meta (key, value) VALUES ('official_channels_rev', ?)
+      ON CONFLICT (key) DO UPDATE SET value = excluded.value
+      WHERE app_meta.value <> excluded.value
+    `).run(RESMI_KANALLAR_REVIZYONU);
+    if (!claim.changes) return;
+    await tx.prepare("UPDATE site_settings SET social_links = ? WHERE id = 1")
+      .run(SITE_CONTACT.social_links);
+  });
+}
 
 const existingProducts = (await db.prepare("SELECT COUNT(*) count FROM products").get()).count;
 if (!existingProducts) {
