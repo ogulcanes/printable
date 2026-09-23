@@ -1154,6 +1154,20 @@ const extraSeoPages = [
     og_title: "Sizden Gelenler | Printable Müşteri Vitrini",
     og_description: "3D baskı ürünlerimizin müşterilerimizden gelen fotoğraflarını ve deneyim notlarını keşfedin."
   },
+  {
+    slug: "istanbul-3d-baski", label: "İstanbul 3D baskı hizmeti",
+    title: "İstanbul 3D Baskı Hizmeti ve Teslimat | Printable",
+    description: "İstanbul için STL ve 3MF dosyadan 3D baskı, ölçüye özel parça tasarımı, prototip ve küçük seri üretim. Üretim Bursa atölyemizde, teslimat kargoyla.",
+    og_title: "İstanbul 3D Baskı Hizmeti | Printable",
+    og_description: "Dosyanızı gönderin; fiyat, üretim ve İstanbul teslimat planını birlikte netleştirelim."
+  },
+  {
+    slug: "bursa-3d-baski", label: "Bursa 3D baskı hizmeti",
+    title: "Bursa 3D Baskı Hizmeti ve Yerel Teslimat | Printable",
+    description: "Bursa merkezli Printable atölyesinde STL ve 3MF baskı, ölçüye özel yedek parça, prototip ve küçük seri üretim hizmeti alın.",
+    og_title: "Bursa 3D Baskı Hizmeti | Printable",
+    og_description: "Bursa'daki atölyemizden 3D baskı, özel parça tasarımı ve teslimat seçenekleri."
+  },
 ];
 for (const page of extraSeoPages) await addSeoPage.run(page);
 
@@ -2151,12 +2165,13 @@ app.use(async (req, res, next) => {
 
 /* Tarayıcının dosyayı doğrudan Supabase Storage'a yüklemesi için imzalı adres.
    Dosya sunucudan geçmez — Vercel'in ~4.5 MB istek sınırı böylece aşılır.
-   Görsel yüklemesi admin'e özel; model yüklemesi teklif formundan herkese açık,
-   o yüzden uzantı doğrulaması burada, sunucuda yapılır. */
+   Ürün görseli admin'e özel; model, tasarım referansı ve açık yayın izni verilen
+   müşteri vitrini fotoğrafı ilgili herkese açık formlardan gelir. Uzantı
+   doğrulaması her durumda burada, sunucuda yapılır. */
 app.post("/api/uploads/sign", async (req, res) => {
   const requestedKind = req.body?.kind;
-  const kind = ["image", "media", "model", "design"].includes(requestedKind) ? requestedKind : "model";
-  if (!["model", "design"].includes(kind) && !(await isAuthed(req))) {
+  const kind = ["image", "media", "showcase", "model", "design"].includes(requestedKind) ? requestedKind : "model";
+  if (!["model", "design", "showcase"].includes(kind) && !(await isAuthed(req))) {
     return res.status(401).json({ error: "Yetkiniz yok." });
   }
   if (!storage.enabled) {
@@ -2345,7 +2360,9 @@ async function seoHead(req, slug) {
     if (keywords) tags.push(`<meta name="keywords" content="${escapeHtml(keywords)}">`);
   }
 
-  const sameAs = (site.social_links || "").split(/[\s,]+/).filter(Boolean);
+  // Yalnızca gerçek HTTP(S) hesapları Organization.sameAs içine girer. Yönetim
+  // paneline yanlışlıkla yapıştırılan metin veya göreli adres yapısal veriyi bozmaz.
+  const sameAs = (site.social_links || "").split(/[\s,]+/).filter((value) => /^https?:\/\//i.test(value));
   const jsonLd = {
     "@context": "https://schema.org",
     "@graph": [
@@ -2384,6 +2401,48 @@ async function seoHead(req, slug) {
     });
   }
 
+  const yerelHizmetler = {
+    "istanbul-3d-baski": {
+      city: "İstanbul",
+      name: "İstanbul 3D baskı ve özel parça üretimi",
+      description: "İstanbul'daki bireysel ve kurumsal müşteriler için STL/3MF dosyadan 3D baskı, ölçüye özel parça tasarımı, prototip ve küçük seri üretim; Bursa atölyesinden kargo teslimatı."
+    },
+    "bursa-3d-baski": {
+      city: "Bursa",
+      name: "Bursa 3D baskı ve özel parça üretimi",
+      description: "Bursa merkezli atölyede STL/3MF dosyadan 3D baskı, ölçüye özel yedek parça tasarımı, prototip ve küçük seri üretim hizmeti."
+    }
+  };
+  const yerelHizmet = yerelHizmetler[slug];
+  if (yerelHizmet) {
+    jsonLd["@graph"].push({
+      "@type": "Service",
+      name: yerelHizmet.name,
+      serviceType: "3D baskı, 3D modelleme ve prototip üretimi",
+      description: yerelHizmet.description,
+      ...(canonical ? { url: canonical } : {}),
+      provider: {
+        "@type": "Organization",
+        name: site.site_name || "Printable",
+        url: siteUrl,
+        ...(site.phone ? { telephone: site.phone } : {}),
+        ...(site.legal_address ? {
+          address: {
+            "@type": "PostalAddress",
+            streetAddress: site.legal_address,
+            addressLocality: "Bursa",
+            addressCountry: "TR"
+          }
+        } : {})
+      },
+      areaServed: { "@type": "City", name: yerelHizmet.city },
+      availableChannel: {
+        "@type": "ServiceChannel",
+        serviceUrl: absoluteUrl(req, "/stl-teklif", site.site_url)
+      }
+    });
+  }
+
   /* Breadcrumb. Arama sonucunda ham adres yerine "Ana Sayfa › Ürünler" yolu
      görünür — ürün sayfalarında zaten vardı (productMetaTags), alt sayfalarda
      yoktu. Google en az iki basamak istiyor, o yüzden ana sayfaya eklenmiyor.
@@ -2400,6 +2459,8 @@ async function seoHead(req, slug) {
     "anahtarlik-katalogu": "Toptan Anahtarlık Kataloğu",
     "cakmaklik-katalogu": "Toptan Çakmaklık Kataloğu",
     "sizden-gelenler": "Sizden Gelenler",
+    "istanbul-3d-baski": "İstanbul 3D Baskı",
+    "bursa-3d-baski": "Bursa 3D Baskı",
     landing: "Ürün Seçkisi",
     iade: "İade ve Cayma Hakkı",
     gizlilik: "Gizlilik ve KVKK",
@@ -2810,20 +2871,54 @@ function whatsappDigits(value) {
 const SOCIAL_ICONS = {
   instagram: `<path d="M12 2.2c3.2 0 3.6 0 4.8.07 1.2.05 1.8.25 2.2.42.6.2 1 .5 1.4.9.4.4.7.8.9 1.4.17.4.37 1 .42 2.2.07 1.2.07 1.6.07 4.8s0 3.6-.07 4.8c-.05 1.2-.25 1.8-.42 2.2-.2.6-.5 1-.9 1.4-.4.4-.8.7-1.4.9-.4.17-1 .37-2.2.42-1.2.07-1.6.07-4.8.07s-3.6 0-4.8-.07c-1.2-.05-1.8-.25-2.2-.42-.6-.2-1-.5-1.4-.9-.4-.4-.7-.8-.9-1.4-.17-.4-.37-1-.42-2.2C2.2 15.6 2.2 15.2 2.2 12s0-3.6.07-4.8c.05-1.2.25-1.8.42-2.2.2-.6.5-1 .9-1.4.4-.4.8-.7 1.4-.9.4-.17 1-.37 2.2-.42C8.4 2.2 8.8 2.2 12 2.2Zm0 1.8c-3.1 0-3.5 0-4.7.07-1.1.05-1.7.24-2.1.4-.5.2-.9.44-1.3.84-.4.4-.64.8-.84 1.3-.16.4-.35 1-.4 2.1C2.6 9.9 2.6 10.3 2.6 12s0 2.1.06 3.3c.05 1.1.24 1.7.4 2.1.2.5.44.9.84 1.3.4.4.8.64 1.3.84.4.16 1 .35 2.1.4 1.2.06 1.6.06 4.7.06s3.5 0 4.7-.06c1.1-.05 1.7-.24 2.1-.4.5-.2.9-.44 1.3-.84.4-.4.64-.8.84-1.3.16-.4.35-1 .4-2.1.06-1.2.06-1.6.06-3.3s0-2.1-.06-3.3c-.05-1.1-.24-1.7-.4-2.1a3.5 3.5 0 0 0-.84-1.3 3.5 3.5 0 0 0-1.3-.84c-.4-.16-1-.35-2.1-.4C15.5 4 15.1 4 12 4Zm0 3a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 1.8a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4Zm5.2-3.1a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4Z"/>`,
   tiktok: `<path d="M16.6 2h-3.1v14.1a2.6 2.6 0 1 1-2.6-2.6c.2 0 .5 0 .7.1v-3.2a6 6 0 0 0-.7 0 5.8 5.8 0 1 0 5.8 5.8V9.4a7 7 0 0 0 4.1 1.3V7.5a4.1 4.1 0 0 1-4.2-4.1V2Z"/>`,
+  trendyol: `<path d="M5.2 7.2h13.6l-1 13H6.2l-1-13Z"/><path d="M8.5 8V6.1a3.5 3.5 0 0 1 7 0V8M8.3 11h7.4M12 11v6.2"/>`,
   whatsapp: `<path d="M12 2a10 10 0 0 0-8.6 15L2 22l5.2-1.4A10 10 0 1 0 12 2Zm0 1.9a8.1 8.1 0 1 1-4.2 15l-.3-.2-3 .8.8-3-.2-.3A8.1 8.1 0 0 1 12 3.9Zm-3.7 4c-.2 0-.5.1-.7.4-.3.3-.9.9-.9 2.1s.9 2.4 1 2.6c.1.2 1.7 2.7 4.2 3.7 2.1.8 2.5.7 3 .6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.2.2-1.3-.1-.1-.3-.2-.5-.3l-1.8-.9c-.3-.1-.5-.1-.6.1l-.8 1c-.2.2-.3.2-.5.1-.3-.1-1.2-.4-2.2-1.4-.8-.7-1.4-1.6-1.5-1.9-.2-.2 0-.4.1-.5l.4-.5c.1-.2.2-.3.3-.5v-.5c-.1-.1-.6-1.5-.8-2-.2-.5-.4-.4-.6-.5h-.5Z"/>`,
   generic: `<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 1.9c1 0 2.3 1.9 2.8 5.2H9.2c.5-3.3 1.8-5.2 2.8-5.2ZM8.9 11h6.2a20 20 0 0 1 0 2H8.9a20 20 0 0 1 0-2Zm-1.8 2H4.1a8.1 8.1 0 0 1 0-2h3a22 22 0 0 0 0 2Zm1.8 2h5.8c-.5 3.3-1.8 5.2-2.9 5.2s-2.4-1.9-2.9-5.2Zm7.8-2a22 22 0 0 0 0-2h3a8.1 8.1 0 0 1 0 2h-3Zm2.4-4h-2.7a13 13 0 0 0-1.3-4A8.1 8.1 0 0 1 19.1 9ZM9.8 5a13 13 0 0 0-1.3 4H5.8a8.1 8.1 0 0 1 4-4Zm-4 10h2.7a13 13 0 0 0 1.3 4 8.1 8.1 0 0 1-4-4Zm8.4 4a13 13 0 0 0 1.3-4h2.7a8.1 8.1 0 0 1-4 4Z"/>`
 };
 
 function socialAccounts(links) {
-  return (links || "").split(/[\s,]+/).filter(Boolean).map((url) => {
+  return (links || "").split(/[\s,]+/).filter((url) => /^https?:\/\//i.test(url)).map((url) => {
     const host = url.replace(/^https?:\/\//i, "").toLowerCase();
     if (host.includes("instagram.com")) return { url, key: "instagram", label: "Instagram" };
     if (host.includes("tiktok.com")) return { url, key: "tiktok", label: "TikTok" };
+    if (host.includes("trendyol.com")) return { url, key: "trendyol", label: "Trendyol Mağazası" };
     if (host.includes("facebook.com")) return { url, key: "generic", label: "Facebook" };
     if (host.includes("youtube.com")) return { url, key: "generic", label: "YouTube" };
     if (host.includes("x.com") || host.includes("twitter.com")) return { url, key: "generic", label: "X" };
     return { url, key: "generic", label: "Sosyal medya" };
   });
+}
+
+function officialChannelCopy(account) {
+  if (account.key === "instagram") return "Yeni baskılar, atölye kareleri ve ürün videoları";
+  if (account.key === "tiktok") return "Üretim süreci ve hareketli ürün videoları";
+  if (account.key === "trendyol") return "Printable ürünlerini pazar yerinde inceleyin";
+  return "Printable'ın resmî dış kanalını ziyaret edin";
+}
+
+/* Ana sayfadaki görünür bağlantılar ile Organization.sameAs aynı ayardan beslenir.
+   Böylece panelde eklenen Trendyol mağazası veya sosyal hesap hem ziyaretçiye hem
+   arama motoruna aynı anda doğrulanabilir bir marka bağlantısı verir. */
+async function renderOfficialChannels() {
+  const site = await db.prepare("SELECT social_links FROM site_settings WHERE id = 1").get() || {};
+  const accounts = socialAccounts(site.social_links);
+  if (!accounts.length) return "";
+  return `<section class="official-channels" aria-labelledby="official-channels-title">
+    <div class="container official-channels__layout">
+      <header>
+        <p class="section-kicker">Resmî kanallarımız</p>
+        <h2 id="official-channels-title">Bizi doğru hesapta bulun.</h2>
+        <p>Bu bağlantılar doğrudan Printable tarafından yayımlanır. Güncel ürünleri, atölye paylaşımlarını ve varsa pazar yeri mağazamızı buradan açabilirsiniz.</p>
+      </header>
+      <div class="official-channels__grid">
+        ${accounts.map((account) => `<a class="official-channel official-channel--${account.key}" href="${escapeHtml(account.url)}" target="_blank" rel="noopener">
+          <span class="official-channel__icon" aria-hidden="true"><svg viewBox="0 0 24 24">${SOCIAL_ICONS[account.key] || SOCIAL_ICONS.generic}</svg></span>
+          <span><small>Printable resmî bağlantısı</small><strong>${escapeHtml(account.label)}</strong><em>${escapeHtml(officialChannelCopy(account))}</em></span>
+          <b aria-hidden="true">↗</b>
+        </a>`).join("")}
+      </div>
+    </div>
+  </section>`;
 }
 
 // Contact block shared by the footer and the floating WhatsApp button.
@@ -2948,6 +3043,7 @@ async function renderFooter(contact = null) {
       <div class="container footer__grid">
         <div><h3>Kategoriler</h3><a href="/urunler">Figürler</a><a href="/urunler">Anahtarlıklar</a><a href="/urunler">Fidget & Stres</a><a href="/urunler">Düdükler</a></div>
         <div><h3>Kurumsal</h3><a href="/sizden-gelenler">Sizden Gelenler</a><a href="/katalog">Katalog</a><a href="/cakmaklik-katalogu">Toptan Çakmaklık</a><a href="/hakkinda">Hakkımızda</a><a href="/iletisim">İletişim</a><a href="/stl-teklif">Özel 3D baskı</a><a href="/tasarim">Özel tasarım</a><a href="/urunler">Tüm ürünler</a></div>
+        <div><h3>Bölgesel Hizmet</h3><a href="/bursa-3d-baski">Bursa 3D Baskı</a><a href="/istanbul-3d-baski">İstanbul 3D Baskı</a><a href="/stl-teklif">Dosya yükle ve fiyat al</a><a href="/tasarim">Model çizimi iste</a></div>
         <div><h3>Müşteri Desteği</h3><a href="/iletisim">Bize ulaşın</a><a href="/iade">İade & Değişim</a><a href="/sss">Kargo</a><a href="/sss">S.S.S.</a></div>
         <div><h3>Yasal</h3><a href="/mesafeli-satis">Mesafeli Satış Sözleşmesi</a><a href="/iade">İade ve Cayma Hakkı</a><a href="/gizlilik">Gizlilik ve KVKK</a></div>
         <div class="footer-logo printable-wordmark">
@@ -3210,16 +3306,16 @@ async function renderCustomerShowcases(sayfa) {
   `).all();
   const empty = `
     <div class="customer-stories-empty">
-      <strong>İlk müşteri kareleri hazırlanıyor.</strong>
-      <p>Siparişiniz ulaştığında fotoğrafını bizimle paylaşın; izninizle bu vitrinde yer verelim.</p>
-      <a href="/iletisim">Fotoğrafınızı bize gönderin</a>
+      <strong>Vitrinin ilk karesini siz gönderin.</strong>
+      <p>Printable ürününüzü kullanım yerinde fotoğraflayın. Gönderiniz önce ekibimiz tarafından incelenir; yalnızca açık izninizle adınızın kısaltılmış hâliyle yayınlanır.</p>
+      <a href="/sizden-gelenler#fotograf-gonder">Fotoğraf gönder</a>
     </div>`;
   const average = items.length
     ? items.reduce((sum, item) => sum + Number(item.rating || 0), 0) / items.length
     : 0;
   const summary = items.length
     ? `<strong>${average.toFixed(1).replace(".", ",")}</strong><span>5 üzerinden · ${items.length} müşteri paylaşımı</span>`
-    : `<strong>Yeni</strong><span>Müşteri fotoğrafları eklendikçe burada görünecek</span>`;
+    : `<strong>Katılın</strong><span>Fotoğrafınızı gönderin; onaydan sonra vitrinde yer alsın</span>`;
 
   return sayfa
     .replace("<!--customer-showcases-home-->", items.length
@@ -3628,6 +3724,7 @@ async function sendPage(req, res, file, slug) {
   if (sayfa.includes("<!--urun-izgarasi-->")) sayfa = sayfa.replace("<!--urun-izgarasi-->", await renderProductGrid(req.query));
   if (sayfa.includes("<!--landing-vitrin-->")) sayfa = sayfa.replace("<!--landing-vitrin-->", await renderLandingStage());
   if (sayfa.includes("<!--customer-showcases-")) sayfa = await renderCustomerShowcases(sayfa);
+  if (sayfa.includes("<!--official-channels-->")) sayfa = sayfa.replace("<!--official-channels-->", await renderOfficialChannels());
   if (sayfa.includes("<!--google-reviews-")) sayfa = await renderGoogleReviews(sayfa);
   if (sayfa.includes("<!--hero-slaytlari-->")) sayfa = await renderHero(sayfa);
   if (sayfa.includes('id="category-grid"')) sayfa = await renderHomeCategories(sayfa);
@@ -3653,6 +3750,8 @@ app.get("/urunler", async (req, res) => await sendPage(req, res, "urunler.html",
 app.get("/stl-teklif", async (req, res) => await sendPage(req, res, "stl-teklif.html", "stl-teklif"));
 app.get("/tasarim", async (req, res) => await sendPage(req, res, "tasarim.html", "tasarim"));
 app.get("/sizden-gelenler", async (req, res) => await sendPage(req, res, "sizden-gelenler.html", "sizden-gelenler"));
+app.get("/istanbul-3d-baski", async (req, res) => await sendPage(req, res, "istanbul-3d-baski.html", "istanbul-3d-baski"));
+app.get("/bursa-3d-baski", async (req, res) => await sendPage(req, res, "bursa-3d-baski.html", "bursa-3d-baski"));
 app.get("/musteri-yorumlari", (req, res) => res.redirect(301, "/#musteri-yorumlari"));
 app.get("/hakkinda", async (req, res) => await sendPage(req, res, "hakkinda.html", "hakkinda"));
 app.get("/iletisim", async (req, res) => await sendPage(req, res, "iletisim.html", "iletisim"));
@@ -3801,6 +3900,8 @@ app.get("/sitemap.xml", async (req, res) => {
     { loc: "/stl-teklif", priority: "0.8" },
     { loc: "/tasarim", priority: "0.7" },
     { loc: "/sizden-gelenler", priority: "0.7" },
+    { loc: "/bursa-3d-baski", priority: "0.8" },
+    { loc: "/istanbul-3d-baski", priority: "0.8" },
     { loc: "/hakkinda", priority: "0.5" },
     { loc: "/iletisim", priority: "0.5" },
     { loc: "/katalog", priority: "0.8" },
@@ -4370,6 +4471,24 @@ async function notifyNewDesignRequest({ name, email, phone, message, imageUrl })
       <div style="padding:14px;border-left:3px solid #ff6542;background:#fff7f3;white-space:pre-wrap"><strong>Parça açıklaması</strong><br>${escapeHtml(message)}</div>
       ${imageUrl ? `<p><a href="${escapeHtml(imageUrl)}" style="display:inline-block;padding:10px 14px;border-radius:8px;background:#ff6542;color:#fff;font-weight:700;text-decoration:none">Parça görselini aç</a></p>` : ""}
       <p><a href="https://printable.com.tr/admin#messages" style="color:#ff6542;font-weight:700">Tasarım talebini yönetim panelinde aç</a></p>
+    </div>`
+  });
+}
+
+async function notifyNewShowcaseSubmission({ name, city, productName, comment, rating, imageUrl }) {
+  const cleanName = String(name || "Müşteri").replace(/[\r\n]+/g, " ").trim().slice(0, 80);
+  return sendStoreNotification({
+    subject: `Yeni müşteri fotoğrafı · ${cleanName || "Müşteri"}`,
+    html: `<div style="font-family:Arial,sans-serif;color:#171c2c;line-height:1.6;max-width:640px">
+      <h2>Müşteri vitrini için yeni fotoğraf geldi</h2>
+      <p><strong>Gösterilecek ad:</strong> ${escapeHtml(cleanName)}<br>
+        <strong>Şehir:</strong> ${escapeHtml(city || "Belirtilmedi")}<br>
+        <strong>Ürün:</strong> ${escapeHtml(productName || "Belirtilmedi")}<br>
+        <strong>Puan:</strong> ${Number(rating || 5)} / 5</p>
+      ${comment ? `<div style="padding:14px;border-left:3px solid #ff6542;background:#fff7f3">${escapeHtml(comment)}</div>` : ""}
+      ${imageUrl ? `<p><a href="${escapeHtml(imageUrl)}" style="display:inline-block;padding:10px 14px;border-radius:8px;background:#171c2c;color:#fff;font-weight:700;text-decoration:none">Fotoğrafı aç</a></p>` : ""}
+      <p>Gönderi yayın izniyle geldi ancak <strong>otomatik yayınlanmadı</strong>. Görseli ve metni kontrol edip panelden “Sitede yayınla” seçeneğini açın.</p>
+      <p><a href="https://printable.com.tr/admin#customer-showcases" style="color:#ff6542;font-weight:700">Müşteri fotoğrafını incele</a></p>
     </div>`
   });
 }
@@ -5734,6 +5853,61 @@ app.get("/api/customer-showcases", async (req, res) => {
     ORDER BY is_featured DESC, sort_order ASC, created_at DESC, id DESC
   `).all();
   res.json(rows);
+});
+
+const showcaseSubmissionParser = multer().none();
+const showcaseUploadMiddleware = (req, res, next) =>
+  (storage.enabled ? showcaseSubmissionParser(req, res, next) : upload.single("image")(req, res, next));
+const validShowcaseImageKey = (value) => /^[a-z0-9][a-z0-9._-]{0,179}\.(?:png|jpe?g|webp|gif)$/i.test(value || "");
+
+/* Müşteri fotoğrafı doğrudan vitrinde yayınlanmaz. Açık izin zorunludur, kayıt
+   taslak olarak panele düşer ve yönetici görseli/metni kontrol ettikten sonra
+   `is_active` seçeneğini açar. */
+app.post("/api/customer-showcases/submissions", showcaseUploadMiddleware, async (req, res) => {
+  // Botların doldurduğu görünmez alan; gerçek kullanıcı bu alanı hiç görmez.
+  if (String(req.body.website || "").trim()) return res.status(201).json({ ok: true });
+  if (!showcaseChecked(req.body.consent_confirmed)) {
+    return res.status(400).json({ error: "Fotoğrafın incelenmesi ve yayınlanması için açık izin vermelisiniz." });
+  }
+  const uploadedKey = String(req.body.image_key || "").trim();
+  if (uploadedKey && !validShowcaseImageKey(uploadedKey)) {
+    return res.status(400).json({ error: "Fotoğraf dosyası geçersiz." });
+  }
+  const item = customerShowcasePayload({
+    ...req.body,
+    image_key: uploadedKey,
+    image_url: "",
+    consent_confirmed: "1",
+    is_featured: "0",
+    is_active: "0",
+    sort_order: "0"
+  }, req.file);
+  if (!item.customer_name || item.customer_name.length < 2) {
+    return res.status(400).json({ error: "Gösterilecek ad en az 2 karakter olmalıdır." });
+  }
+  if (!item.image_path) return res.status(400).json({ error: "Bir müşteri fotoğrafı seçin." });
+
+  const result = await db.prepare(`
+    INSERT INTO customer_showcases
+      (customer_name, city, product_name, comment, rating, image_path, image_alt,
+       consent_confirmed, is_featured, is_active, sort_order)
+    VALUES
+      (@customer_name, @city, @product_name, @comment, @rating, @image_path, @image_alt,
+       @consent_confirmed, @is_featured, @is_active, @sort_order)
+  `).run(item);
+
+  const ownerNotified = await notifyNewShowcaseSubmission({
+    name: item.customer_name,
+    city: item.city,
+    productName: item.product_name,
+    comment: item.comment,
+    rating: item.rating,
+    imageUrl: item.image_path
+  }).catch((error) => {
+    console.error("Müşteri fotoğrafı bildirimi gönderilemedi:", error.message);
+    return false;
+  });
+  res.status(201).json({ ok: true, id: result.lastInsertRowid, notification_sent: ownerNotified });
 });
 
 app.post("/api/customer-showcases", requireAdmin, upload.single("image"), async (req, res) => {

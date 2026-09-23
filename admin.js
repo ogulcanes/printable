@@ -793,7 +793,7 @@ function renderCustomerShowcases() {
         <h3>${escapeHtml(item.customer_name)}${item.product_name ? ` — ${escapeHtml(item.product_name)}` : ""}</h3>
         <p>${escapeHtml(item.comment) || "Kısa not eklenmemiş."}</p>
         <div class="meta-line">
-          <span class="badge ${item.is_active && item.consent_confirmed ? "green" : "orange"}">${item.is_active && item.consent_confirmed ? "Yayında" : "Taslak / gizli"}</span>
+          <span class="badge ${item.is_active && item.consent_confirmed ? "green" : "orange"}">${item.is_active && item.consent_confirmed ? "Yayında" : item.consent_confirmed ? "İnceleme bekliyor" : "Taslak / gizli"}</span>
           <span class="badge">${starsHtml(item.rating)}</span>
           ${item.city ? `<span class="badge blue">${escapeHtml(item.city)}</span>` : ""}
           ${item.is_featured ? '<span class="badge blue">Ana sayfada öne çıkar</span>' : ""}

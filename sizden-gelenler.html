@@ -20,7 +20,7 @@
             <p>Atölyeden çıkan ürünlerin yeni evlerindeki hâli. Müşterilerimizin bizimle paylaştığı fotoğrafları ve kısa deneyim notlarını burada bir araya getiriyoruz.</p>
             <div class="customer-stories-hero__actions">
               <a href="#musteri-vitrini">Fotoğraflara göz at</a>
-              <a href="/iletisim">Siz de fotoğraf gönderin</a>
+              <a href="#fotograf-gonder">Siz de fotoğraf gönderin</a>
             </div>
           </div>
           <div class="customer-stories-hero__summary" aria-label="Müşteri paylaşımı özeti">
@@ -44,14 +44,52 @@
         </div>
       </section>
 
-      <section class="customer-stories-cta">
-        <div class="container">
-          <div>
+      <section class="customer-stories-submit" id="fotograf-gonder" aria-labelledby="customer-story-submit-title">
+        <div class="container customer-stories-submit__layout">
+          <div class="customer-stories-submit__intro">
             <p class="section-kicker">Sıra sizin karenizde</p>
-            <h2>Printable ürününüzü bizimle paylaşın.</h2>
-            <p>Fotoğrafınızı WhatsApp veya iletişim formundan gönderin. Açık izniniz olmadan hiçbir görseli yayınlamıyoruz.</p>
+            <h2 id="customer-story-submit-title">Printable ürününüzü vitrinde gösterin.</h2>
+            <p>Ürünü masanızda, evinizde veya gerçek kullanım yerinde fotoğraflayın. Gönderiniz doğrudan yayınlanmaz; ekibimiz önce görseli ve metni inceler.</p>
+            <ol>
+              <li><span>1</span><div><strong>Fotoğrafı seçin</strong><small>Net, aydınlık ve ürünü kullanım yerinde gösteren bir kare.</small></div></li>
+              <li><span>2</span><div><strong>Yayın iznini verin</strong><small>Adınızı kısaltarak gösterebilirsiniz; iletişim bilginiz yayınlanmaz.</small></div></li>
+              <li><span>3</span><div><strong>Biz inceleyelim</strong><small>Uygun bulunan paylaşım yönetici onayından sonra vitrinde görünür.</small></div></li>
+            </ol>
           </div>
-          <a href="/iletisim">Fotoğrafımı göndermek istiyorum</a>
+
+          <form class="customer-story-form" id="customer-story-form" enctype="multipart/form-data" novalidate>
+            <label class="customer-story-form__file" for="customer-story-image">
+              <span>Gerçek kullanım fotoğrafı *</span>
+              <strong>Fotoğraf seçin</strong>
+              <small id="customer-story-file-name">PNG, JPG, WEBP veya GIF · en fazla 8 MB</small>
+              <input id="customer-story-image" name="image" type="file" accept="image/png,image/jpeg,image/webp,image/gif" required>
+            </label>
+            <div class="customer-story-form__row">
+              <label>Gösterilecek ad *<input name="customer_name" required maxlength="80" autocomplete="name" placeholder="Ayşe K."></label>
+              <label>Şehir<input name="city" maxlength="80" autocomplete="address-level1" placeholder="Bursa"></label>
+            </div>
+            <label>Ürün / çalışma adı<input name="product_name" maxlength="140" placeholder="Örn. isme özel mama kabı"></label>
+            <div class="customer-story-form__row customer-story-form__row--rating">
+              <label>Puanınız
+                <select name="rating">
+                  <option value="5">5 yıldız</option>
+                  <option value="4">4 yıldız</option>
+                  <option value="3">3 yıldız</option>
+                  <option value="2">2 yıldız</option>
+                  <option value="1">1 yıldız</option>
+                </select>
+              </label>
+              <label>Fotoğraf açıklaması<input name="image_alt" maxlength="180" placeholder="Turuncu fidget topu çalışma masasında"></label>
+            </div>
+            <label>Kısa deneyim notunuz<textarea name="comment" rows="4" maxlength="600" placeholder="Ürünü nasıl kullandığınızı veya en sevdiğiniz yönünü yazabilirsiniz."></textarea></label>
+            <label class="customer-story-form__consent">
+              <input name="consent_confirmed" type="checkbox" value="1" required>
+              <span>Bu fotoğrafın ve yazdığım notun Printable web sitesinde, adımın yukarıda belirttiğim biçimiyle yayınlanmasına izin veriyorum. <a href="/gizlilik" target="_blank">Gizlilik metnini okuyun.</a></span>
+            </label>
+            <label class="customer-story-form__website" aria-hidden="true">Web sitesi<input name="website" tabindex="-1" autocomplete="off"></label>
+            <button type="submit" id="customer-story-submit">İncelemeye gönder</button>
+            <p class="customer-story-form__status" id="customer-story-status" role="status" hidden></p>
+          </form>
         </div>
       </section>
     </main>
@@ -60,5 +98,6 @@
     <!--footer-->
     <!--chat-->
     <script src="/script.js"></script>
+    <script src="/sizden-gelenler.js"></script>
   </body>
 </html>
