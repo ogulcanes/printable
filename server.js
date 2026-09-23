@@ -139,7 +139,7 @@ const PUBLIC_STATIC_FILES = [
   "styles.css", "script.js", "product-templates.js", "stl-viewer.js", "admin.css",
   "admin.js", "urunler.js", "urun.js", "odeme.js", "iletisim.js", "tasarim.js",
   "katalog.js", "hesap.js", "katalog-secim.js", "anahtarlik-katalog.js",
-  "cakmaklik-katalog.js", "pet-bowl.js"
+  "cakmaklik-katalog.js", "pet-bowl.js", "sizden-gelenler.js"
 ];
 const PUBLIC_ASSET_VERSION = crypto.createHash("sha1")
   .update(PUBLIC_STATIC_FILES.map((file) => {
