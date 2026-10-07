@@ -1899,6 +1899,113 @@ if (katalogUrunRevizyonu?.value !== KATALOG_URUN_REVIZYONU) {
   });
 }
 
+/* Halloween koleksiyonu: ürün kayıtları SKU üzerinden tekrar çalıştırılabilir.
+   LED mumluklarda PLA malzeme ısıya uygun olmadığından yalnızca pilli LED mum
+   kullanımı belirtilir; gerçek alevli mum satılmaz ve önerilmez. */
+const HALLOWEEN_URUN_REVIZYONU = "2026-10-halloween-koleksiyonu-v1";
+const halloweenUrunRevizyonu = await db.prepare("SELECT value FROM app_meta WHERE key = 'halloween_store_products_rev'").get();
+if (halloweenUrunRevizyonu?.value !== HALLOWEEN_URUN_REVIZYONU) {
+  await db.transaction(async (tx) => {
+    const claim = await tx.prepare(`
+      INSERT INTO app_meta (key, value) VALUES ('halloween_store_products_rev', ?)
+      ON CONFLICT (key) DO UPDATE SET value = excluded.value
+      WHERE app_meta.value <> excluded.value
+    `).run(HALLOWEEN_URUN_REVIZYONU);
+    if (!claim.changes) return;
+
+    let halloweenKategori = await tx.prepare("SELECT id FROM categories WHERE LOWER(name) = LOWER(?) LIMIT 1").get("Halloween");
+    if (!halloweenKategori) {
+      const result = await tx.prepare(`
+        INSERT INTO categories (name, image_path, image_alt, href, sort_order)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(
+        "Halloween",
+        "/assets/products/halloween/hayalet-mumluk.png",
+        "Halloween temalı 3D baskı dekorasyon ürünleri",
+        "#store-products",
+        22
+      );
+      halloweenKategori = { id: result.lastInsertRowid };
+    }
+
+    const urunler = [
+      {
+        name: "Somurtkan Azrail Figürü",
+        sku: "PR-HLW-001",
+        description: "Halloween dekorasyonuna esprili bir dokunuş katan, kapüşonlu Azrail tasarımlı 3D baskı masaüstü figürü. Mat PLA yüzeyi ve detaylı silüetiyle raf, çalışma masası ve hediye köşeleri için uygundur.",
+        color: "Siyah / Beyaz",
+        price: 349.90,
+        stock: 10,
+        image_path: "/assets/products/halloween/somurtkan-azrail-figur.png",
+        image_alt: "Somurtkan Azrail temalı 3D baskı Halloween figürü",
+        meta_keywords: "halloween figürü, azrail figürü, 3d baskı dekorasyon"
+      },
+      {
+        name: "Zincirli Hayalet LED Mumluk",
+        sku: "PR-HLW-002",
+        description: "Zincir kaideli hayalet ve balkabağı tasarımlı 3D baskı LED mumluk. Sadece pilli LED tealight ile kullanılır; gerçek mum ve açık alev için uygun değildir. LED mum ürüne dahil değildir.",
+        color: "Beyaz / Turuncu",
+        price: 429.90,
+        stock: 10,
+        image_path: "/assets/products/halloween/zincirli-hayalet-led-mumluk.png",
+        image_alt: "Zincirli hayalet tasarımlı 3D baskı LED mumluk",
+        meta_keywords: "halloween mumluk, hayalet mumluk, led tealight, 3d baskı dekorasyon"
+      },
+      {
+        name: "Korku Yüzleri Halloween Şekerliği",
+        sku: "PR-HLW-003",
+        description: "Kabartmalı korku yüzleriyle tasarlanmış, Halloween sunumlarına karakter katan 3D baskı şekerlik. Paketli şeker, küçük atıştırmalık ve dekoratif kullanım için uygundur. Gıda ile doğrudan temas için tasarlanmamıştır.",
+        color: "Füme Gri",
+        price: 499.90,
+        stock: 10,
+        image_path: "/assets/products/halloween/korku-yuzleri-sekerlik.png",
+        image_alt: "Korku yüzleri detaylı 3D baskı Halloween şekerliği",
+        meta_keywords: "halloween şekerlik, korku dekorasyonu, 3d baskı kase"
+      },
+      {
+        name: "Zincirli İkili LED Mumluk",
+        sku: "PR-HLW-004",
+        description: "İki pilli LED tealight için tasarlanmış, havada duruyormuş hissi veren zincir formlu 3D baskı mumluk. Halloween masası ve raf dekorasyonu için uygundur. Sadece LED mumla kullanın; LED mum ürüne dahil değildir.",
+        color: "Siyah",
+        price: 399.90,
+        stock: 10,
+        image_path: "/assets/products/halloween/zincirli-ikili-led-mumluk.png",
+        image_alt: "Zincir formlu ikili 3D baskı LED mumluk",
+        meta_keywords: "zincirli mumluk, led mumluk, halloween dekorasyon, 3d baskı"
+      },
+      {
+        name: "Hayalet LED Mum Standı",
+        sku: "PR-HLW-005",
+        description: "Mumu yukarı kaldıran hayalet silüetiyle dikkat çeken 3D baskı Halloween dekoru. Yalnızca pilli LED mum veya LED ışıkla kullanılır; PLA malzeme nedeniyle gerçek mum ve açık alev kullanılmamalıdır. LED mum ürüne dahil değildir.",
+        color: "Beyaz / Siyah",
+        price: 429.90,
+        stock: 10,
+        image_path: "/assets/products/halloween/hayalet-mumluk.png",
+        image_alt: "Hayalet tasarımlı 3D baskı LED mum standı",
+        meta_keywords: "hayalet mumluk, led mum standı, halloween dekorasyon, 3d baskı"
+      }
+    ];
+
+    for (const urun of urunler) {
+      let mevcut = await tx.prepare("SELECT id FROM products WHERE UPPER(sku) = UPPER(?) LIMIT 1").get(urun.sku);
+      if (!mevcut) {
+        const result = await tx.prepare(`
+          INSERT INTO products
+            (name, sku, category, description, color, price, sale_price, stock, image_path, image_alt,
+             meta_title, meta_description, meta_keywords, is_made_to_order, is_active)
+          VALUES (?, ?, 'Halloween', ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 1, 1)
+        `).run(
+          urun.name, urun.sku, urun.description, urun.color, urun.price, urun.stock,
+          urun.image_path, urun.image_alt, `${urun.name} | Printable`, urun.description, urun.meta_keywords
+        );
+        mevcut = { id: result.lastInsertRowid };
+      }
+      await tx.prepare("INSERT INTO product_categories (product_id, category_id) VALUES (?, ?) ON CONFLICT DO NOTHING")
+        .run(mevcut.id, halloweenKategori.id);
+    }
+  });
+}
+
 // A published example makes the new blog design and its structured-data output
 // visible immediately. It is safe to edit or delete later from Admin > Blog.
 await db.prepare(`
