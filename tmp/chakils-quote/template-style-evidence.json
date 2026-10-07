@@ -1,0 +1,135 @@
+{
+  "input": "C:\\Users\\ogulcan\\Documents\\GitHub\\printable\\output\\Mega_Insulation_Figur_Fiyat_Teklifi.docx",
+  "fonts_by_char_count": {
+    "Calibri": 868
+  },
+  "direct_run_formatting_runs": 34,
+  "direct_paragraph_formatting_paragraphs": 3,
+  "heading_like_paragraphs_not_heading_style": [
+    {
+      "para_index": 2,
+      "text": "Mega Insulation Fig\u00fcr \u00dcretimi Fiyat Teklifi",
+      "style": "Normal"
+    },
+    {
+      "para_index": 6,
+      "text": "Fiyat Se\u00e7enekleri",
+      "style": "Normal"
+    },
+    {
+      "para_index": 8,
+      "text": "Ticari Ko\u015fullar",
+      "style": "Normal"
+    },
+    {
+      "para_index": 17,
+      "text": "F\u0130YAT TEKL\u0130F\u0130",
+      "style": "Normal"
+    },
+    {
+      "para_index": 20,
+      "text": "Fig\u00fcr boyu",
+      "style": "Normal"
+    },
+    {
+      "para_index": 21,
+      "text": "Miktar",
+      "style": "Normal"
+    },
+    {
+      "para_index": 22,
+      "text": "Toplam teklif bedeli",
+      "style": "Normal"
+    },
+    {
+      "para_index": 23,
+      "text": "15 cm",
+      "style": "Normal"
+    },
+    {
+      "para_index": 25,
+      "text": "166.650,00 TL + KDV",
+      "style": "Normal"
+    },
+    {
+      "para_index": 26,
+      "text": "12 cm",
+      "style": "Normal"
+    },
+    {
+      "para_index": 28,
+      "text": "101.125,00 TL + KDV",
+      "style": "Normal"
+    },
+    {
+      "para_index": 29,
+      "text": "8 cm",
+      "style": "Normal"
+    },
+    {
+      "para_index": 31,
+      "text": "33.000,00 TL + KDV",
+      "style": "Normal"
+    },
+    {
+      "para_index": 32,
+      "text": "5 cm",
+      "style": "Normal"
+    },
+    {
+      "para_index": 34,
+      "text": "16.875,00 TL + KDV",
+      "style": "Normal"
+    }
+  ],
+  "examples": {
+    "direct_run_formatting": [
+      {
+        "para_index": 2,
+        "run_text": "Mega Insulation Fig\u00fcr \u00dcretimi Fiyat Teklifi",
+        "style": "Normal"
+      },
+      {
+        "para_index": 3,
+        "run_text": "500 adet \u00fcretim i\u00e7in d\u00f6rt alternatif boyut se\u00e7ene\u011fi",
+        "style": "Normal"
+      },
+      {
+        "para_index": 4,
+        "run_text": "Say\u0131n Mega Insulation Yetkilisi, 500 adet fig\u00fcr \u00fcretimi i\u00e7in haz\u0131rlad\u0131\u011f\u0131m\u0131z alte",
+        "style": "Normal"
+      },
+      {
+        "para_index": 6,
+        "run_text": "Fiyat Se\u00e7enekleri",
+        "style": "Normal"
+      },
+      {
+        "para_index": 8,
+        "run_text": "Ticari Ko\u015fullar",
+        "style": "Normal"
+      }
+    ],
+    "direct_paragraph_formatting": [
+      {
+        "para_index": 9,
+        "text": "\u2022  KDV Fiyatlara KDV dahil de\u011fildir.",
+        "style": "Normal"
+      },
+      {
+        "para_index": 10,
+        "text": "\u2022  \u00d6deme Sipari\u015f onay\u0131nda teklif bedelinin %30'u \u00f6n \u00f6deme olarak al\u0131n\u0131r. Kalan %70, \u00fcretim tamamland\u0131\u011f\u0131nda ve sevkiyat \u00f6",
+        "style": "Normal"
+      },
+      {
+        "para_index": 11,
+        "text": "\u2022  \u00dcretim \u00dcretim s\u00fcreci \u00f6n \u00f6demenin al\u0131nmas\u0131 ve model onay\u0131n\u0131n verilmesiyle ba\u015flar.",
+        "style": "Normal"
+      }
+    ]
+  },
+  "notes": [
+    "Direct formatting is not always wrong, but it often causes inconsistent output when templates change.",
+    "Heading-like paragraphs not using Heading styles can break TOC and accessibility."
+  ]
+}

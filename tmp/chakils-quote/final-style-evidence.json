@@ -1,0 +1,140 @@
+{
+  "input": "C:\\Users\\ogulcan\\Documents\\GitHub\\printable\\output\\Chakils_Borusan_Next_Fiyat_Teklifi.docx",
+  "fonts_by_char_count": {
+    "Calibri": 1130
+  },
+  "direct_run_formatting_runs": 46,
+  "direct_paragraph_formatting_paragraphs": 36,
+  "heading_like_paragraphs_not_heading_style": [
+    {
+      "para_index": 2,
+      "text": "Borusan Next Fig\u00fcr\u00fc Fiyat Teklifi",
+      "style": "Title"
+    },
+    {
+      "para_index": 17,
+      "text": "F\u0130YAT TEKL\u0130F\u0130",
+      "style": "Normal"
+    },
+    {
+      "para_index": 20,
+      "text": "\u00dcr\u00fcn ve kapsam",
+      "style": "Normal"
+    },
+    {
+      "para_index": 21,
+      "text": "Miktar",
+      "style": "Normal"
+    },
+    {
+      "para_index": 22,
+      "text": "Birim fiyat",
+      "style": "Normal"
+    },
+    {
+      "para_index": 23,
+      "text": "Tutar",
+      "style": "Normal"
+    },
+    {
+      "para_index": 24,
+      "text": "Borusan Next fig\u00fcr\u00fc \u00fcretimi",
+      "style": "Normal"
+    },
+    {
+      "para_index": 27,
+      "text": "106.250,00 TL",
+      "style": "Normal"
+    },
+    {
+      "para_index": 31,
+      "text": "106.250,00 TL",
+      "style": "Normal"
+    },
+    {
+      "para_index": 35,
+      "text": "21.250,00 TL",
+      "style": "Normal"
+    },
+    {
+      "para_index": 36,
+      "text": "Genel toplam",
+      "style": "Normal"
+    },
+    {
+      "para_index": 37,
+      "text": "Genel toplam",
+      "style": "Normal"
+    },
+    {
+      "para_index": 38,
+      "text": "Genel toplam",
+      "style": "Normal"
+    },
+    {
+      "para_index": 39,
+      "text": "127.500,00 TL",
+      "style": "Normal"
+    }
+  ],
+  "examples": {
+    "direct_paragraph_formatting": [
+      {
+        "para_index": 2,
+        "text": "Borusan Next Fig\u00fcr\u00fc Fiyat Teklifi",
+        "style": "Title"
+      },
+      {
+        "para_index": 3,
+        "text": "1.000 adet \u00f6zel \u00fcretim",
+        "style": "Normal"
+      },
+      {
+        "para_index": 4,
+        "text": "Say\u0131n Chakil's Event Agency Yetkilisi, talep edilen Borusan Next fig\u00fcr\u00fcn\u00fcn 1.000 adet \u00fcretimi i\u00e7in haz\u0131rlad\u0131\u011f\u0131m\u0131z fiyat ",
+        "style": "Normal"
+      },
+      {
+        "para_index": 5,
+        "text": "",
+        "style": "Normal"
+      },
+      {
+        "para_index": 6,
+        "text": "Fiyatland\u0131rma",
+        "style": "Heading 1"
+      }
+    ],
+    "direct_run_formatting": [
+      {
+        "para_index": 2,
+        "run_text": "Borusan Next Fig\u00fcr\u00fc Fiyat Teklifi",
+        "style": "Title"
+      },
+      {
+        "para_index": 3,
+        "run_text": "1.000 adet \u00f6zel \u00fcretim",
+        "style": "Normal"
+      },
+      {
+        "para_index": 4,
+        "run_text": "Say\u0131n Chakil's Event Agency Yetkilisi, talep edilen Borusan Next fig\u00fcr\u00fcn\u00fcn 1.000",
+        "style": "Normal"
+      },
+      {
+        "para_index": 6,
+        "run_text": "Fiyatland\u0131rma",
+        "style": "Heading 1"
+      },
+      {
+        "para_index": 8,
+        "run_text": "Ticari Ko\u015fullar",
+        "style": "Heading 1"
+      }
+    ]
+  },
+  "notes": [
+    "Direct formatting is not always wrong, but it often causes inconsistent output when templates change.",
+    "Heading-like paragraphs not using Heading styles can break TOC and accessibility."
+  ]
+}
