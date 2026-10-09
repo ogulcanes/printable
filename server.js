@@ -1259,6 +1259,41 @@ if (!existingProducts) {
   }
 }
 
+/* Yeni vitrindeki tekil ürünler burada SKU ile korunur. Bu blok, daha önce
+   kurulmuş canlı veritabanlarına da güvenle iner; aynı ürünü ikinci kez
+   oluşturmaz. */
+const seedKnightCat = db.prepare(`
+  INSERT INTO products
+    (name, sku, category, description, color, price, stock, image_path, image_alt,
+     meta_title, meta_description, meta_keywords, is_made_to_order, is_active)
+  SELECT
+    @name, @sku, @category, @description, @color, @price, @stock, @image_path, @image_alt,
+    @meta_title, @meta_description, @meta_keywords, 1, 1
+  WHERE NOT EXISTS (SELECT 1 FROM products WHERE sku = @sku)
+`);
+await seedKnightCat.run({
+  name: "Şövalye Kedi Figürü",
+  sku: "PNT-KED-001",
+  category: "Figürler",
+  description: "Minik pati kahramanımız, zor günlerde masanızda sessizce nöbet tutmak için hazır. Pelerini, zırhı ve kılıcıyla Şövalye Kedi; çalışma köşesine tatlı bir cesaret, kitaplığınıza da gülümseten bir macera katıyor. Kendiniz için küçük bir moral arkadaşı, sevdiğiniz biri içinse kalpten bir hediye.",
+  color: "Krem, gri ve siyah detaylı PLA",
+  price: 349.99,
+  stock: 10,
+  image_path: "/assets/products/sovalye-kedi-figur.png",
+  image_alt: "Kılıç ve zırh taşıyan sevimli Şövalye Kedi 3D baskı figürü",
+  meta_title: "Şövalye Kedi Figürü | Printable",
+  meta_description: "Zırhı, pelerini ve kılıcıyla sevimli 3D baskı Şövalye Kedi figürü. Masaüstüne tatlı bir cesaret katın.",
+  meta_keywords: "şövalye kedi, kedi figürü, 3d baskı figür, sevimli kedi, masaüstü dekoru, hediye"
+});
+const knightCat = await db.prepare("SELECT id FROM products WHERE sku = 'PNT-KED-001'").get();
+if (knightCat) {
+  await db.prepare(`
+    INSERT INTO product_categories (product_id, category_id)
+    SELECT ?, id FROM categories WHERE name = 'Figürler'
+    ON CONFLICT DO NOTHING
+  `).run(knightCat.id);
+}
+
 /* Hazırlık aşamasındaki kişiselleştirilebilir ürünler. Ana katalog seed'inden
    farklı olarak bu blok dolu veritabanlarına da iner; SKU ile korunduğu için
    yalnızca bir kez eklenir. Fiyat, stok ve görsel bilerek boş; is_active=0 ile
