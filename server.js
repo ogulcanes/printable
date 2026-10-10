@@ -3254,9 +3254,16 @@ async function injectShell(html, headActive, customer) {
     .replace("<!--footer-->", footer)
     .replace("<!--chat-->", chat);
 
+  return versionAssetUrls(page);
+}
+
+/* Statik dosya adresine sürüm ekler: dosya değişince adres de değişir. Sürümsüz
+   adres 1 saat önbellekte kalıyor ve deploy sonrası tarayıcı yeni HTML'i eski
+   JS ile çalıştırıyordu — admin paneli tam olarak buna takıldı. */
+function versionAssetUrls(html) {
   return PUBLIC_STATIC_FILES.reduce((output, file) => output
     .replaceAll(`"${file}"`, `"/${file}?v=${PUBLIC_ASSET_VERSION}"`)
-    .replaceAll(`"/${file}"`, `"/${file}?v=${PUBLIC_ASSET_VERSION}"`), page);
+    .replaceAll(`"/${file}"`, `"/${file}?v=${PUBLIC_ASSET_VERSION}"`), html);
 }
 
 /* Satıcı kimliği yasal sayfalarda TEK yerden gelir: /admin → Ayarlar. Metni
@@ -4258,7 +4265,7 @@ function setSessionCookie(res, admin) {
 
 app.get("/login", async (req, res) => {
   if (await currentAdmin(req)) return res.redirect("/admin");
-  return res.sendFile(path.join(ROOT, "login.html"));
+  return res.type("html").send(versionAssetUrls(fs.readFileSync(path.join(ROOT, "login.html"), "utf8")));
 });
 
 app.post("/api/login", async (req, res) => {
@@ -8357,7 +8364,10 @@ app.delete("/api/messages/:id", requireAdmin, async (req, res) => {
   res.status(204).end();
 });
 
-app.get("/admin", requireAdmin, async (req, res) => res.sendFile(path.join(ROOT, "admin.html")));
+app.get("/admin", requireAdmin, async (req, res) => {
+  res.set("Cache-Control", "private, no-cache");
+  res.type("html").send(versionAssetUrls(fs.readFileSync(path.join(ROOT, "admin.html"), "utf8")));
+});
 
 /* Eşleşmeyen adresler. Express'in varsayılanı İngilizce bir "Cannot GET /..."
    satırıydı: ziyaretçi sitenin tamamen çöktüğünü sanıp çıkıyordu. Kendi

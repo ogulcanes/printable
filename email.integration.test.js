@@ -613,4 +613,11 @@ test("Panelden bildirim testi sahiplere gider, hata nedeni panele döner", async
 
   const anonymous = await request("/api/notifications/test", { method: "POST" });
   assert.equal(anonymous.response.status, 401);
+
+  // Sürümsüz admin.js 1 saat önbellekte kalıp deploy'u gizliyordu.
+  const adminHTML = await (await realFetch(`${baseUrl}/admin`, { headers: { Cookie: cookie } })).text();
+  assert.match(adminHTML, /src="\/admin\.js\?v=[0-9a-f]{12}"/);
+  assert.match(adminHTML, /href="\/admin\.css\?v=[0-9a-f]{12}"/);
+  const loginHTML = await (await realFetch(`${baseUrl}/login`)).text();
+  assert.match(loginHTML, /href="\/admin\.css\?v=[0-9a-f]{12}"/);
 });
