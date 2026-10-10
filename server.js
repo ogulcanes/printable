@@ -179,7 +179,7 @@ function normalizedImageWidth(value) {
    hepsi IF NOT EXISTS / boşsa-ekle olduğu için ikinci kez zararsızdır. */
 /* Şema sürümü. Şemayı, migration listesini veya seed'i değiştirdiğinizde bunu
    artırın; bir sonraki açılışta kurulum yeniden çalışır. */
-const SCHEMA_VERSION = "47";
+const SCHEMA_VERSION = "48";
 
 async function initDb() {
   /* Sunucusuz ortamda bu fonksiyon HER soğuk başlatmada çalışır. Tüm şemayı,
@@ -495,6 +495,8 @@ async function initDb() {
     tax_number TEXT,
     mersis TEXT,
     return_address TEXT,
+    keychain_bulk_unit_price REAL,
+    lighter_bulk_unit_price REAL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
@@ -825,6 +827,10 @@ for (const [table, column, type] of [
   ["site_settings", "tax_number", "TEXT"],
   ["site_settings", "mersis", "TEXT"],
   ["site_settings", "return_address", "TEXT"],
+  /* Toptan katalog birim fiyatları (KDV hariç). Katalog dosyalarında model
+     başına fiyat yok; paneldeki toplu talepler tahmini tutarı bunlarla hesaplar. */
+  ["site_settings", "keychain_bulk_unit_price", "REAL"],
+  ["site_settings", "lighter_bulk_unit_price", "REAL"],
   // Siparişe uygulanan kampanyaların anlık görüntüsü (kampanya sonradan silinse
   // bile siparişte ne uygulandığı kaybolmasın diye isimleriyle saklanır).
   ["orders", "campaign_summary", "TEXT"],
@@ -5057,7 +5063,8 @@ app.get("/api/settings", requireAdmin, async (req, res) => {
   const [s, taxRate] = await Promise.all([
     db.prepare(`
       SELECT show_stock, track_stock, min_cart_total, company_title, legal_address,
-        tax_office, tax_number, mersis, return_address
+        tax_office, tax_number, mersis, return_address,
+        keychain_bulk_unit_price, lighter_bulk_unit_price
       FROM site_settings WHERE id = 1
     `).get(),
     currentTaxRate()
@@ -5072,7 +5079,9 @@ app.get("/api/settings", requireAdmin, async (req, res) => {
     tax_office: s?.tax_office || "",
     tax_number: s?.tax_number || "",
     mersis: s?.mersis || "",
-    return_address: s?.return_address || ""
+    return_address: s?.return_address || "",
+    keychain_bulk_unit_price: s?.keychain_bulk_unit_price ?? null,
+    lighter_bulk_unit_price: s?.lighter_bulk_unit_price ?? null
   });
 });
 
@@ -5086,6 +5095,13 @@ app.put("/api/settings", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "KDV oranı 0 ile 100 arasında bir sayı olmalı." });
   }
   const metin = (deger) => (typeof deger === "string" && deger.trim() ? deger.trim() : null);
+  // Boş bırakılan toptan fiyat "girilmedi" demek; panel o zaman tutar hesaplamaz.
+  const toptanFiyat = (deger) => (deger === undefined || deger === null || String(deger).trim() === "" ? null : Number(deger));
+  const keychainBulkPrice = toptanFiyat(req.body.keychain_bulk_unit_price);
+  const lighterBulkPrice = toptanFiyat(req.body.lighter_bulk_unit_price);
+  if ([keychainBulkPrice, lighterBulkPrice].some((fiyat) => fiyat !== null && (!Number.isFinite(fiyat) || fiyat < 0))) {
+    return res.status(400).json({ error: "Toptan birim fiyatı 0 veya daha büyük bir sayı olmalı." });
+  }
 
   await db.transaction(async (tx) => {
     await tx.prepare(`
@@ -5094,6 +5110,7 @@ app.put("/api/settings", requireAdmin, async (req, res) => {
         company_title=@company_title, legal_address=@legal_address,
         tax_office=@tax_office, tax_number=@tax_number, mersis=@mersis,
         return_address=@return_address,
+        keychain_bulk_unit_price=@keychain_bulk_unit_price, lighter_bulk_unit_price=@lighter_bulk_unit_price,
         updated_at=NOW()
       WHERE id = 1
     `).run({
@@ -5106,7 +5123,9 @@ app.put("/api/settings", requireAdmin, async (req, res) => {
       tax_office: metin(req.body.tax_office),
       tax_number: metin(req.body.tax_number),
       mersis: metin(req.body.mersis),
-      return_address: metin(req.body.return_address)
+      return_address: metin(req.body.return_address),
+      keychain_bulk_unit_price: keychainBulkPrice,
+      lighter_bulk_unit_price: lighterBulkPrice
     });
     await tx.prepare("UPDATE pricing_settings SET tax_rate = ?, updated_at = NOW() WHERE id = 1")
       .run(taxRate);
@@ -8270,6 +8289,51 @@ app.post("/api/keychain-bulk-requests", bulkCatalogRequest({
   }
 }));
 
+/* Paneldeki toplu talep kartı için mesaj metnini geri çözer. Metni yukarıdaki
+   bulkCatalogRequest yazdığı için satır biçimi sabit; eski kayıtlar da aynı
+   biçimde, ek kolon gerekmedi. Görsel ve rozet katalogdan, birim fiyat
+   ayarlardan gelir — fiyat değişirse eski talepler de yeni fiyatla görünür. */
+const BULK_CATALOGS = {
+  "Toplu anahtarlık sipariş talebi": { kind: "keychain", label: "Anahtarlık", byId: KEYCHAIN_PRODUCT_BY_ID, priceKey: "keychain_bulk_unit_price" },
+  "Toplu çakmaklık sipariş talebi": { kind: "lighter", label: "Çakmaklık", byId: LIGHTER_PRODUCT_BY_ID, priceKey: "lighter_bulk_unit_price" }
+};
+const BULK_LINE = /^- (.+) \(Model (\d+)\): (\d+) adet$/;
+
+function parseBulkRequest(message, settings, taxRate) {
+  const catalog = BULK_CATALOGS[message.subject];
+  if (!catalog) return null;
+  const rawPrice = settings?.[catalog.priceKey];
+  const unitPrice = rawPrice == null ? null : Number(rawPrice);
+  const items = String(message.message || "").split("\n")
+    .map((line) => line.trim().match(BULK_LINE))
+    .filter(Boolean)
+    .map(([, name, id, quantity]) => {
+      const product = catalog.byId.get(id);
+      return {
+        id,
+        name: product?.name || name,
+        tag: product?.tag || null,
+        img: product?.img || null,
+        url: product?.url || null,
+        quantity: Number(quantity),
+        line_total: unitPrice == null ? null : round2(Number(quantity) * unitPrice)
+      };
+    });
+  if (!items.length) return null;
+  const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+  const subtotal = unitPrice == null ? null : round2(totalQuantity * unitPrice);
+  return {
+    kind: catalog.kind,
+    label: catalog.label,
+    unit_price: unitPrice,
+    tax_rate: taxRate,
+    total_quantity: totalQuantity,
+    subtotal,
+    tax: subtotal == null ? null : round2(subtotal * taxRate / 100),
+    items
+  };
+}
+
 app.post("/api/lighter-bulk-requests", bulkCatalogRequest({
   products: LIGHTER_PRODUCTS,
   byId: LIGHTER_PRODUCT_BY_ID,
@@ -8341,13 +8405,18 @@ app.post("/api/design-requests", designUploadMiddleware, async (req, res) => {
 });
 
 app.get("/api/messages", requireAdmin, async (req, res) => {
-  const messages = await db.prepare("SELECT * FROM messages ORDER BY created_at DESC, id DESC").all();
+  const [messages, settings, taxRate] = await Promise.all([
+    db.prepare("SELECT * FROM messages ORDER BY created_at DESC, id DESC").all(),
+    db.prepare("SELECT keychain_bulk_unit_price, lighter_bulk_unit_price FROM site_settings WHERE id = 1").get(),
+    currentTaxRate()
+  ]);
   res.json(await Promise.all(messages.map(async (message) => {
     const imageReference = designImageRef(message.message);
     return {
       ...message,
       message: cleanDesignMessage(message.message),
-      design_image_url: await designImageUrl(imageReference)
+      design_image_url: await designImageUrl(imageReference),
+      bulk: parseBulkRequest(message, settings, taxRate)
     };
   })));
 });

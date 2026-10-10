@@ -751,6 +751,22 @@
             </div>
           </div>
 
+          <div class="admin-card form-card">
+            <div class="card-title"><h2>Toptan Katalog Fiyatları</h2></div>
+            <p class="form-note">Mesajlar sekmesindeki toplu anahtarlık ve çakmaklık talepleri, her model için <strong>adet × birim fiyat</strong> ve tahmini toplamı bu fiyatlarla hesaplar. Boş bırakırsan tutar gösterilmez. Fiyatlar KDV hariçtir; KDV yukarıdaki orana göre ayrıca gösterilir.</p>
+            <div class="form-grid">
+              <label>Toptan anahtarlık birim fiyatı (TL)
+                <input type="number" name="keychain_bulk_unit_price" min="0" step="0.01" placeholder="Girilmedi">
+              </label>
+              <label>Toptan çakmaklık birim fiyatı (TL)
+                <input type="number" name="lighter_bulk_unit_price" min="0" step="0.01" placeholder="Girilmedi">
+              </label>
+            </div>
+            <div class="form-actions">
+              <button class="btn-solid" type="submit">Toptan fiyatları kaydet</button>
+            </div>
+          </div>
+
           <div class="admin-card">
             <div class="card-title"><h2>Satıcı / Yasal Bilgiler</h2></div>
             <p class="form-note">Bu bilgiler <a href="/mesafeli-satis" target="_blank">Mesafeli Satış Sözleşmesi</a>, <a href="/iade" target="_blank">İade</a> ve <a href="/gizlilik" target="_blank">Gizlilik &amp; KVKK</a> sayfalarında otomatik olarak yayınlanır. Ürün fiyatları <strong>KDV hariç</strong> tabandır; yukarıdaki satış KDV oranı ödeme adımında fiyatın üzerine eklenir.</p>

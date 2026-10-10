@@ -621,3 +621,52 @@ test("Panelden bildirim testi sahiplere gider, hata nedeni panele döner", async
   const loginHTML = await (await realFetch(`${baseUrl}/login`)).text();
   assert.match(loginHTML, /href="\/admin\.css\?v=[0-9a-f]{12}"/);
 });
+
+test("Toplu talep panelde model görseli, adet ve birim fiyatla gösterilir", async () => {
+  const login = await realFetch(`${baseUrl}/api/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "ogulcan", password: "email-test-admin-password" })
+  });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const lighterProducts = require("./cakmaklik-katalog.js");
+  const items = lighterProducts.slice(0, 5).map((product, index) => ({ id: product.id, quantity: 10 + index }));
+  const created = await request("/api/lighter-bulk-requests", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ first_name: "Panel", last_name: "Çakmak", phone: "05550000009", email: "panel-cakmak@example.com", items })
+  });
+  assert.equal(created.response.status, 201);
+
+  const findBulk = async () => (await request("/api/messages", { headers: { Cookie: cookie } }))
+    .payload.find((message) => message.email === "panel-cakmak@example.com").bulk;
+
+  const unpriced = await findBulk();
+  assert.equal(unpriced.kind, "lighter");
+  assert.equal(unpriced.unit_price, null);
+  assert.equal(unpriced.total_quantity, 60);
+  assert.equal(unpriced.items.length, 5);
+  assert.equal(unpriced.items[0].img, lighterProducts[0].img);
+  assert.equal(unpriced.items[0].name, lighterProducts[0].name);
+
+  const settings = (await request("/api/settings", { headers: { Cookie: cookie } })).payload;
+  const saved = await request("/api/settings", {
+    method: "PUT",
+    headers: { Cookie: cookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ ...settings, lighter_bulk_unit_price: "45" })
+  });
+  assert.equal(saved.response.status, 200);
+
+  const priced = await findBulk();
+  assert.equal(priced.unit_price, 45);
+  assert.equal(priced.items[1].line_total, 11 * 45);
+  assert.equal(priced.subtotal, 60 * 45);
+  assert.equal(priced.tax, Math.round(60 * 45 * settings.tax_rate) / 100);
+
+  const rejected = await request("/api/settings", {
+    method: "PUT",
+    headers: { Cookie: cookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ ...settings, keychain_bulk_unit_price: "-1" })
+  });
+  assert.equal(rejected.response.status, 400);
+});

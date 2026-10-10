@@ -872,10 +872,89 @@ async function loadNotificationStatus() {
     : "Sunucuda RESEND_API_KEY tanımlı değil; bu yüzden hiçbir bildirim gönderilmiyor. Anahtarı sunucudaki .env dosyasına ekleyip uygulamayı yeniden başlatın.";
 }
 
+// Toplu anahtarlık/çakmaklık talebi: sunucu metni katalogla eşleyip m.bulk'a koyar.
+function bulkRequestCard(m) {
+  const bulk = m.bulk;
+  const priced = bulk.unit_price != null;
+  const ago = timeAgo(m.created_at);
+  const phone = escapeHtml(m.phone);
+  const email = escapeHtml(m.email);
+  return `
+    <article class="order-card bulk-card ${m.is_read ? "" : "is-new"}">
+      <header class="order-card__header">
+        <span class="order-card__icon" aria-hidden="true">${bulk.total_quantity}<small>adet</small></span>
+        <div class="order-card__identity">
+          <div class="order-card__eyebrow">
+            <span>Toplu ${escapeHtml(bulk.label.toLocaleLowerCase("tr-TR"))} talebi</span>
+            ${m.is_read ? "" : '<span class="badge orange">Yeni</span>'}
+          </div>
+          <h3>${escapeHtml(m.name)}</h3>
+          <p class="order-card__when">
+            <span>Talep tarihi</span>
+            <time>${formatDateTime(m.created_at)}</time>${ago ? ` <em>· ${ago}</em>` : ""}
+          </p>
+        </div>
+        <div class="order-card__amount">
+          <span>${priced ? "Tahmini toplam" : "Toplam"}</span>
+          <strong>${priced ? money(bulk.subtotal) : `${bulk.total_quantity} adet`}</strong>
+          <small>${bulk.items.length} model${priced ? " · KDV hariç" : " · birim fiyat girilmedi"}</small>
+        </div>
+      </header>
+
+      <div class="order-card__body">
+        <div class="order-details">
+          <div>
+            <span>İletişim</span>
+            ${phone ? `<strong><a href="tel:${phone}">${phone}</a></strong>` : "<strong>Telefon yok</strong>"}
+            ${email ? `<small><a href="mailto:${email}">${email}</a></small>` : "<small>E-posta yok</small>"}
+          </div>
+          <div>
+            <span>Fiyat özeti</span>
+            ${priced ? `
+              <strong>${bulk.total_quantity} adet × ${money(bulk.unit_price)} = ${money(bulk.subtotal)}</strong>
+              <small>KDV %${Number(bulk.tax_rate) || 0}: ${money(bulk.tax)} · KDV dahil ${money(bulk.subtotal + bulk.tax)}</small>`
+            : `<strong>Birim fiyat girilmedi</strong>
+              <small>Ayarlar → Toptan Katalog Fiyatları'ndan ${escapeHtml(bulk.label.toLocaleLowerCase("tr-TR"))} fiyatını girin.</small>`}
+          </div>
+        </div>
+
+        <ul class="bulk-items">
+          ${bulk.items.map((item) => `
+            <li class="bulk-item">
+              ${item.img
+                ? `<img src="${escapeHtml(item.img)}" alt="${escapeHtml(item.name)}" loading="lazy" width="56" height="56">`
+                : '<span class="bulk-item__noimg" aria-hidden="true">?</span>'}
+              <div class="bulk-item__info">
+                <strong>${escapeHtml(item.name)}</strong>
+                <small>${item.tag ? `${escapeHtml(item.tag)} · ` : ""}${item.url
+                  ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Model ${escapeHtml(item.id)}</a>`
+                  : `Model ${escapeHtml(item.id)}`}</small>
+              </div>
+              <div class="bulk-item__qty">
+                <strong>${item.quantity} adet</strong>
+                ${priced ? `<small>${money(item.line_total)}</small>` : ""}
+              </div>
+            </li>`).join("")}
+        </ul>
+      </div>
+
+      <footer class="order-card__actions">
+        <div class="order-card__refs">
+          <span>${bulk.items.length} model · <strong>${bulk.total_quantity} adet</strong></span>
+        </div>
+        <div class="order-workflow">
+          <button type="button" data-toggle-message="${m.id}" data-read="${m.is_read ? 1 : 0}">${m.is_read ? "Okunmadı yap" : "Okundu yap"}</button>
+          <button type="button" class="danger" data-delete-message="${m.id}">Sil</button>
+        </div>
+      </footer>
+    </article>`;
+}
+
 function renderMessages() {
   const unread = state.messages.filter((m) => !m.is_read).length;
   qs("#message-count").textContent = `${state.messages.length} mesaj${unread ? ` · ${unread} okunmamış` : ""}`;
   qs("#message-list").innerHTML = state.messages.map((m) => {
+    if (m.bulk) return bulkRequestCard(m);
     const isDesignRequest = m.subject === "Özel parça tasarım talebi";
     return `
     <article class="row ${m.is_read ? "" : "row--unread"} ${isDesignRequest ? "row--design-request" : ""}">
@@ -948,6 +1027,8 @@ function renderSettings() {
   form.elements.tax_rate.value = Number(state.settings.tax_rate) || 0;
   ["company_title", "legal_address", "tax_office", "tax_number", "mersis", "return_address"]
     .forEach((alan) => { form.elements[alan].value = state.settings[alan] || ""; });
+  ["keychain_bulk_unit_price", "lighter_bulk_unit_price"]
+    .forEach((alan) => { form.elements[alan].value = state.settings[alan] ?? ""; });
 }
 
 function renderReviews() {
@@ -2078,7 +2159,8 @@ qs("#settings-form").addEventListener("submit", async (event) => {
     min_cart_total: form.elements.min_cart_total.value.trim() || 0,
     tax_rate: form.elements.tax_rate.value.trim()
   };
-  ["company_title", "legal_address", "tax_office", "tax_number", "mersis", "return_address"]
+  ["company_title", "legal_address", "tax_office", "tax_number", "mersis", "return_address",
+    "keychain_bulk_unit_price", "lighter_bulk_unit_price"]
     .forEach((alan) => { govde[alan] = form.elements[alan].value; });
 
   await api("/api/settings", {
