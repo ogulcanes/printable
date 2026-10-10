@@ -470,7 +470,55 @@
       </section>
 
       <section id="orders" class="panel">
-        <div class="grid-two">
+        <div class="admin-card">
+          <div class="card-title quote-page-title">
+            <div>
+              <h2>Siparişler</h2>
+              <p>Sipariş tarihi, ürünler, tutar dökümü, ödeme ve teslimat bilgileri.</p>
+            </div>
+            <span id="order-count" class="count-pill">0 sipariş</span>
+          </div>
+          <div id="order-summary" class="order-summary"></div>
+          <div class="order-toolbar" aria-label="Sipariş filtreleri">
+            <label>
+              <span>Sipariş ara</span>
+              <input id="order-search" type="search" placeholder="Sipariş no, müşteri, e-posta, telefon veya ürün" autocomplete="off">
+            </label>
+            <label>
+              <span>Durum</span>
+              <select id="order-status-filter">
+                <option value="">Tüm durumlar</option>
+                <option value="new">Yeni</option>
+                <option value="preparing">Hazırlanıyor</option>
+                <option value="printed">Basıldı</option>
+                <option value="shipped">Kargoda</option>
+                <option value="delivered">Teslim edildi</option>
+                <option value="cancelled">İptal</option>
+              </select>
+            </label>
+            <label>
+              <span>Ödeme</span>
+              <select id="order-payment-filter">
+                <option value="">Tüm ödemeler</option>
+                <option value="paid">Ödendi</option>
+                <option value="pending">Ödeme bekliyor</option>
+                <option value="failed">Başarısız</option>
+                <option value="refunded">İade edildi</option>
+              </select>
+            </label>
+            <label>
+              <span>Tarih</span>
+              <select id="order-date-filter">
+                <option value="">Tüm zamanlar</option>
+                <option value="today">Bugün</option>
+                <option value="7">Son 7 gün</option>
+                <option value="30">Son 30 gün</option>
+              </select>
+            </label>
+          </div>
+          <div id="order-list" class="order-list"></div>
+        </div>
+        <div class="grid-two order-tools">
           <form id="order-form" class="admin-card form-card">
             <div class="card-title"><h2>Sipariş Oluştur</h2></div>
             <label>Müşteri<select name="customer_id" required></select></label>
@@ -483,12 +531,16 @@
             <label>Notlar<textarea name="notes" rows="3"></textarea></label>
             <button type="submit">Sipariş oluştur</button>
           </form>
-          <div class="admin-card">
+          <div class="admin-card notify-card">
             <div class="card-title">
-              <h2>Siparişler</h2>
-              <span id="order-count" class="count-pill">0 sipariş</span>
+              <h2>E-posta bildirimleri</h2>
+              <span id="notify-state" class="badge">Kontrol ediliyor</span>
             </div>
-            <div id="order-list" class="list"></div>
+            <p class="hint">Ödemesi onaylanan her siparişte <strong>“Satışınız var”</strong>, her 3D baskı teklifinde <strong>“Yeni 3D baskı teklifi”</strong> e-postası aşağıdaki adreslere gider.</p>
+            <ul id="notify-recipients" class="notify-recipients"></ul>
+            <p id="notify-from" class="hint"></p>
+            <button id="notify-test" type="button">Test e-postası gönder</button>
+            <p id="notify-result" class="notify-result" role="status" aria-live="polite"></p>
           </div>
         </div>
       </section>

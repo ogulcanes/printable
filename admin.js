@@ -616,64 +616,260 @@ function renderCustomers() {
   });
 }
 
-function renderOrders() {
-  qs("#order-count").textContent = `${state.orders.length} sipariş`;
-  const markup = state.orders.map((order) => `
-    <article class="row">
-      <span class="brand-mark">#</span>
-      <div>
-        <h3>${escapeHtml(order.order_number)} - ${escapeHtml(order.customer_name)}</h3>
-        <p>${order.items.map((item) => `${item.quantity} adet ${escapeHtml(item.product_name)}${
-          item.scale ? ` <em>(${escapeHtml(item.scale)})</em>` : ""}`).join(", ")}</p>
-        ${order.items.filter((item) => item.customization).map((item) => `
+const orderFilters = { search: "", status: "", payment: "", date: "" };
+const shippingLabels = { free: "Ücretsiz kargo", recipient_paid: "Alıcı ödemeli" };
+const paymentClass = { paid: "green", pending: "orange", failed: "red", refunded: "" };
+const ORDER_STATUSES = ["new", "preparing", "printed", "shipped", "delivered", "cancelled"];
+// Ödemesi alınmış ama henüz kargoya çıkmamış iş — atölyenin yapılacaklar listesi.
+const isOrderToPrepare = (order) => order.payment_status === "paid" && ["new", "preparing", "printed"].includes(order.status);
+const isOrderRevenue = (order) => order.payment_status === "paid" && order.status !== "cancelled";
+const startOfDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+
+function timeAgo(value) {
+  const date = parseDbDate(value);
+  if (!date) return "";
+  const minutes = Math.floor((Date.now() - date.getTime()) / 60000);
+  if (minutes < 1) return "az önce";
+  if (minutes < 60) return `${minutes} dk önce`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} saat önce`;
+  const days = Math.floor(hours / 24);
+  return days < 30 ? `${days} gün önce` : "";
+}
+
+function orderDayLabel(date) {
+  const diff = Math.round((startOfDay(new Date()) - startOfDay(date)) / 86_400_000);
+  if (diff === 0) return "Bugün";
+  if (diff === 1) return "Dün";
+  return date.toLocaleDateString("tr-TR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+
+function orderPaymentStep(order) {
+  if (order.payment_status === "paid") {
+    return { className: "is-done", label: "Ödeme alındı", detail: formatDateTime(order.paid_at) || "Saat kaydı yok" };
+  }
+  if (order.payment_status === "failed") {
+    return {
+      className: "is-failed",
+      label: "Ödeme başarısız",
+      detail: escapeHtml(order.payment_failure_message || order.payment_failure_code) || "Neden belirtilmemiş"
+    };
+  }
+  if (order.payment_status === "refunded") return { className: "is-muted", label: "Ödeme iade edildi", detail: "" };
+  return { className: "is-pending", label: "Ödeme bekleniyor", detail: "Ödeme onayı henüz gelmedi" };
+}
+
+function orderItemRow(item) {
+  const custom = item.customization;
+  return `
+    <tr>
+      <td data-label="Ürün">
+        <strong>${escapeHtml(item.product_name)}</strong>
+        ${item.scale ? `<small>Ölçek: ${escapeHtml(item.scale)}</small>` : ""}
+        ${custom ? `
           <div class="meta-line">
-            <span class="badge blue">${escapeHtml(item.product_name)} · Kişiye özel</span>
-            ${(item.customization.summary || []).map((row) => `<span class="badge">${escapeHtml(row.label)}: ${escapeHtml(row.value)}</span>`).join("")}
-            ${item.customization.file_url ? `<a class="badge blue" href="${escapeHtml(item.customization.file_url)}" target="_blank" rel="noopener">Referans fotoğrafı</a>` : ""}
-          </div>`).join("")}
-        <div class="meta-line">
-          <span class="badge ${statusClass[order.status] || ""}">${statusLabels[order.status] || order.status}</span>
-          <span class="badge blue">${money(order.total)}</span>
-          ${Number(order.tax_amount) > 0 ? `<span class="badge">KDV %${order.tax_rate}: ${money(order.tax_amount)}</span>` : ""}
-          <span class="badge">Kargo: ${order.shipping_method === "free" ? "Ücretsiz" : order.shipping_method === "recipient_paid" ? "Alıcı ödemeli" : "-"}</span>
-          <span class="badge">${paymentLabels[order.payment_status] || order.payment_status}</span>
-          <span class="badge">${paymentMethodLabels[order.payment_method] || "Ödeme yöntemi belirtilmemiş"}</span>
-          <span class="badge">${escapeHtml(order.tracking_code) || "Takip kodu yok"}</span>
+            <span class="badge blue">Kişiye özel</span>
+            ${(custom.summary || []).map((row) => `<span class="badge">${escapeHtml(row.label)}: ${escapeHtml(row.value)}</span>`).join("")}
+            ${custom.file_url ? `<a class="badge blue" href="${escapeHtml(custom.file_url)}" target="_blank" rel="noopener">Referans fotoğrafı</a>` : ""}
+          </div>` : ""}
+      </td>
+      <td data-label="Adet">${Number(item.quantity) || 0}</td>
+      <td data-label="Birim fiyat">${money(item.unit_price)}</td>
+      <td data-label="Tutar">${money(item.line_total)}</td>
+    </tr>`;
+}
+
+function orderCard(order) {
+  const items = order.items || [];
+  const pieces = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+  const created = parseDbDate(order.created_at);
+  const ago = timeAgo(order.created_at);
+  const statusLabel = statusLabels[order.status] || escapeHtml(order.status);
+  const taxAmount = Number(order.tax_amount) || 0;
+  const discount = Number(order.discount) || 0;
+  const collected = order.payment_collected_amount == null ? null : Number(order.payment_collected_amount) / 100;
+  const payment = orderPaymentStep(order);
+  const phone = escapeHtml(order.customer_phone);
+  const email = escapeHtml(order.customer_email);
+  const corporate = order.invoice_type === "corporate";
+
+  return `
+    <article class="order-card is-${escapeHtml(order.status)}">
+      <header class="order-card__header">
+        <span class="order-card__icon" aria-hidden="true">${pieces}<small>adet</small></span>
+        <div class="order-card__identity">
+          <div class="order-card__eyebrow">
+            <span>${escapeHtml(order.order_number)}</span>
+            <span class="badge ${statusClass[order.status] || ""}">${statusLabel}</span>
+            <span class="badge ${paymentClass[order.payment_status] || ""}">${paymentLabels[order.payment_status] || escapeHtml(order.payment_status)}</span>
+            ${order.payment_test_mode ? '<span class="badge">Test ödemesi</span>' : ""}
+          </div>
+          <h3>${escapeHtml(order.customer_name) || "İsimsiz müşteri"}</h3>
+          <p class="order-card__when">
+            <span>Sipariş tarihi</span>
+            <time datetime="${created ? created.toISOString() : ""}">${formatDateTime(order.created_at) || "Bilinmiyor"}</time>${ago ? ` <em>· ${ago}</em>` : ""}
+          </p>
         </div>
+        <div class="order-card__amount">
+          <span>Toplam</span>
+          <strong>${money(order.total)}</strong>
+          <small>${items.length} kalem · ${pieces} adet</small>
+        </div>
+      </header>
+
+      <div class="order-card__body">
+        <div class="order-card__grid">
+          <div class="order-lines">
+            <table class="order-items">
+              <thead><tr><th>Ürün</th><th>Adet</th><th>Birim fiyat</th><th>Tutar</th></tr></thead>
+              <tbody>${items.map(orderItemRow).join("") || '<tr><td colspan="4">Ürün kaydı yok.</td></tr>'}</tbody>
+            </table>
+            <dl class="order-totals">
+              <div><dt>Ara toplam${taxAmount > 0 ? " (KDV hariç)" : ""}</dt><dd>${money(order.subtotal)}</dd></div>
+              ${discount > 0 ? `<div><dt>İndirim${order.campaign_summary ? ` · ${escapeHtml(order.campaign_summary)}` : ""}</dt><dd>−${money(discount)}</dd></div>` : ""}
+              ${taxAmount > 0 ? `<div><dt>KDV %${Number(order.tax_rate) || 0}</dt><dd>${money(taxAmount)}</dd></div>` : ""}
+              <div><dt>Kargo</dt><dd>${shippingLabels[order.shipping_method] || "Belirtilmemiş"}</dd></div>
+              <div class="is-total"><dt>Toplam</dt><dd>${money(order.total)}</dd></div>
+              ${collected != null && Math.abs(collected - Number(order.total)) >= 0.01 ? `<div><dt>PayTR tahsilatı</dt><dd>${money(collected)}</dd></div>` : ""}
+            </dl>
+          </div>
+          <ol class="order-timeline" aria-label="Sipariş süreci">
+            <li class="is-done"><span>Sipariş verildi</span><strong>${formatDateTime(order.created_at) || "Bilinmiyor"}</strong></li>
+            <li class="${payment.className}"><span>${payment.label}</span>${payment.detail ? `<strong>${payment.detail}</strong>` : ""}</li>
+            <li class="${order.tracking_code ? "is-done" : "is-pending"}"><span>Kargo takip kodu</span><strong>${escapeHtml(order.tracking_code) || "Henüz girilmedi"}</strong></li>
+            <li class="${order.status === "cancelled" ? "is-failed" : order.status === "delivered" ? "is-done" : "is-pending"}"><span>Son güncelleme · ${statusLabel}</span><strong>${formatDateTime(order.updated_at)}</strong></li>
+          </ol>
+        </div>
+
         <div class="order-details">
           <div>
             <span>İletişim</span>
-            <strong>${escapeHtml(order.customer_phone) || "Telefon yok"}</strong>
-            <small>${escapeHtml(order.customer_email) || "E-posta yok"}</small>
+            ${phone ? `<strong><a href="tel:${phone}">${phone}</a></strong>` : "<strong>Telefon yok</strong>"}
+            ${email ? `<small><a href="mailto:${email}">${email}</a></small>` : "<small>E-posta yok</small>"}
           </div>
           <div>
             <span>Teslimat adresi</span>
             <strong>${escapeHtml(order.shipping_address) || "Adres yok"}</strong>
           </div>
           <div>
-            <span>Fatura adresi</span>
+            <span>Fatura · ${corporate ? "Kurumsal" : order.invoice_type ? "Bireysel" : "Belirtilmemiş"}</span>
             <strong>${escapeHtml(order.billing_address || order.shipping_address) || "Adres yok"}</strong>
+            ${corporate ? `<small>${escapeHtml(order.company_name) || "-"} · VKN ${escapeHtml(order.tax_number) || "-"} · ${escapeHtml(order.tax_office) || "-"}</small>` : ""}
+            ${!corporate && order.tc_no ? `<small>TC ${escapeHtml(order.tc_no)}</small>` : ""}
           </div>
         </div>
         ${order.notes ? `<p class="order-note"><strong>Sipariş notu:</strong> ${escapeHtml(order.notes)}</p>` : ""}
-        ${order.invoice_type ? `
-          <div class="meta-line">
-            <span class="badge ${order.invoice_type === "corporate" ? "blue" : ""}">${order.invoice_type === "corporate" ? "Kurumsal fatura" : "Bireysel fatura"}</span>
-            ${order.invoice_type === "corporate"
-              ? `<span class="badge">${escapeHtml(order.company_name) || "-"}</span><span class="badge">VKN ${escapeHtml(order.tax_number) || "-"}</span><span class="badge">${escapeHtml(order.tax_office) || "-"}</span>`
-              : order.tc_no ? `<span class="badge">TC ${escapeHtml(order.tc_no)}</span>` : ""}
-          </div>` : ""}
+      </div>
+
+      <footer class="order-card__actions">
+        <div class="order-card__refs">
+          <span>Ödeme yöntemi: <strong>${paymentMethodLabels[order.payment_method] || "Belirtilmemiş"}</strong></span>
+          ${order.payment_reference ? `<span>Ödeme referansı: <code>${escapeHtml(order.payment_reference)}</code></span>` : ""}
+        </div>
+        <div class="order-workflow">
+          <label>
+            <span>Sipariş durumu</span>
+            <select data-order-status="${order.id}">
+              ${ORDER_STATUSES.map((status) => `<option value="${status}" ${status === order.status ? "selected" : ""}>${statusLabels[status]}</option>`).join("")}
+            </select>
+          </label>
+          <button type="button" data-track-order="${order.id}">${order.tracking_code ? "Takip kodunu değiştir" : "Takip kodu ekle"}</button>
+        </div>
+      </footer>
+    </article>`;
+}
+
+// Gösterge panelindeki "Son siparişler": tek satır özet, ayrıntı Siparişler sekmesinde.
+function orderCompactRow(order) {
+  const items = order.items || [];
+  return `
+    <article class="row">
+      <span class="brand-mark">#</span>
+      <div>
+        <h3>${escapeHtml(order.order_number)} - ${escapeHtml(order.customer_name)}</h3>
+        <p>${formatDateTime(order.created_at)}${timeAgo(order.created_at) ? ` · ${timeAgo(order.created_at)}` : ""} · ${items.map((item) => `${Number(item.quantity) || 0} adet ${escapeHtml(item.product_name)}`).join(", ")}</p>
+        <div class="meta-line">
+          <span class="badge ${statusClass[order.status] || ""}">${statusLabels[order.status] || escapeHtml(order.status)}</span>
+          <span class="badge blue">${money(order.total)}</span>
+          <span class="badge ${paymentClass[order.payment_status] || ""}">${paymentLabels[order.payment_status] || escapeHtml(order.payment_status)}</span>
+        </div>
       </div>
       <div class="row-actions">
-        <select data-order-status="${order.id}">
-          ${["new", "preparing", "printed", "shipped", "delivered", "cancelled"].map((status) => `<option value="${status}" ${status === order.status ? "selected" : ""}>${statusLabels[status]}</option>`).join("")}
+        <select data-order-status="${order.id}" aria-label="Sipariş durumu">
+          ${ORDER_STATUSES.map((status) => `<option value="${status}" ${status === order.status ? "selected" : ""}>${statusLabels[status]}</option>`).join("")}
         </select>
-        <button data-track-order="${order.id}">Takip</button>
       </div>
-    </article>
-  `).join("") || "<p>Henüz sipariş yok.</p>";
-  qs("#order-list").innerHTML = markup;
-  qs("#recent-orders").innerHTML = markup;
+    </article>`;
+}
+
+function renderOrderSummary() {
+  const now = Date.now();
+  const today = startOfDay(new Date());
+  const createdMs = (order) => parseDbDate(order.created_at)?.getTime() ?? 0;
+  const todays = state.orders.filter((order) => createdMs(order) >= today);
+  const last30 = state.orders.filter((order) => now - createdMs(order) <= 30 * 86_400_000);
+  const sum = (orders) => orders.filter(isOrderRevenue).reduce((total, order) => total + Number(order.total || 0), 0);
+  const toPrepare = state.orders.filter(isOrderToPrepare).length;
+  const unpaid = state.orders.filter((order) => ["pending", "failed"].includes(order.payment_status) && order.status !== "cancelled").length;
+  qs("#order-summary").innerHTML = `
+    <article><span>Bugün</span><strong>${todays.length} sipariş</strong><small>${money(sum(todays))} ödenen</small></article>
+    <article class="${toPrepare ? "is-alert" : ""}"><span>Hazırlanacak</span><strong>${toPrepare}</strong><small>Ödendi, kargoya çıkmadı</small></article>
+    <article><span>Ödemesiz</span><strong>${unpaid}</strong><small>Bekleyen veya başarısız ödeme</small></article>
+    <article><span>Son 30 gün</span><strong>${money(sum(last30))}</strong><small>${last30.filter(isOrderRevenue).length} ödenmiş sipariş</small></article>`;
+}
+
+function renderOrders() {
+  const search = orderFilters.search.trim().toLocaleLowerCase("tr-TR");
+  const today = startOfDay(new Date());
+  const orders = state.orders.filter((order) => {
+    if (orderFilters.status && order.status !== orderFilters.status) return false;
+    if (orderFilters.payment && order.payment_status !== orderFilters.payment) return false;
+    if (orderFilters.date) {
+      const created = parseDbDate(order.created_at)?.getTime() ?? 0;
+      const from = orderFilters.date === "today" ? today : today - (Number(orderFilters.date) - 1) * 86_400_000;
+      if (created < from) return false;
+    }
+    if (!search) return true;
+    const haystack = [order.order_number, order.customer_name, order.customer_email, order.customer_phone,
+      order.tracking_code, order.payment_reference, ...(order.items || []).map((item) => item.product_name)]
+      .filter(Boolean).join(" ").toLocaleLowerCase("tr-TR");
+    return haystack.includes(search);
+  });
+
+  qs("#order-count").textContent = orders.length === state.orders.length
+    ? `${state.orders.length} sipariş`
+    : `${orders.length} / ${state.orders.length} sipariş`;
+  renderOrderSummary();
+
+  // API siparişleri yeniden eskiye sıralı döndürüyor; gün değiştikçe başlık açılır.
+  const dayOf = (order) => {
+    const created = parseDbDate(order.created_at);
+    return created ? orderDayLabel(created) : "Tarihi bilinmeyen";
+  };
+  const days = orders.map(dayOf);
+  const dayCounts = days.reduce((counts, day) => counts.set(day, (counts.get(day) || 0) + 1), new Map());
+  const markup = orders.map((order, index) => {
+    const day = days[index];
+    const heading = day === days[index - 1] ? ""
+      : `<h3 class="order-day">${escapeHtml(day)} <small>${dayCounts.get(day)} sipariş</small></h3>`;
+    return heading + orderCard(order);
+  }).join("");
+
+  qs("#order-list").innerHTML = markup || (state.orders.length
+    ? '<div class="quote-empty"><strong>Bu filtrelere uyan sipariş yok</strong><p>Aramayı veya filtreleri değiştirip tekrar deneyin.</p></div>'
+    : '<div class="quote-empty"><strong>Henüz sipariş yok</strong><p>Ödemesi başlatılan siparişler burada görünecek.</p></div>');
+  qs("#recent-orders").innerHTML = state.orders.slice(0, 4).map(orderCompactRow).join("") || "<p>Henüz sipariş yok.</p>";
+}
+
+async function loadNotificationStatus() {
+  const info = await api("/api/notifications");
+  const badge = qs("#notify-state");
+  badge.textContent = info.configured ? "E-posta servisi kurulu" : "E-posta servisi kurulu değil";
+  badge.className = `badge ${info.configured ? "green" : "red"}`;
+  qs("#notify-recipients").innerHTML = info.recipients.map((email) => `<li>${escapeHtml(email)}</li>`).join("");
+  qs("#notify-from").textContent = info.configured
+    ? `Gönderen: ${info.from}`
+    : "Sunucuda RESEND_API_KEY tanımlı değil; bu yüzden hiçbir bildirim gönderilmiyor. Anahtarı sunucudaki .env dosyasına ekleyip uygulamayı yeniden başlatın.";
 }
 
 function renderMessages() {
@@ -2254,15 +2450,21 @@ qs("#product-list").addEventListener("change", async (event) => {
 });
 
 // SQLite stores changed_at as UTC "YYYY-MM-DD HH:MM:SS"; render it in local Turkish format.
-function formatDateTime(value) {
-  if (!value) return "";
+function parseDbDate(value) {
+  if (!value) return null;
   const text = String(value);
   // İki biçim de gelebilir: Postgres ISO ("…T19:10:27.641Z") ve saat dilimsiz
   // "YYYY-MM-DD HH:MM:SS". İkincisi UTC kabul edilip Z ekleniyor; birincisine
   // Z eklemek "…ZZ" yapıp tarihi geçersiz kılar.
   const hasZone = /[TZ]|[+-]\d{2}:?\d{2}$/.test(text);
   const date = new Date(hasZone ? text : `${text.replace(" ", "T")}Z`);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("tr-TR", { dateStyle: "medium", timeStyle: "short" });
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatDateTime(value) {
+  if (!value) return "";
+  const date = parseDbDate(value);
+  return date ? date.toLocaleString("tr-TR", { dateStyle: "medium", timeStyle: "short" }) : value;
 }
 
 function renderPriceHistory(rows) {
@@ -2613,6 +2815,31 @@ document.addEventListener("change", async (event) => {
   await refresh();
 });
 
+[["#order-search", "input", "search"], ["#order-status-filter", "change", "status"],
+  ["#order-payment-filter", "change", "payment"], ["#order-date-filter", "change", "date"]]
+  .forEach(([selector, type, key]) => qs(selector).addEventListener(type, (event) => {
+    orderFilters[key] = event.target.value;
+    renderOrders();
+  }));
+
+qs("#notify-test").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  const result = qs("#notify-result");
+  button.disabled = true;
+  result.className = "notify-result";
+  result.textContent = "Gönderiliyor…";
+  try {
+    const sent = await api("/api/notifications/test", { method: "POST" });
+    result.classList.add("is-ok");
+    result.textContent = `Test e-postası gönderildi: ${sent.recipients.join(", ")}. Gelen kutusunu (ve spam klasörünü) kontrol edin.`;
+  } catch (error) {
+    result.classList.add("is-error");
+    result.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
 document.addEventListener("click", async (event) => {
   const id = event.target.dataset.trackOrder;
   if (!id) return;
@@ -2692,7 +2919,13 @@ qs("#blog-list")?.addEventListener("click", async (event) => {
 loadCostSettings();
 
 loadSession()
-  .then(refresh)
+  .then(() => {
+    // Bildirim durumu sipariş listesinden bağımsız; hata verirse panelin geri kalanı açılsın.
+    loadNotificationStatus().catch(() => {
+      qs("#notify-state").textContent = "Durum alınamadı";
+    });
+    return refresh();
+  })
   .catch((error) => {
     if (error.message !== "Giriş gerekli") alert(error.message);
   });

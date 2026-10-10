@@ -84,6 +84,7 @@ async function request(url, options = {}) {
   return { response, payload };
 }
 
+const STORE_RECIPIENTS = ["info@printable.com.tr", "gunesogulcan1@gmail.com", "furkanhuseyinaraz0@gmail.com", "operations@example.com"];
 const storeMessage = (prefix) => resendRequests.find((entry) => String(entry.subject).startsWith(prefix));
 
 test.before(async () => {
@@ -217,7 +218,7 @@ test("İletişim formu info adresine bildirim gönderir", async () => {
   assert.equal(payload.notification_sent, true);
   const email = storeMessage("Yeni iletişim mesajı");
   assert.ok(email);
-  assert.deepEqual(email.to, ["info@printable.com.tr", "operations@example.com"]);
+  assert.deepEqual(email.to, STORE_RECIPIENTS);
   assert.match(email.html, /Spinball hakkında bilgi almak istiyorum/);
   const row = await db.prepare("SELECT * FROM messages WHERE email = ?").get("iletisim@example.com");
   assert.equal(row.subject, "Ürün sorusu");
@@ -240,7 +241,7 @@ test("Özel parça tasarım talebi panel kaydı ve mağaza e-postası oluşturur
   assert.equal(payload.notification_sent, true);
   const email = storeMessage("Yeni özel parça tasarım talebi");
   assert.ok(email);
-  assert.deepEqual(email.to, ["info@printable.com.tr", "operations@example.com"]);
+  assert.deepEqual(email.to, STORE_RECIPIENTS);
   assert.match(email.html, /Kırılan kahve makinesi kapağını/);
   const row = await db.prepare("SELECT * FROM messages WHERE email = ?").get("tasarim@example.com");
   assert.equal(row.subject, "Özel parça tasarım talebi");
@@ -424,7 +425,7 @@ test("Toplu anahtarlık talebi adet kurallarını uygular, panele ve e-postaya d
 
   const email = storeMessage("Yeni toplu anahtarlık talebi");
   assert.ok(email);
-  assert.deepEqual(email.to, ["info@printable.com.tr", "operations@example.com"]);
+  assert.deepEqual(email.to, STORE_RECIPIENTS);
   assert.match(email.html, /Toplu Müşteri/);
   assert.match(email.html, new RegExp(keychainProducts[0].name));
   assert.match(email.html, /toplam 50 adet/i);
@@ -566,7 +567,7 @@ test("Ödenen sipariş info adresine mağaza bildirimi gönderir", async () => {
   assert.equal(callback.status, 200);
   assert.equal(await callback.text(), "OK");
 
-  const email = storeMessage("Yeni sipariş");
+  const email = storeMessage("Satışınız var");
   assert.ok(email);
   assert.ok(email.to.includes("info@printable.com.tr"));
   assert.match(email.html, /Sipariş Testi/);
@@ -586,4 +587,30 @@ test("E-posta servisi hata verse de iletişim mesajı kaydedilir", async () => {
   assert.equal(payload.notification_sent, false);
   const row = await db.prepare("SELECT message FROM messages WHERE email = ?").get("kayit@example.com");
   assert.equal(row.message, "Bu mesaj kaybolmamalı.");
+});
+
+test("Panelden bildirim testi sahiplere gider, hata nedeni panele döner", async () => {
+  const login = await realFetch(`${baseUrl}/api/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "ogulcan", password: "email-test-admin-password" })
+  });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+
+  const status = await request("/api/notifications", { headers: { Cookie: cookie } });
+  assert.equal(status.payload.configured, true);
+  assert.deepEqual(status.payload.recipients, STORE_RECIPIENTS);
+
+  const sent = await request("/api/notifications/test", { method: "POST", headers: { Cookie: cookie } });
+  assert.equal(sent.response.status, 200);
+  assert.deepEqual(storeMessage("Printable bildirim testi").to, STORE_RECIPIENTS);
+
+  resendMode = "failure";
+  const failed = await request("/api/notifications/test", { method: "POST", headers: { Cookie: cookie } });
+  resendMode = "success";
+  assert.equal(failed.response.status, 502);
+  assert.match(failed.payload.error, /Resend 503/);
+
+  const anonymous = await request("/api/notifications/test", { method: "POST" });
+  assert.equal(anonymous.response.status, 401);
 });

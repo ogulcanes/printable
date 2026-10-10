@@ -75,8 +75,13 @@ if (ADMIN_LOCKED) {
 }
 const SESSION_COOKIE = "printable_admin";
 const CUSTOMER_SESSION_COOKIE = "printable_customer";
+/* Satış ve 3D teklif bildirimleri sahiplerin kişisel kutusuna da düşsün.
+   Kodda sabit, çünkü yalnızca env'e bırakıldığında canlıda hiç ayarlanmamıştı
+   ve bildirimler sessizce yalnızca info@ adresine gidiyordu. */
 const STORE_NOTIFICATION_EMAILS = [...new Set([
   "info@printable.com.tr",
+  "gunesogulcan1@gmail.com",
+  "furkanhuseyinaraz0@gmail.com",
   ...String(process.env.STORE_NOTIFICATION_EMAILS || "")
     .split(",").map((email) => email.trim()).filter(Boolean)
 ])];
@@ -4456,12 +4461,15 @@ app.put("/api/customer/profile", requireCustomer, async (req, res) => {
 
 const emailMoney = (value) => `${Number(value || 0).toFixed(2)} TL`;
 
-async function sendTransactionalEmail({ to, subject, html }) {
+/* Gönderimin sonucunu NEDENİYLE döndürür. Eskiden yalnızca true/false vardı ve
+   Resend'in "alan adı doğrulanmadı" gibi yanıtı hiçbir yere yazılmıyordu; canlıda
+   bildirim gelmediğinde sebebi görmenin yolu yoktu. */
+async function deliverEmail({ to, subject, html }) {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.MAIL_FROM || "Printable <info@printable.com.tr>";
-  if (!apiKey) return false;
+  if (!apiKey) return { ok: false, error: "RESEND_API_KEY sunucuda tanımlı değil." };
   const recipients = (Array.isArray(to) ? to : [to]).map((email) => String(email).trim()).filter(Boolean);
-  if (!recipients.length) return false;
+  if (!recipients.length) return { ok: false, error: "Alıcı adresi yok." };
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
   try {
@@ -4471,10 +4479,22 @@ async function sendTransactionalEmail({ to, subject, html }) {
       body: JSON.stringify({ from, to: recipients, subject, html }),
       signal: controller.signal
     });
-    return response.ok;
+    if (response.ok) return { ok: true };
+    const payload = await response.json().catch(() => null);
+    const error = `Resend ${response.status}: ${payload?.message || payload?.error || response.statusText || "bilinmeyen hata"}`;
+    console.error(`E-posta gönderilemedi (${subject}): ${error}`);
+    return { ok: false, error };
+  } catch (error) {
+    const message = error.name === "AbortError" ? "Resend 8 saniye içinde yanıt vermedi." : error.message;
+    console.error(`E-posta gönderilemedi (${subject}): ${message}`);
+    return { ok: false, error: message };
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function sendTransactionalEmail(options) {
+  return (await deliverEmail(options)).ok;
 }
 
 async function sendPasswordResetEmail({ to, name, resetUrl }) {
@@ -4552,9 +4572,9 @@ async function notifyNewOrder({ name, email, phone, orderNumber, items, total })
     return `<li>${escapeHtml(item.product_name)} · ${Number(item.quantity)} adet · ${emailMoney(item.line_total)}${custom ? `<br><small>${custom}</small>` : ""}${file}</li>`;
   }).join("");
   return sendStoreNotification({
-    subject: `Yeni sipariş · ${orderNumber}`,
+    subject: `Satışınız var! · ${orderNumber} · ${emailMoney(total)}`,
     html: `<div style="font-family:Arial,sans-serif;color:#171c2c;line-height:1.6">
-      <h2>Yeni sipariş geldi 🎉</h2>
+      <h2>Satışınız var 🎉</h2>
       <p><strong>Sipariş:</strong> ${escapeHtml(orderNumber)}</p>
       <p><strong>Müşteri:</strong> ${escapeHtml(name)}<br><strong>E-posta:</strong> ${escapeHtml(email || "Belirtilmedi")}<br><strong>Telefon:</strong> ${escapeHtml(phone || "Belirtilmedi")}</p>
       <ul>${lines}</ul>
@@ -6715,6 +6735,32 @@ app.post("/api/customers", async (req, res) => {
     notes: req.body.notes?.trim() || null
   });
   res.status(201).json(await db.prepare("SELECT * FROM customers WHERE id = ?").get(result.lastInsertRowid));
+});
+
+/* Panelde "bildirimler nereye gidiyor, servis kurulu mu" sorusunun yanıtı.
+   Canlı sunucuya SSH yok; bildirim gelmediğinde sebebi buradan görülür. */
+app.get("/api/notifications", requireAdmin, async (req, res) => {
+  res.json({
+    configured: Boolean(process.env.RESEND_API_KEY),
+    from: process.env.MAIL_FROM || "Printable <info@printable.com.tr>",
+    recipients: STORE_NOTIFICATION_EMAILS
+  });
+});
+
+app.post("/api/notifications/test", requireAdmin, async (req, res) => {
+  const result = await deliverEmail({
+    to: STORE_NOTIFICATION_EMAILS,
+    subject: "Printable bildirim testi",
+    html: `<div style="font-family:Arial,sans-serif;color:#171c2c;line-height:1.6">
+      <h2>Bildirimler çalışıyor ✅</h2>
+      <p>Bu e-posta yönetim panelinden gönderilen bir testtir. Yeni bir sipariş ödendiğinde
+        <strong>“Satışınız var”</strong>, 3D baskı teklifi geldiğinde <strong>“Yeni 3D baskı teklifi”</strong>
+        konulu e-posta bu adreslere gelir:</p>
+      <ul>${STORE_NOTIFICATION_EMAILS.map((email) => `<li>${escapeHtml(email)}</li>`).join("")}</ul>
+    </div>`
+  });
+  if (!result.ok) return res.status(502).json({ error: `Test e-postası gönderilemedi. ${result.error}` });
+  res.json({ ok: true, recipients: STORE_NOTIFICATION_EMAILS });
 });
 
 app.get("/api/orders", requireAdmin, async (req, res) => {
